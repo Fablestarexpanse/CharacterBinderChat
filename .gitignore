@@ -42,3 +42,5 @@ next-env.d.ts
 
 # local SQLite database (auto-created on first run)
 /data/fablestore.db
+/data/fablestore.db-shm
+/data/fablestore.db-wal
