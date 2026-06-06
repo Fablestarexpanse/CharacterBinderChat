@@ -21,13 +21,23 @@ function normPredicate(p: string): string {
 // ─── Extraction Prompt ────────────────────────────────────────────────────────
 
 function buildExtractionPrompt(
-  messages: Array<{ role: string; content: string }>,
-  characterName: string
+  messages:      Array<{ role: string; content: string }>,
+  characterName: string,
+  knownEntities: Array<{ id: string; name: string; type: string }> = []
 ): string {
   const conversation = messages
-    .slice(-12) // last 12 messages
+    .slice(-12)
     .map((m) => `${m.role === "user" ? "User" : characterName}: ${m.content}`)
     .join("\n\n");
+
+  // ── Entity roster (Task 2) ────────────────────────────────────────────────
+  const rosterBlock = knownEntities.length > 0
+    ? `EXISTING ENTITIES — reuse these exact ids when an entity reappears; only mint a
+new snake_case id for an entity not in this list:
+${knownEntities.slice(0, 40).map((e) => `- ${e.id} (${e.type}) "${e.name}"`).join("\n")}
+
+`
+    : "";
 
   return `You are a memory extraction assistant for a roleplay story. Extract structured information from the conversation below.
 
@@ -38,23 +48,41 @@ Return ONLY valid JSON. No markdown, no explanation, just the JSON object.
     { "id": "snake_case_id", "type": "character|place|object|faction|concept", "name": "Display Name", "description": "Brief description" }
   ],
   "facts": [
-    { "subject": "entity_id", "predicate": "verb or relationship", "object": "entity_id or literal string", "confidence": 0.9 }
+    { "subject": "entity_id", "predicate": "lives_at", "object": "entity_id or literal string", "confidence": 0.9 }
   ],
   "stat_changes": [
     { "observer": "entity_id", "target": "entity_id", "stat": "affection|trust|desire|connection|mood", "delta": 5 }
   ]
 }
 
+PREDICATE VOCABULARY — for these relationship kinds you MUST use the exact predicate
+shown, never a synonym:
+- where someone lives or resides   -> "lives_at"
+- where something is located       -> "located_at"
+- where someone works              -> "works_at"
+- an entity's current place/base   -> "current_location"
+- an entity's status or state      -> "status"
+- identity ("X is Y")              -> "is"
+For any OTHER relationship (knows, distrusts, owns, fears, promised, etc.) use a short
+free-form snake_case predicate. Do NOT invent synonyms for the six above — write
+"lives_at", never "resides at" / "is staying at" / "calls home" / "based out of".
+
+FEW-SHOT EXAMPLES (location change across turns):
+Turn 1 — "I live in the lower city safehouse."
+  -> { "subject": "ronan", "predicate": "lives_at", "object": "lower city safehouse" }
+Turn 2 — "Ronan moved to Kaelen yesterday."
+  -> { "subject": "ronan", "predicate": "lives_at", "object": "kaelen" }
+(Same predicate "lives_at" both times; the new fact supersedes the old one.)
+
 Rules:
 - Only include entities actually mentioned or clearly implied
-- Facts should be concrete statements: X knows Y, X is located at Y, X distrusts Y
+- Facts should be concrete statements: X knows Y, X lives_at Y, X distrusts Y
 - stat_changes reflect emotional/relational shifts; delta range -30 to +30 per exchange
 - observer is the entity whose feelings/perspective is being tracked
-- Use snake_case IDs derived from names (e.g. "ronan", "kaspar_division", "sector_7_checkpoint")
+- Use snake_case IDs derived from names (e.g. "ronan", "kaspar_division", "sector_7")
 - If nothing meaningful to extract, return {"entities":[],"facts":[],"stat_changes":[]}
-- Keep entity IDs consistent with prior extractions (use the same ID for the same entity)
 
-Conversation to analyze:
+${rosterBlock}Conversation to analyze:
 ${conversation}`;
 }
 
@@ -163,9 +191,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── Build prompt with known entity roster (prevents ID drift) ────────────
+
+    const store = getStore();
+    const knownEntities = store.listEntities().map((e) => ({
+      id: e.id, name: e.name, type: e.type,
+    }));
+    const prompt = buildExtractionPrompt(messages, characterName ?? characterId, knownEntities);
+
     // ── Call LLM ──────────────────────────────────────────────────────────
 
-    const prompt = buildExtractionPrompt(messages, characterName ?? characterId);
     let rawText: string;
 
     if (providerType === "ollama") {
@@ -175,7 +210,6 @@ export async function POST(req: NextRequest) {
     }
 
     const extracted = parseExtraction(rawText);
-    const store     = getStore();
 
     // ── Ensure the main character entity exists ───────────────────────────
 
