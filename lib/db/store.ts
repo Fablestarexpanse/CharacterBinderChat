@@ -359,17 +359,22 @@ export class FableStore {
   }
 
   /**
-   * Apply Ebbinghaus decay to all stats.
-   * new_value = old_value × (1 − decay_rate)^(days / 7)
+   * Apply Ebbinghaus decay to all stats using each row's own last_updated
+   * timestamp, so recently-updated stats decay less than stale ones.
+   *
+   * new_value = old_value × (1 − decay_rate)^(rowDays / 7)
+   *
+   * The `_daysElapsed` parameter is retained for API compatibility but is
+   * no longer used — per-row elapsed time is always computed from last_updated.
    */
-  applyDecay(daysElapsed: number): Array<{
+  applyDecay(_daysElapsed?: number): Array<{
     observerId: string;
     targetId:   string;
     statName:   string;
     oldValue:   number;
     newValue:   number;
   }> {
-    if (daysElapsed <= 0) return [];
+    const t = now();
     const rows = this.db
       .prepare("SELECT * FROM relationship_stats")
       .all()
@@ -384,10 +389,12 @@ export class FableStore {
       "UPDATE relationship_stats SET value = ?, last_updated = ? WHERE id = ?"
     );
 
-    const t = now();
     for (const stat of rows) {
+      // Compute actual elapsed days for this specific row
+      const rowDays = (t - stat.lastUpdated) / 86400; // lastUpdated is Unix seconds
+      if (rowDays <= 0) continue; // updated this second — skip
       const newValue =
-        stat.value * Math.pow(1.0 - stat.decayRate, daysElapsed / 7.0);
+        stat.value * Math.pow(1.0 - stat.decayRate, rowDays / 7.0);
       update.run(newValue, t, stat.id);
       changes.push({
         observerId: stat.observerId,
@@ -627,9 +634,36 @@ export class FableStore {
       (b.confidence - a.confidence) || (b.tValidStart - a.tValidStart)
     );
 
-    return all.slice(0, limit).map((f) => {
-      const subj = this.getEntity(f.subjectId)?.name ?? f.subjectId;
-      const obj  = this.factObjectDisplay(f);
+    const topFacts = all.slice(0, limit);
+
+    // Batch-fetch all referenced entities in one query (avoids N+1 per fact)
+    const entityIds = new Set<string>();
+    for (const f of topFacts) {
+      entityIds.add(f.subjectId);
+      if (f.objectId) entityIds.add(f.objectId);
+    }
+    const entityMap = new Map<string, DbEntity>();
+    if (entityIds.size > 0) {
+      const ids          = Array.from(entityIds);
+      const placeholders = ids.map(() => "?").join(",");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fetched = this.db
+        .prepare(`SELECT * FROM entities WHERE id IN (${placeholders})`)
+        .all(...ids) as any[];
+      for (const row of fetched) entityMap.set(row.id, rowToEntity(row));
+    }
+
+    return topFacts.map((f) => {
+      const subj = entityMap.get(f.subjectId)?.name ?? f.subjectId;
+      let obj: string;
+      if (f.objectId) {
+        const e = entityMap.get(f.objectId);
+        obj = e
+          ? e.name + (f.objectLiteral ? ` / "${f.objectLiteral}"` : "")
+          : f.objectId;
+      } else {
+        obj = f.objectLiteral ? `"${f.objectLiteral}"` : "";
+      }
       return `${subj} ${f.predicate} ${obj}`;
     });
   }

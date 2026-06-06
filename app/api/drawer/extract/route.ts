@@ -1,22 +1,10 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
+import { SINGLE_VALUED_PREDICATES, normPredicate } from "@/lib/db/predicates";
+import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
 import type { EntityType, StatName } from "@/lib/db/models";
 
 export const dynamic = "force-dynamic";
-
-// ─── Single-valued predicates ─────────────────────────────────────────────────
-// For these, a subject can only hold ONE current value; a new fact supersedes
-// the previous one rather than stacking alongside it.
-const SINGLE_VALUED_PREDICATES = new Set([
-  "lives_at", "lives at", "located_at", "located at", "located in",
-  "is", "works_at", "works at", "current_location", "current location",
-  "status", "resides_at", "resides at", "based_at", "based at",
-]);
-
-/** Normalise a predicate string for comparison against SINGLE_VALUED_PREDICATES */
-function normPredicate(p: string): string {
-  return p.toLowerCase().trim().replace(/\s+/g, " ");
-}
 
 // ─── Extraction Prompt ────────────────────────────────────────────────────────
 
@@ -86,79 +74,12 @@ ${rosterBlock}Conversation to analyze:
 ${conversation}`;
 }
 
-// ─── LLM Callers ─────────────────────────────────────────────────────────────
-
-async function callOllama(
-  baseUrl: string,
-  modelId: string,
-  prompt: string
-): Promise<string> {
-  const res = await fetch(`${baseUrl}/api/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model:  modelId,
-      prompt,
-      stream: false,
-      format: "json",
-    }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!res.ok) throw new Error(`Ollama HTTP ${res.status}`);
-  const data = (await res.json()) as { response: string };
-  return data.response;
-}
-
-async function callOpenAICompat(
-  baseUrl:  string,
-  modelId:  string,
-  prompt:   string,
-  apiKey?:  string
-): Promise<string> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-
-  const res = await fetch(`${baseUrl}/v1/chat/completions`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model:  modelId,
-      stream: false,
-      messages: [
-        {
-          role:    "user",
-          content: prompt,
-        },
-      ],
-    }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
-  const data = (await res.json()) as {
-    choices: Array<{ message: { content: string } }>;
-  };
-  return data.choices?.[0]?.message?.content ?? "{}";
-}
-
-// ─── JSON Extractor ───────────────────────────────────────────────────────────
+// ─── Extraction result shape ──────────────────────────────────────────────────
 
 interface RawExtraction {
-  entities: Array<{ id: string; type: string; name: string; description?: string }>;
-  facts: Array<{ subject: string; predicate: string; object: string; confidence?: number }>;
-  stat_changes: Array<{ observer: string; target: string; stat: string; delta: number }>;
-}
-
-function parseExtraction(text: string): RawExtraction {
-  // Strip any markdown fences
-  const clean = text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
-  try {
-    return JSON.parse(clean) as RawExtraction;
-  } catch {
-    // Try to find JSON object inside the text
-    const match = clean.match(/\{[\s\S]*\}/);
-    if (match) return JSON.parse(match[0]) as RawExtraction;
-    return { entities: [], facts: [], stat_changes: [] };
-  }
+  entities:    Array<{ id: string; type: string; name: string; description?: string }>;
+  facts:       Array<{ subject: string; predicate: string; object: string; confidence?: number }>;
+  stat_changes:Array<{ observer: string; target: string; stat: string; delta: number }>;
 }
 
 // ─── Route Handler ────────────────────────────────────────────────────────────
@@ -209,7 +130,7 @@ export async function POST(req: NextRequest) {
       rawText = await callOpenAICompat(providerBaseUrl, modelId, prompt, apiKey);
     }
 
-    const extracted = parseExtraction(rawText);
+    const extracted = parseLLMJson<RawExtraction>(rawText, { entities: [], facts: [], stat_changes: [] });
 
     // ── Ensure the main character entity exists ───────────────────────────
 
@@ -226,19 +147,47 @@ export async function POST(req: NextRequest) {
       writtenEntities.push(e.id);
     }
 
-    // ── Write extracted facts (with supersession for single-valued predicates)
+    // ── Write extracted facts ─────────────────────────────────────────────
+    // Strategy per fact:
+    // 1. Query existing live facts for this subject ONCE.
+    // 2. If an identical live fact already exists (same predicate + same object),
+    //    skip the insert entirely — prevents unbounded duplicate accumulation.
+    // 3. For single-valued predicates, identify contradicting facts to supersede.
+    // 4. Insert the new fact, then supersede the contradicting ones.
 
     const writtenFacts: number[] = [];
     for (const f of extracted.facts ?? []) {
       if (!f.subject || !f.predicate || !f.object) continue;
 
-      // Make sure subject exists
       if (!store.getEntity(f.subject)) {
         store.ensureEntity(f.subject, "character", f.subject);
       }
 
-      // Determine if object is an entity ID or a literal
-      const objectEntity = store.getEntity(f.object);
+      const objectEntity  = store.getEntity(f.object);
+      const incomingNorm  = normPredicate(f.predicate);
+      const isSingleValued = SINGLE_VALUED_PREDICATES.has(incomingNorm);
+      const newObjectKey  = objectEntity ? f.object : f.object.toLowerCase().trim();
+
+      // Single query for all existing live facts for this subject
+      const existingFacts = store.queryFacts(f.subject);
+
+      // Skip if an identical live fact already exists (dedup)
+      const isDuplicate = existingFacts.some((ex) => {
+        if (normPredicate(ex.predicate) !== incomingNorm) return false;
+        const exKey = ex.objectId ?? (ex.objectLiteral ?? "").toLowerCase().trim();
+        return exKey === newObjectKey;
+      });
+      if (isDuplicate) continue;
+
+      // Collect facts to supersede (single-valued predicate, different object)
+      const toSupersede = isSingleValued
+        ? existingFacts.filter((ex) => {
+            if (normPredicate(ex.predicate) !== incomingNorm) return false;
+            const exKey = ex.objectId ?? (ex.objectLiteral ?? "").toLowerCase().trim();
+            return exKey !== newObjectKey;
+          })
+        : [];
+
       const newFactId = store.insertFact({
         subjectId:     f.subject,
         predicate:     f.predicate,
@@ -248,20 +197,8 @@ export async function POST(req: NextRequest) {
       });
       writtenFacts.push(newFactId);
 
-      // Supersede older facts for single-valued predicates
-      const norm = normPredicate(f.predicate);
-      if (SINGLE_VALUED_PREDICATES.has(norm)) {
-        const newObjectKey = objectEntity ? f.object : f.object.toLowerCase().trim();
-        const existing = store.queryFacts(f.subject);
-        for (const old of existing) {
-          if (old.id === newFactId) continue; // skip the one we just inserted
-          if (normPredicate(old.predicate) !== norm) continue;
-          // Only supersede if the object actually changed
-          const oldObjectKey = old.objectId ?? old.objectLiteral?.toLowerCase().trim() ?? "";
-          if (oldObjectKey !== newObjectKey) {
-            store.supersedeFact(old.id, newFactId);
-          }
-        }
+      for (const old of toSupersede) {
+        store.supersedeFact(old.id, newFactId);
       }
     }
 

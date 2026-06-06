@@ -4,44 +4,8 @@
 // Intended to be called server-side after a batch of messages.
 
 import { getStore } from "@/lib/db";
+import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
 import type { CoreMemory } from "@/lib/db/models";
-
-// ─── LLM callers (re-use same pattern as extract route) ──────────────────────
-
-async function callOllama(baseUrl: string, modelId: string, prompt: string): Promise<string> {
-  const res = await fetch(`${baseUrl}/api/generate`, {
-    method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify({ model: modelId, prompt, stream: false, format: "json" }),
-    signal:  AbortSignal.timeout(45_000),
-  });
-  if (!res.ok) throw new Error(`Ollama HTTP ${res.status}`);
-  const data = (await res.json()) as { response: string };
-  return data.response;
-}
-
-async function callOpenAICompat(
-  baseUrl:  string,
-  modelId:  string,
-  prompt:   string,
-  apiKey?:  string
-): Promise<string> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-  const res = await fetch(`${baseUrl}/v1/chat/completions`, {
-    method:  "POST",
-    headers,
-    body:    JSON.stringify({
-      model:    modelId,
-      stream:   false,
-      messages: [{ role: "user", content: prompt }],
-    }),
-    signal: AbortSignal.timeout(45_000),
-  });
-  if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
-  const data = (await res.json()) as { choices: Array<{ message: { content: string } }> };
-  return data.choices?.[0]?.message?.content ?? "{}";
-}
 
 // ─── Rewrite prompt ───────────────────────────────────────────────────────────
 
@@ -89,7 +53,7 @@ Rules:
 - Return ONLY the JSON. No explanation.`;
 }
 
-// ─── Parser ───────────────────────────────────────────────────────────────────
+// ─── Result shape ─────────────────────────────────────────────────────────────
 
 interface RewriteResult {
   persona:          string;
@@ -97,19 +61,6 @@ interface RewriteResult {
   internal_thoughts:string[];
   narrative_summary:string;
   persona_changed:  boolean;
-}
-
-function parseRewriteResult(text: string): RewriteResult | null {
-  const clean = text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
-  try {
-    return JSON.parse(clean) as RewriteResult;
-  } catch {
-    const match = clean.match(/\{[\s\S]*\}/);
-    if (match) {
-      try { return JSON.parse(match[0]) as RewriteResult; } catch { /* fall through */ }
-    }
-    return null;
-  }
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -152,7 +103,7 @@ export async function rewriteCoreMemory(opts: RewriteOptions): Promise<{
     return { ok: false, changed: false, error: String(err) };
   }
 
-  const result = parseRewriteResult(rawText);
+  const result = parseLLMJson<RewriteResult | null>(rawText, null);
   if (!result) {
     return { ok: false, changed: false, error: "LLM returned unparseable JSON" };
   }

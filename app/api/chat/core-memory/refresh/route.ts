@@ -37,7 +37,8 @@ export async function POST(req: NextRequest) {
     // Normalise: accept either field name so the shared extractionBody works
     const recentMessages = body.recentMessages ?? body.messages;
 
-    if (!characterId || !recentMessages?.length || !providerBaseUrl || !modelId) {
+    const validProviders = new Set(["ollama", "lmstudio", "openrouter"]);
+    if (!characterId || !recentMessages?.length || !providerBaseUrl || !modelId || !validProviders.has(providerType)) {
       return Response.json(
         { error: "characterId, recentMessages, providerBaseUrl and modelId are required" },
         { status: 400 }

@@ -76,8 +76,7 @@ export function ChatInput() {
     bumpExtraction, setIsExtracting,
   } = useFableStore();
 
-  const textareaRef      = useRef<HTMLTextAreaElement>(null);
-  const decayFiredRef    = useRef(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
   // ── Lazy stat decay ────────────────────────────────────────────────────────
@@ -191,8 +190,12 @@ export function ChatInput() {
   // ── Knowledge extraction ──────────────────────────────────────────────────
 
   const triggerExtraction = (chatId: string) => {
-    const chat      = chats.find((c) => c.id === chatId);
-    const character = characters.find((c) => c.id === chat?.characterId);
+    // Read current store state directly rather than using the closed-over `chats`
+    // snapshot from the last render — the assistant's completed reply is only
+    // present in the live store state, not in the render-time closure.
+    const { chats: currentChats, characters: currentCharacters } = useFableStore.getState();
+    const chat      = currentChats.find((c) => c.id === chatId);
+    const character = currentCharacters.find((c) => c.id === chat?.characterId);
     if (!chat || !character) return;
 
     const providerType =
