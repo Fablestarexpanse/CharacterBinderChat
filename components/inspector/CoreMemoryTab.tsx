@@ -1,0 +1,296 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { useFableStore } from "@/lib/store";
+import { Brain, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import type { CoreMemory } from "@/lib/db/models";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function MoodBar({
+  label,
+  value,
+  min = 0,
+  max = 1,
+}: {
+  label: string;
+  value: number;
+  min?: number;
+  max?: number;
+}) {
+  const pct = Math.round(((value - min) / (max - min)) * 100);
+  const color =
+    pct > 65 ? "bg-green-500" :
+    pct < 35 ? "bg-red-400"   :
+               "bg-[var(--purple)]";
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[10px] text-[var(--muted-fg)] w-20 flex-shrink-0">{label}</span>
+      <div className="flex-1 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
+        <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-[10px] tabular-nums text-[var(--muted-fg)] w-8 text-right">
+        {value.toFixed(2)}
+      </span>
+    </div>
+  );
+}
+
+function StatBar({ label, value }: { label: string; value: number }) {
+  const pct   = Math.max(0, Math.min(100, value));
+  const color =
+    pct > 65 ? "bg-green-500" :
+    pct < 35 ? "bg-red-400"   :
+               "bg-[var(--purple)]";
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[10px] text-[var(--muted-fg)] w-20 flex-shrink-0">{label}</span>
+      <div className="flex-1 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
+        <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-[10px] tabular-nums text-[var(--muted-fg)] w-8 text-right">{Math.round(pct)}</span>
+    </div>
+  );
+}
+
+function Section({
+  title,
+  children,
+  defaultOpen = true,
+}: {
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="border border-[var(--border)] rounded-lg overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 bg-white hover:bg-[var(--muted)] transition-colors"
+      >
+        <span className="text-[11px] font-semibold text-[var(--foreground)]">{title}</span>
+        {open
+          ? <ChevronUp className="h-3 w-3 text-[var(--muted-fg)]" />
+          : <ChevronDown className="h-3 w-3 text-[var(--muted-fg)]" />}
+      </button>
+      {open && <div className="px-3 pb-3 pt-1 space-y-1.5 bg-white">{children}</div>}
+    </div>
+  );
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export function CoreMemoryTab() {
+  const { activeChatId, chats, characters, extractionVersion, providerSettings } =
+    useFableStore();
+
+  const chat      = chats.find((c) => c.id === activeChatId);
+  const character = characters.find((c) => c.id === chat?.characterId);
+
+  const [cm,          setCm]          = useState<CoreMemory | null>(null);
+  const [loading,     setLoading]     = useState(false);
+  const [refreshing,  setRefreshing]  = useState(false);
+  const [error,       setError]       = useState<string | null>(null);
+  const [version,     setVersion]     = useState<number | null>(null);
+  const [updatedAt,   setUpdatedAt]   = useState<number | null>(null);
+
+  const fetchMemory = useCallback(async () => {
+    if (!character) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res  = await fetch(
+        `/api/chat/core-memory?characterId=${encodeURIComponent(character.id)}&name=${encodeURIComponent(character.name)}`
+      );
+      const data = await res.json() as {
+        ok: boolean; coreMemory: CoreMemory; version: number; updatedAt: number;
+      };
+      if (data.ok) {
+        setCm(data.coreMemory);
+        setVersion(data.version);
+        setUpdatedAt(data.updatedAt);
+      } else {
+        setError("Failed to load core memory");
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [character]);
+
+  useEffect(() => {
+    fetchMemory();
+  }, [fetchMemory, extractionVersion]);
+
+  const handleRefresh = async () => {
+    if (!character || !chat) return;
+    setRefreshing(true);
+
+    const providerType =
+      chat.providerId === "lmstudio"    ? "lmstudio"
+      : chat.providerId === "openrouter" ? "openrouter"
+      : "ollama";
+    const baseUrl =
+      providerType === "lmstudio"   ? providerSettings.lmstudio.baseUrl
+      : providerType === "openrouter" ? "https://openrouter.ai/api"
+      : providerSettings.ollama.baseUrl;
+
+    try {
+      await fetch("/api/chat/core-memory/refresh", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          characterId:     character.id,
+          characterName:   character.name,
+          recentMessages:  chat.messages.slice(-16).map((m) => ({ role: m.role, content: m.content })),
+          providerType,
+          providerBaseUrl: baseUrl,
+          modelId:         chat.modelId ?? "llama3.2:latest",
+          apiKey:          providerType === "openrouter" ? providerSettings.openrouter.apiKey : undefined,
+        }),
+      });
+      await fetchMemory();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  if (!character) {
+    return (
+      <div className="p-4 text-[12px] text-[var(--muted-fg)] text-center">
+        No character assigned to this chat.
+      </div>
+    );
+  }
+
+  const relAge = updatedAt
+    ? Math.round((Date.now() / 1000 - updatedAt) / 60) + "m ago"
+    : null;
+
+  return (
+    <div className="p-3 space-y-3">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Brain className="h-3.5 w-3.5 text-[var(--purple-fg)]" />
+          <span className="text-[11px] font-semibold text-[var(--foreground)]">Core Memory</span>
+          {version !== null && (
+            <span className="text-[10px] text-[var(--muted-fg)]">v{version}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          {relAge && <span className="text-[10px] text-[var(--muted-fg)]">{relAge}</span>}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            title="Rewrite core memory with LLM"
+            onClick={handleRefresh}
+            disabled={refreshing || loading}
+          >
+            <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="text-[10px] text-red-500 bg-red-50 rounded px-2 py-1">{error}</div>
+      )}
+
+      {loading && !cm && (
+        <div className="text-[11px] text-[var(--muted-fg)] text-center py-4">Loading…</div>
+      )}
+
+      {cm && (
+        <div className="space-y-2">
+
+          {/* Mood */}
+          <Section title="Mood (VAD)">
+            <MoodBar label="Valence"   value={cm.mood.valence}   min={-1} max={1} />
+            <MoodBar label="Arousal"   value={cm.mood.arousal}   min={0}  max={1} />
+            <MoodBar label="Dominance" value={cm.mood.dominance} min={0}  max={1} />
+          </Section>
+
+          {/* Relationship */}
+          <Section title="Relationship with User">
+            <StatBar label="Affection"  value={cm.relationship_with_user.affection} />
+            <StatBar label="Trust"      value={cm.relationship_with_user.trust} />
+            <StatBar label="Desire"     value={cm.relationship_with_user.desire} />
+            <StatBar label="Connection" value={cm.relationship_with_user.connection} />
+            <StatBar label="Mood"       value={cm.relationship_with_user.mood} />
+          </Section>
+
+          {/* Persona */}
+          <Section title="Persona">
+            <p className="text-[11px] text-[var(--foreground)] leading-relaxed">
+              {cm.persona || <span className="text-[var(--muted-fg)] italic">No persona set.</span>}
+            </p>
+          </Section>
+
+          {/* Narrative */}
+          <Section title="Narrative Summary">
+            <p className="text-[11px] text-[var(--foreground)] leading-relaxed">
+              {cm.narrative_summary || <span className="text-[var(--muted-fg)] italic">No narrative yet.</span>}
+            </p>
+          </Section>
+
+          {/* Internal Thoughts */}
+          {cm.internal_thoughts.length > 0 && (
+            <Section title="Internal Thoughts" defaultOpen={false}>
+              <ul className="space-y-1">
+                {cm.internal_thoughts.map((t, i) => (
+                  <li key={i} className="text-[11px] text-[var(--foreground)] leading-snug">
+                    <span className="text-[var(--muted-fg)] mr-1">–</span>{t}
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
+
+          {/* Commitments */}
+          {cm.active_commitments.length > 0 && (
+            <Section title="Active Commitments" defaultOpen={false}>
+              <ul className="space-y-1">
+                {cm.active_commitments.map((c, i) => (
+                  <li key={i} className="text-[11px] text-[var(--foreground)] leading-snug">
+                    <span className="text-[var(--muted-fg)] mr-1">•</span>{c}
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
+
+          {/* Emotional Events */}
+          {cm.recent_emotional_events.length > 0 && (
+            <Section title="Recent Emotional Events" defaultOpen={false}>
+              <ul className="space-y-1.5">
+                {cm.recent_emotional_events.map((e, i) => {
+                  const icon =
+                    e.impact === "positive" ? "+" :
+                    e.impact === "negative" ? "-" :
+                    "~";
+                  const color =
+                    e.impact === "positive" ? "text-green-600" :
+                    e.impact === "negative" ? "text-red-500" :
+                    "text-[var(--muted-fg)]";
+                  return (
+                    <li key={i} className="flex gap-1.5">
+                      <span className={`${color} font-bold text-[11px] flex-shrink-0`}>{icon}</span>
+                      <span className="text-[11px] text-[var(--foreground)] leading-snug">{e.description}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Section>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
