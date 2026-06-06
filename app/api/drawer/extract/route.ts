@@ -4,6 +4,20 @@ import type { EntityType, StatName } from "@/lib/db/models";
 
 export const dynamic = "force-dynamic";
 
+// ─── Single-valued predicates ─────────────────────────────────────────────────
+// For these, a subject can only hold ONE current value; a new fact supersedes
+// the previous one rather than stacking alongside it.
+const SINGLE_VALUED_PREDICATES = new Set([
+  "lives_at", "lives at", "located_at", "located at", "located in",
+  "is", "works_at", "works at", "current_location", "current location",
+  "status", "resides_at", "resides at", "based_at", "based at",
+]);
+
+/** Normalise a predicate string for comparison against SINGLE_VALUED_PREDICATES */
+function normPredicate(p: string): string {
+  return p.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
 // ─── Extraction Prompt ────────────────────────────────────────────────────────
 
 function buildExtractionPrompt(
@@ -178,7 +192,7 @@ export async function POST(req: NextRequest) {
       writtenEntities.push(e.id);
     }
 
-    // ── Write extracted facts ─────────────────────────────────────────────
+    // ── Write extracted facts (with supersession for single-valued predicates)
 
     const writtenFacts: number[] = [];
     for (const f of extracted.facts ?? []) {
@@ -191,14 +205,30 @@ export async function POST(req: NextRequest) {
 
       // Determine if object is an entity ID or a literal
       const objectEntity = store.getEntity(f.object);
-      const factId = store.insertFact({
+      const newFactId = store.insertFact({
         subjectId:     f.subject,
         predicate:     f.predicate,
         objectId:      objectEntity ? f.object : null,
         objectLiteral: objectEntity ? null : f.object,
         confidence:    f.confidence ?? 0.85,
       });
-      writtenFacts.push(factId);
+      writtenFacts.push(newFactId);
+
+      // Supersede older facts for single-valued predicates
+      const norm = normPredicate(f.predicate);
+      if (SINGLE_VALUED_PREDICATES.has(norm)) {
+        const newObjectKey = objectEntity ? f.object : f.object.toLowerCase().trim();
+        const existing = store.queryFacts(f.subject);
+        for (const old of existing) {
+          if (old.id === newFactId) continue; // skip the one we just inserted
+          if (normPredicate(old.predicate) !== norm) continue;
+          // Only supersede if the object actually changed
+          const oldObjectKey = old.objectId ?? old.objectLiteral?.toLowerCase().trim() ?? "";
+          if (oldObjectKey !== newObjectKey) {
+            store.supersedeFact(old.id, newFactId);
+          }
+        }
+      }
     }
 
     // ── Write stat changes ────────────────────────────────────────────────

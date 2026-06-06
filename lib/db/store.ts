@@ -605,6 +605,35 @@ export class FableStore {
     return fact.objectLiteral ? `"${fact.objectLiteral}"` : "";
   }
 
+  /**
+   * Retrieve the most salient currently-valid facts for a character,
+   * for injection into the system prompt. Salience = confidence, with a
+   * recency tiebreak (newer tValidStart ranks higher). Returns formatted
+   * "subject predicate object" lines.
+   */
+  retrieveFactsForPrompt(characterId: string, limit = 12): string[] {
+    const asSubject = this.queryFacts(characterId);
+    const asObject  = this.queryFactsAboutAsObject(characterId);
+
+    // Dedup by fact id
+    const seen = new Set<number>();
+    const all = [...asSubject, ...asObject].filter((f) => {
+      if (seen.has(f.id)) return false;
+      seen.add(f.id);
+      return true;
+    });
+
+    all.sort((a, b) =>
+      (b.confidence - a.confidence) || (b.tValidStart - a.tValidStart)
+    );
+
+    return all.slice(0, limit).map((f) => {
+      const subj = this.getEntity(f.subjectId)?.name ?? f.subjectId;
+      const obj  = this.factObjectDisplay(f);
+      return `${subj} ${f.predicate} ${obj}`;
+    });
+  }
+
   /** All stat entries for an entity as observer (all targets) */
   allStatsFor(observerId: string): DbRelationshipStat[] {
     return this.db

@@ -17,19 +17,25 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as {
-      characterId:     string;
-      characterName:   string;
-      recentMessages:  Array<{ role: string; content: string }>;
-      providerType:    "ollama" | "lmstudio" | "openrouter";
-      providerBaseUrl: string;
-      modelId:         string;
-      apiKey?:         string;
+      characterId:      string;
+      characterName:    string;
+      // Accept either field name: direct callers send recentMessages,
+      // triggerExtraction() sends the shared extractionBody which uses messages.
+      recentMessages?:  Array<{ role: string; content: string }>;
+      messages?:        Array<{ role: string; content: string }>;
+      providerType:     "ollama" | "lmstudio" | "openrouter";
+      providerBaseUrl:  string;
+      modelId:          string;
+      apiKey?:          string;
     };
 
     const {
       characterId, characterName,
-      recentMessages, providerType, providerBaseUrl, modelId, apiKey,
+      providerType, providerBaseUrl, modelId, apiKey,
     } = body;
+
+    // Normalise: accept either field name so the shared extractionBody works
+    const recentMessages = body.recentMessages ?? body.messages;
 
     if (!characterId || !recentMessages?.length || !providerBaseUrl || !modelId) {
       return Response.json(

@@ -79,10 +79,12 @@ export function formatCoreMemoryBlock(cm: CoreMemory): string {
  * Builds the full system prompt injected before every LLM call.
  * Without core memory: ~200-300 tokens.
  * With core memory:    ~600-900 tokens.
+ * With known facts:    +~100-200 tokens.
  */
 export function buildSystemPrompt(
-  character?: Character | null,
-  coreMemory?: CoreMemory | null
+  character?:  Character | null,
+  coreMemory?: CoreMemory | null,
+  knownFacts?: string[]
 ): string {
   if (!character) return "You are a helpful assistant.";
 
@@ -106,6 +108,13 @@ export function buildSystemPrompt(
     if (memBlock.trim()) {
       sections.push(memBlock);
     }
+  }
+
+  // ── Known Facts (Drawer 2 retrieval) ─────────────────────────────────────
+  const facts = knownFacts?.slice(0, 12) ?? [];
+  if (facts.length > 0) {
+    const factLines = facts.map((f) => `  - ${f}`).join("\n");
+    sections.push(`[Known Facts]\n${factLines}`);
   }
 
   // ── Instructions ──────────────────────────────────────────────────────────

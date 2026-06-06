@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { ensureCoreMemory, getCoreMemory, patchCoreMemory } from "@/lib/chat/coreMemoryStore";
+import { getStore } from "@/lib/db";
 import type { CoreMemory } from "@/lib/db/models";
 
 export const dynamic = "force-dynamic";
@@ -17,8 +18,10 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const cm = ensureCoreMemory(characterId, characterName);
-    return Response.json({ ok: true, coreMemory: cm.data, version: cm.version, updatedAt: cm.updatedAt });
+    const cm         = ensureCoreMemory(characterId, characterName);
+    const store      = getStore();
+    const knownFacts = store.retrieveFactsForPrompt(characterId);
+    return Response.json({ ok: true, coreMemory: cm.data, version: cm.version, updatedAt: cm.updatedAt, knownFacts });
   } catch (err) {
     console.error("[core-memory GET]", err);
     return Response.json({ error: String(err) }, { status: 500 });

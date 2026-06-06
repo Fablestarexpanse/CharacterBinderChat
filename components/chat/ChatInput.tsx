@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useRef, useState, useEffect, type KeyboardEvent } from "react";
 import { useFableStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { ComfyUIProvider } from "@/lib/providers/comfyui";
@@ -39,20 +39,28 @@ function instantiateProvider(
 
 // ─── Core Memory fetcher ──────────────────────────────────────────────────────
 
+interface CoreMemoryResponse {
+  coreMemory: CoreMemory | null;
+  knownFacts:  string[];
+}
+
 async function fetchCoreMemory(
   characterId:   string,
   characterName: string
-): Promise<CoreMemory | null> {
+): Promise<CoreMemoryResponse> {
   try {
     const res = await fetch(
       `/api/chat/core-memory?characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}`,
       { cache: "no-store" }
     );
-    if (!res.ok) return null;
-    const data = (await res.json()) as { ok: boolean; coreMemory: CoreMemory };
-    return data.ok ? data.coreMemory : null;
+    if (!res.ok) return { coreMemory: null, knownFacts: [] };
+    const data = (await res.json()) as { ok: boolean; coreMemory: CoreMemory; knownFacts?: string[] };
+    return {
+      coreMemory: data.ok ? data.coreMemory : null,
+      knownFacts:  data.knownFacts ?? [],
+    };
   } catch {
-    return null;
+    return { coreMemory: null, knownFacts: [] };
   }
 }
 
@@ -68,8 +76,31 @@ export function ChatInput() {
     bumpExtraction, setIsExtracting,
   } = useFableStore();
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef      = useRef<HTMLTextAreaElement>(null);
+  const decayFiredRef    = useRef(false);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // ── Lazy stat decay ────────────────────────────────────────────────────────
+  // On the first render of this component (i.e. first session), compute how
+  // many days have passed since the last session and apply Ebbinghaus decay
+  // once. Completely in-process — no scheduler, no cron.
+  useEffect(() => {
+    const LAST_SESSION_KEY = "fablechat:lastSessionAt";
+    const now = Date.now();
+    const lastStr = localStorage.getItem(LAST_SESSION_KEY);
+    localStorage.setItem(LAST_SESSION_KEY, String(now));
+
+    if (!lastStr) return; // first ever session — nothing to decay yet
+    const daysElapsed = (now - Number(lastStr)) / (1000 * 60 * 60 * 24);
+    if (daysElapsed < 0.01) return; // same session, skip
+
+    fetch("/api/drawer/stats/decay", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ days: daysElapsed }),
+    }).catch((e) => console.warn("[decay]", e));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Core send handler ─────────────────────────────────────────────────────
 
@@ -106,13 +137,13 @@ export function ChatInput() {
       return;
     }
 
-    // ── Fetch Core Memory (Drawer 1) — enriches the system prompt ──────────
-    const coreMemory = character
+    // ── Fetch Core Memory (Drawer 1) + Drawer 2 known facts ────────────────
+    const { coreMemory, knownFacts } = character
       ? await fetchCoreMemory(character.id, character.name)
-      : null;
+      : { coreMemory: null, knownFacts: [] };
 
     // ── Build message history ───────────────────────────────────────────────
-    const systemPrompt = buildSystemPrompt(character, coreMemory);
+    const systemPrompt = buildSystemPrompt(character, coreMemory, knownFacts);
     const history: Array<{ role: MessageRole; content: string }> = [
       { role: "system", content: systemPrompt },
       // Existing messages (skip image-only placeholders)
