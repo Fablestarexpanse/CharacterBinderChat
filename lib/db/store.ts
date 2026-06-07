@@ -522,6 +522,59 @@ export class FableStore {
     };
   }
 
+  // ── Entity merge (inspector action) ──────────────────────────────────────
+
+  /**
+   * Merge `fromId` into `toId`: repoints all facts, relationship_stats, and
+   * commitments, then deletes the now-orphaned entity. Runs in a transaction.
+   * Any stat rows that would violate the UNIQUE constraint after the repoint
+   * are dropped (toId's existing value wins).
+   */
+  mergeEntity(fromId: string, toId: string): void {
+    const doMerge = this.db.transaction(() => {
+      // ── Facts: repoint subject and object references ──────────────────────
+      this.db.prepare("UPDATE facts SET subject_id = ? WHERE subject_id = ?").run(toId, fromId);
+      this.db.prepare("UPDATE facts SET object_id  = ? WHERE object_id  = ?").run(toId, fromId);
+
+      // ── Relationship stats (observer side) ────────────────────────────────
+      // Delete fromId rows that would collide with an existing toId row
+      const obsConflicts = this.db.prepare(`
+        SELECT rs1.id FROM relationship_stats rs1
+        WHERE rs1.observer_id = ?
+          AND EXISTS (
+            SELECT 1 FROM relationship_stats rs2
+            WHERE rs2.observer_id = ? AND rs2.target_id = rs1.target_id AND rs2.stat_name = rs1.stat_name
+          )
+      `).all(fromId, toId) as { id: number }[];
+      for (const row of obsConflicts) {
+        this.db.prepare("DELETE FROM relationship_stats WHERE id = ?").run(row.id);
+      }
+      this.db.prepare("UPDATE relationship_stats SET observer_id = ? WHERE observer_id = ?").run(toId, fromId);
+
+      // ── Relationship stats (target side) ──────────────────────────────────
+      const tgtConflicts = this.db.prepare(`
+        SELECT rs1.id FROM relationship_stats rs1
+        WHERE rs1.target_id = ?
+          AND EXISTS (
+            SELECT 1 FROM relationship_stats rs2
+            WHERE rs2.target_id = ? AND rs2.observer_id = rs1.observer_id AND rs2.stat_name = rs1.stat_name
+          )
+      `).all(fromId, toId) as { id: number }[];
+      for (const row of tgtConflicts) {
+        this.db.prepare("DELETE FROM relationship_stats WHERE id = ?").run(row.id);
+      }
+      this.db.prepare("UPDATE relationship_stats SET target_id = ? WHERE target_id = ?").run(toId, fromId);
+
+      // ── Commitments ───────────────────────────────────────────────────────
+      this.db.prepare("UPDATE commitments SET promisor_id = ? WHERE promisor_id = ?").run(toId, fromId);
+      this.db.prepare("UPDATE commitments SET promisee_id = ? WHERE promisee_id = ?").run(toId, fromId);
+
+      // ── Remove the now-orphaned entity ────────────────────────────────────
+      this.db.prepare("DELETE FROM entities WHERE id = ?").run(fromId);
+    });
+    doMerge();
+  }
+
   // ── Core Memory (Drawer 1) ────────────────────────────────────────────────
 
   getCoreMemory(characterId: string): DbCoreMemory | null {

@@ -1,31 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useFableStore } from "@/lib/store";
+import { Pin, Brain, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Pin, Brain, Loader2, RefreshCw } from "lucide-react";
+import { useState } from "react";
+import { FactsView }         from "./memory/FactsView";
+import { RelationshipsView } from "./memory/RelationshipsView";
+import { EntitiesView }      from "./memory/EntitiesView";
 
-interface EnrichedFact {
-  id:            number;
-  predicate:     string;
-  objectDisplay: string;
-  confidence:    number;
-  tValidStart:   number;
-}
+type KGTab = "facts" | "relationships" | "entities";
+
+const KG_TABS: { id: KGTab; label: string }[] = [
+  { id: "facts",         label: "Facts" },
+  { id: "relationships", label: "Relationships" },
+  { id: "entities",      label: "Entities" },
+];
 
 interface PinnedMemory {
   id:      string;
   content: string;
   type:    string;
-}
-
-function formatRelativeTime(unixSeconds: number): string {
-  const diff = Math.floor(Date.now() / 1000) - unixSeconds;
-  if (diff < 60)  return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
 }
 
 export function MemoryTab() {
@@ -35,36 +30,11 @@ export function MemoryTab() {
   const chat      = chats.find((c) => c.id === activeChatId);
   const character = characters.find((c) => c.id === chat?.characterId);
 
-  const [facts, setFacts]       = useState<EnrichedFact[]>([]);
-  const [loading, setLoading]   = useState(false);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [kgTab, setKgTab] = useState<KGTab>("facts");
 
-  // Pinned memories from Zustand (manual / legacy)
   const pinned: PinnedMemory[] = memories
     .filter((m) => m.chatId === activeChatId && m.pinned)
     .map((m) => ({ id: m.id, content: m.content, type: m.type }));
-
-  const fetchFacts = () => {
-    if (!character) return;
-    setLoading(true);
-    setFetchError(null);
-    fetch(`/api/drawer/facts?subject=${encodeURIComponent(character.id)}`)
-      .then((r) => r.json())
-      .then((data: { facts?: EnrichedFact[]; error?: string }) => {
-        if (data.error) throw new Error(data.error);
-        setFacts(data.facts ?? []);
-      })
-      .catch((err: Error) => setFetchError(err.message))
-      .finally(() => setLoading(false));
-  };
-
-  // Re-fetch when character changes or extraction completes
-  useEffect(() => {
-    fetchFacts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [character?.id, extractionVersion]);
-
-  // ── No character ────────────────────────────────────────────────────────
 
   if (!character) {
     return (
@@ -77,14 +47,14 @@ export function MemoryTab() {
   return (
     <div className="p-4 space-y-4">
 
-      {/* Pinned memories */}
+      {/* Pinned memories (legacy / manual) */}
       {pinned.length > 0 && (
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider flex items-center gap-1.5">
-              <Pin className="h-3 w-3" />
+          <div className="flex items-center gap-1.5 mb-2">
+            <Pin className="h-3 w-3 text-[var(--muted-fg)]" />
+            <span className="text-[10px] font-semibold text-[var(--muted-fg)] uppercase tracking-wider">
               Pinned
-            </div>
+            </span>
           </div>
           <div className="space-y-2">
             {pinned.map((m) => (
@@ -92,7 +62,7 @@ export function MemoryTab() {
                 key={m.id}
                 className="rounded-lg border border-[var(--border)] bg-[var(--purple-light)] p-2.5"
               >
-                <p className="text-xs text-[var(--foreground)] leading-relaxed">{m.content}</p>
+                <p className="text-[11px] text-[var(--foreground)] leading-relaxed">{m.content}</p>
                 <div className="mt-1.5">
                   <Badge variant="purple">{m.type}</Badge>
                 </div>
@@ -102,76 +72,66 @@ export function MemoryTab() {
         </div>
       )}
 
-      {/* Extracted facts from knowledge graph */}
+      {/* Knowledge graph section */}
       <div>
+        {/* Section header */}
         <div className="flex items-center justify-between mb-2">
-          <div className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider flex items-center gap-1.5">
-            <Brain className="h-3 w-3" />
-            Knowledge Graph
-            {(loading || isExtracting) && (
-              <Loader2 className="h-3 w-3 animate-spin text-[var(--purple-fg)]" />
+          <div className="flex items-center gap-1.5">
+            <Brain className="h-3 w-3 text-[var(--muted-fg)]" />
+            <span className="text-[10px] font-semibold text-[var(--muted-fg)] uppercase tracking-wider">
+              Knowledge Graph
+            </span>
+            {isExtracting && (
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--purple)] animate-pulse" />
             )}
           </div>
-          <button
-            onClick={fetchFacts}
-            disabled={loading}
-            className="text-[var(--muted-fg)] hover:text-[var(--foreground)] disabled:opacity-40 transition-colors"
-            title="Refresh facts"
-          >
-            <RefreshCw className="h-3 w-3" />
-          </button>
         </div>
 
-        {isExtracting && facts.length === 0 && (
-          <div className="text-xs text-[var(--purple-fg)] italic flex items-center gap-1.5 py-1">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Extracting from conversation…
-          </div>
-        )}
+        {/* Segmented control */}
+        <div className="flex rounded-lg border border-[var(--border)] overflow-hidden mb-3 bg-[var(--muted)]">
+          {KG_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setKgTab(tab.id)}
+              className={`flex-1 py-1 text-[10px] font-medium transition-colors ${
+                kgTab === tab.id
+                  ? "bg-white text-[var(--purple-fg)] shadow-sm"
+                  : "text-[var(--muted-fg)] hover:text-[var(--foreground)]"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-        {fetchError && (
-          <div className="text-xs text-red-500 bg-red-50 rounded p-2">{fetchError}</div>
+        {/* Sub-views */}
+        {kgTab === "facts" && (
+          <FactsView
+            characterId={character.id}
+            extractionVersion={extractionVersion}
+            isExtracting={isExtracting}
+          />
         )}
-
-        {!loading && !fetchError && facts.length === 0 && !isExtracting && (
-          <div className="text-xs text-[var(--muted-fg)] italic">
-            No facts recorded yet. Facts are extracted automatically after each exchange.
-          </div>
+        {kgTab === "relationships" && (
+          <RelationshipsView
+            characterId={character.id}
+            extractionVersion={extractionVersion}
+          />
         )}
-
-        {facts.length > 0 && (
-          <div className="space-y-1.5">
-            {facts.map((f) => (
-              <div
-                key={f.id}
-                className="rounded-lg border border-[var(--border)] bg-white p-2.5"
-              >
-                <p className="text-xs text-[var(--foreground)] leading-snug">
-                  <span className="font-medium text-[var(--purple-fg)]">{f.predicate}</span>
-                  {" "}
-                  <span>{f.objectDisplay}</span>
-                </p>
-                <div className="flex items-center gap-2 mt-1.5">
-                  {f.confidence < 1.0 && (
-                    <Badge variant="default">{Math.round(f.confidence * 100)}%</Badge>
-                  )}
-                  <span className="text-[10px] text-[var(--muted-fg)]">
-                    {formatRelativeTime(f.tValidStart)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+        {kgTab === "entities" && (
+          <EntitiesView
+            extractionVersion={extractionVersion}
+          />
         )}
       </div>
 
-      {/* Quick summary action */}
+      {/* Summary shortcut */}
       <div>
-        <div className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider mb-2">
+        <div className="text-[10px] font-semibold text-[var(--muted-fg)] uppercase tracking-wider mb-2">
           Summary
         </div>
         <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)] p-3">
-          <p className="text-xs text-[var(--muted-fg)] italic">
+          <p className="text-[11px] text-[var(--muted-fg)] italic">
             Switch to the Summary tab for a full character overview.
           </p>
           <Button

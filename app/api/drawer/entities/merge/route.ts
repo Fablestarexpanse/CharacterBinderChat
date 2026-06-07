@@ -1,0 +1,39 @@
+import { NextRequest } from "next/server";
+import { getStore } from "@/lib/db";
+
+export const dynamic = "force-dynamic";
+
+// POST /api/drawer/entities/merge
+// Body: { fromId: string, toId: string }
+// Rewrites all facts/stats/commitments from fromId → toId, then deletes fromId.
+// This is intentionally destructive and irreversible — caller must confirm before invoking.
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json() as { fromId?: string; toId?: string };
+    const { fromId, toId } = body;
+
+    if (!fromId || !toId) {
+      return Response.json({ error: "fromId and toId are required" }, { status: 400 });
+    }
+    if (fromId === toId) {
+      return Response.json({ error: "fromId and toId must be different" }, { status: 400 });
+    }
+
+    const store = getStore();
+
+    // Verify both entities exist before merging
+    if (!store.getEntity(fromId)) {
+      return Response.json({ error: `Entity not found: ${fromId}` }, { status: 404 });
+    }
+    if (!store.getEntity(toId)) {
+      return Response.json({ error: `Entity not found: ${toId}` }, { status: 404 });
+    }
+
+    store.mergeEntity(fromId, toId);
+
+    return Response.json({ ok: true, merged: { from: fromId, into: toId } });
+  } catch (err) {
+    console.error("[entities/merge]", err);
+    return Response.json({ error: String(err) }, { status: 500 });
+  }
+}

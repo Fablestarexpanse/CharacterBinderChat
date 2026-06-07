@@ -4,22 +4,33 @@ import { SINGLE_VALUED_PREDICATES, normPredicate } from "@/lib/db/predicates";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/drawer/facts?subject=<id>&asOf=<unix_ts>
+// GET /api/drawer/facts?subject=<id>&asOf=<unix_ts>&includeSuperseded=1
+// Default (no flag): returns live facts only — backward-compatible with MemoryTab.
+// With includeSuperseded=1: returns all facts including superseded (bi-temporal view).
 export async function GET(req: NextRequest) {
   try {
-    const params  = req.nextUrl.searchParams;
-    const subject = params.get("subject");
+    const params            = req.nextUrl.searchParams;
+    const subject           = params.get("subject");
     if (!subject) {
       return Response.json({ error: "subject param required" }, { status: 400 });
     }
-    const asOf  = params.get("asOf") ? Number(params.get("asOf")) : undefined;
-    const store = getStore();
-    const facts = store.queryFacts(subject, asOf);
+    const asOf              = params.get("asOf") ? Number(params.get("asOf")) : undefined;
+    const includeSuperseded = params.get("includeSuperseded") === "1";
+    const store             = getStore();
 
-    // Enrich with object display strings
+    const facts = includeSuperseded
+      ? store.queryFactsIncludingSuperseded(subject)
+      : store.queryFacts(subject, asOf);
+
+    // Enrich with object display and expose bi-temporal columns the inspector needs
     const enriched = facts.map((f) => ({
-      ...f,
+      id:            f.id,
+      predicate:     f.predicate,
       objectDisplay: store.factObjectDisplay(f),
+      confidence:    f.confidence,
+      tValidStart:   f.tValidStart,
+      tValidEnd:     f.tValidEnd,
+      supersededBy:  f.supersededBy,
     }));
     return Response.json({ facts: enriched });
   } catch (err) {
