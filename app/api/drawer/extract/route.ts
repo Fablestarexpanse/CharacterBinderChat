@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
-import { SINGLE_VALUED_PREDICATES, normPredicate } from "@/lib/db/predicates";
+import { normPredicate, predicateFamily, isSingleValued } from "@/lib/db/predicates";
 import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
 import { ensureCoreMemory, syncStatsToCore } from "@/lib/chat/coreMemoryStore";
 import type { EntityType, StatName } from "@/lib/db/models";
@@ -195,24 +195,27 @@ export async function POST(req: NextRequest) {
 
       const objectEntity  = store.getEntity(f.object);
       const incomingNorm  = normPredicate(f.predicate);
-      const isSingleValued = SINGLE_VALUED_PREDICATES.has(incomingNorm);
+      // Compare by family so drift between lives_at / located_at /
+      // current_location still supersedes instead of accumulating.
+      const incomingFamily = predicateFamily(f.predicate);
+      const singleValued   = isSingleValued(f.predicate);
       const newObjectKey  = objectEntity ? f.object : f.object.toLowerCase().trim();
 
       // Single query for all existing live facts for this subject
       const existingFacts = store.queryFacts(f.subject);
 
-      // Skip if an identical live fact already exists (dedup)
+      // Skip if an equivalent live fact already exists (dedup)
       const isDuplicate = existingFacts.some((ex) => {
-        if (normPredicate(ex.predicate) !== incomingNorm) return false;
+        if (predicateFamily(ex.predicate) !== incomingFamily) return false;
         const exKey = ex.objectId ?? (ex.objectLiteral ?? "").toLowerCase().trim();
         return exKey === newObjectKey;
       });
       if (isDuplicate) continue;
 
-      // Collect facts to supersede (single-valued predicate, different object)
-      const toSupersede = isSingleValued
+      // Collect facts to supersede (single-valued family, different object)
+      const toSupersede = singleValued
         ? existingFacts.filter((ex) => {
-            if (normPredicate(ex.predicate) !== incomingNorm) return false;
+            if (predicateFamily(ex.predicate) !== incomingFamily) return false;
             const exKey = ex.objectId ?? (ex.objectLiteral ?? "").toLowerCase().trim();
             return exKey !== newObjectKey;
           })

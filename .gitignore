@@ -44,3 +44,7 @@ next-env.d.ts
 /data/fablestore.db
 /data/fablestore.db-shm
 /data/fablestore.db-wal
+
+# memory eval harness: isolated DB and per-run result snapshots
+/tests/memory-eval/.eval-db/
+/tests/memory-eval/results/

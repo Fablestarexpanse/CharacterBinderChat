@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
-import { SINGLE_VALUED_PREDICATES, normPredicate } from "@/lib/db/predicates";
+import { normPredicate, predicateFamily, isSingleValued } from "@/lib/db/predicates";
 
 export const dynamic = "force-dynamic";
 
@@ -73,26 +73,28 @@ export async function POST(req: NextRequest) {
     }
 
     const incomingNorm   = normPredicate(predicate);
-    const isSingleValued = SINGLE_VALUED_PREDICATES.has(incomingNorm);
+    // Compare by family so drift between equivalent predicates still supersedes
+    const incomingFamily = predicateFamily(predicate);
+    const singleValued   = isSingleValued(predicate);
     const newObjectKey   = objectId ?? (objectLiteral ?? "").toLowerCase().trim();
 
     const existingFacts = store.queryFacts(subjectId);
 
-    // Skip if identical live fact already exists
+    // Skip if an equivalent live fact already exists
     const isDuplicate = existingFacts.some((ex) => {
-      if (normPredicate(ex.predicate) !== incomingNorm) return false;
+      if (predicateFamily(ex.predicate) !== incomingFamily) return false;
       const exKey = ex.objectId ?? (ex.objectLiteral ?? "").toLowerCase().trim();
       return exKey === newObjectKey;
     });
     if (isDuplicate) {
-      const existing = existingFacts.find((ex) => normPredicate(ex.predicate) === incomingNorm);
+      const existing = existingFacts.find((ex) => predicateFamily(ex.predicate) === incomingFamily);
       return Response.json({ factId: existing?.id ?? null, duplicate: true });
     }
 
-    // Collect prior contradicting facts to supersede (single-valued predicates only)
-    const toSupersede = isSingleValued
+    // Collect prior contradicting facts to supersede (single-valued families only)
+    const toSupersede = singleValued
       ? existingFacts.filter((ex) => {
-          if (normPredicate(ex.predicate) !== incomingNorm) return false;
+          if (predicateFamily(ex.predicate) !== incomingFamily) return false;
           const exKey = ex.objectId ?? (ex.objectLiteral ?? "").toLowerCase().trim();
           return exKey !== newObjectKey;
         })
