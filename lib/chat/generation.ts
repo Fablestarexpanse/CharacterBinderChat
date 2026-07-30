@@ -46,11 +46,15 @@ interface CoreMemoryResponse {
 
 async function fetchCoreMemory(
   characterId:   string,
-  characterName: string
+  characterName: string,
+  context = ""
 ): Promise<CoreMemoryResponse> {
   try {
+    // Context lets retrieval rank facts by relevance to what's being discussed.
+    // Capped so the query string stays a sane length.
+    const ctxParam = context ? `&context=${encodeURIComponent(context.slice(0, 600))}` : "";
     const res = await fetch(
-      `/api/chat/core-memory?characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}`,
+      `/api/chat/core-memory?characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}${ctxParam}`,
       { cache: "no-store" }
     );
     if (!res.ok) return { coreMemory: null, knownFacts: [] };
@@ -87,8 +91,10 @@ export async function generateAssistantReply(chatId: string): Promise<void> {
   }
 
   // ── Fetch Core Memory (Drawer 1) + Drawer 2 known facts ──────────────────
+  // The last few turns act as the relevance signal for fact retrieval
+  const recentText = chat.messages.slice(-3).map((m) => m.content).join(" ");
   const { coreMemory, knownFacts } = character
-    ? await fetchCoreMemory(character.id, character.name)
+    ? await fetchCoreMemory(character.id, character.name, recentText)
     : { coreMemory: null, knownFacts: [] };
 
   // ── Build message history within the model's token budget ────────────────

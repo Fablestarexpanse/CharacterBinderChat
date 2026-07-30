@@ -12,6 +12,9 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const characterId   = searchParams.get("characterId");
   const characterName = searchParams.get("name") ?? characterId ?? "Unknown";
+  // Recent conversation text, used to rank non-durable facts by relevance.
+  // Optional: without it, retrieval falls back to confidence/recency order.
+  const context       = searchParams.get("context") ?? "";
 
   if (!characterId) {
     return Response.json({ error: "characterId is required" }, { status: 400 });
@@ -20,7 +23,7 @@ export async function GET(req: NextRequest) {
   try {
     const cm         = ensureCoreMemory(characterId, characterName);
     const store      = getStore();
-    const knownFacts = store.retrieveFactsForPrompt(characterId);
+    const knownFacts = store.retrieveFactsForPrompt(characterId, 20, context);
     return Response.json({ ok: true, coreMemory: cm.data, version: cm.version, updatedAt: cm.updatedAt, knownFacts });
   } catch (err) {
     console.error("[core-memory GET]", err);

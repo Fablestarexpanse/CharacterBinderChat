@@ -1,5 +1,32 @@
 # Memory eval harness
 
+Two complementary tests:
+
+| Script | Question it answers |
+|---|---|
+| `run.mjs` | Do the mechanics work on a single exchange? Supersession, entity identity, stat direction, grounding. Deterministic assertions, pass/fail. |
+| `longitudinal.mjs` | **Does a character actually still know things many exchanges later, without the player restating them?** Plants facts early, buries them under filler, and tracks whether they still reach the prompt. |
+
+The longitudinal test exists because the first one can pass completely while
+memory is still useless. **Storage is not memory.** A fact can sit in SQLite
+forever and never reach the model, because `retrieveFactsForPrompt()` injects
+only a bounded subset. What matters is the *prompt-facing* view, so that's what
+`longitudinal.mjs` measures — turn by turn — and it reports facts that are
+"stranded": present in the database, invisible to the character.
+
+```bash
+node tests/memory-eval/longitudinal.mjs            # 14 exchanges, tracks retention
+node tests/memory-eval/longitudinal.mjs --recall    # also asks the character to recall, end to end
+```
+
+Each turn prints `new[...] old[...]` for the planted facts, comparing the current
+durable-tier retrieval against the previous confidence+recency ranking on the
+same graph — so a retrieval change can be judged without re-running the story.
+`✓` = in the prompt, `·` = in the database but not the prompt, `✗` = absent.
+
+---
+
+
 Scripted conversations driven through the **real** extraction and core-memory
 routes against an **isolated database**, with assertions on the resulting
 knowledge graph.
@@ -86,9 +113,49 @@ Three real bugs, all of which had been invisible in normal use:
    read the correct direction, which is why the two disagreed. Aligned
    everything to `character -> player` and migrated existing rows.
 
+4. **Retrieval never looked at facts about the player.** `retrieveFactsForPrompt`
+   queried only facts where the *character* was subject or object. Everything a
+   player says about themselves is stored under the `player` entity, so none of
+   it was reachable — the character could not recall your family, your fears, or
+   your promises, which for roleplay is the half of the graph that matters.
+   Measured over 14 exchanges: **2 of 28 facts injected**, and every planted
+   fact sat in the database untouched for the whole story. Fixed by partitioning
+   live facts into about-the-character / about-the-player / world knowledge, with
+   a guaranteed share for each participant, ranked within each group by
+   durability, then relevance to the current turn, then confidence, then recency.
+   After: **20 of 28 injected**, planted facts reaching the prompt by turn 2 and
+   holding to the end. Prompt-window retention went 0/3 → 2/3, with the
+   remaining miss being an extraction gap, not a retrieval one.
+
 Findings 2 and 3 shared a signature worth remembering: **all models failing a
 scenario identically, with 100% JSON compliance.** That combination means the
 pipeline is broken, not the model.
+
+Finding 4 came with its own lesson: the scenario suite was fully green while
+memory was still nearly useless, because it asserted on *database* state. Storage
+is not memory. Only a test that reads the prompt-facing view could see it.
+
+### Two mistakes this harness made about itself
+
+Worth recording, because both produced confident wrong conclusions:
+
+- **An unfaithful baseline.** The legacy-ranking comparison did not replicate the
+  character-only subject filter, so the old behaviour scored 2/3 when it really
+  scored 0/3 — which made the first attempted fix look like a regression against
+  a strategy that never existed.
+- **A metric that rewarded failure.** "Facts reaching the character" was computed
+  as *not stranded*, so a fact that was never extracted counted as a success. The
+  report now counts prompt presence directly and splits stranded (retrieval's
+  fault) from never-extracted (extraction's fault), because those need opposite
+  fixes.
+
+### What it still cannot tell you
+
+`--recall` asserts on *availability* — that a fact reached the prompt. It cannot
+prove the model *used* it well. In one run retrieval correctly supplied
+`Elen lives_at capital` and the model still conflated Elen with an unrelated
+family. The recall probe is the only check that catches that class of problem,
+and it does so by reading the answer, not the graph.
 
 ## Adding a scenario
 

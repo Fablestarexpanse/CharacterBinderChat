@@ -6,6 +6,7 @@ import Database, { type Database as DB } from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 import { CREATE_TABLES_SQL } from "./schema";
+import { isDurableFact } from "./predicates";
 import type {
   DbEntity,
   DbFact,
@@ -234,6 +235,21 @@ export class FableStore {
       )
       .all(subjectId, t, t);
     return rows.map(rowToFact);
+  }
+
+  /** Every currently-valid fact, regardless of subject */
+  queryAllLiveFacts(asOfTime?: number): DbFact[] {
+    const t = asOfTime ?? now();
+    return this.db
+      .prepare(
+        `SELECT * FROM facts
+         WHERE t_valid_start <= ?
+           AND (t_valid_end IS NULL OR t_valid_end > ?)
+           AND superseded_by IS NULL
+         ORDER BY t_valid_start`
+      )
+      .all(t, t)
+      .map(rowToFact);
   }
 
   queryFactsIncludingSuperseded(subjectId: string): DbFact[] {
@@ -734,28 +750,77 @@ export class FableStore {
   }
 
   /**
-   * Retrieve the most salient currently-valid facts for a character,
-   * for injection into the system prompt. Salience = confidence, with a
-   * recency tiebreak (newer tValidStart ranks higher). Returns formatted
-   * "subject predicate object" lines.
+   * Retrieve the currently-valid facts to inject into the system prompt.
+   *
+   * Two failure modes shaped this, both caught by tests/memory-eval:
+   *
+   * 1. It used to consider ONLY facts whose subject or object was the character.
+   *    Everything the player says about themselves is stored under the `player`
+   *    entity, so none of it was ever retrievable — the character could not
+   *    remember your sister, your fear, or what you promised. For roleplay that
+   *    is the wrong half of the graph. Facts about the player are now a
+   *    first-class group with their own guaranteed share of the window.
+   *
+   * 2. Ranking by confidence-then-recency alone does not survive a long story.
+   *    Every exchange adds facts, so anything learned early is pushed out within
+   *    a handful of turns. Durable facts (identity, kinship, fears, promises,
+   *    location) are therefore ranked ahead of incidental ones inside each group.
+   *
+   * Facts about neither participant — world knowledge picked up along the way —
+   * compete for the remaining slots on relevance to the current conversation.
+   *
+   * `context` is recent conversation text; without it relevance is 0 everywhere
+   * and ordering falls back to durable-then-confidence-then-recency.
    */
-  retrieveFactsForPrompt(characterId: string, limit = 12): string[] {
-    const asSubject = this.queryFacts(characterId);
-    const asObject  = this.queryFactsAboutAsObject(characterId);
+  retrieveFactsForPrompt(
+    characterId: string,
+    limit = 20,
+    context = "",
+    playerId = "player"
+  ): string[] {
+    const all = this.queryAllLiveFacts();
 
-    // Dedup by fact id
-    const seen = new Set<number>();
-    const all = [...asSubject, ...asObject].filter((f) => {
-      if (seen.has(f.id)) return false;
-      seen.add(f.id);
-      return true;
-    });
-
-    all.sort((a, b) =>
-      (b.confidence - a.confidence) || (b.tValidStart - a.tValidStart)
+    // Relevance: overlap between the fact's words and the recent conversation
+    const contextWords = new Set(
+      context.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3)
     );
+    const relevanceOf = (f: DbFact): number => {
+      if (contextWords.size === 0) return 0;
+      const text = `${f.predicate} ${f.objectId ?? ""} ${f.objectLiteral ?? ""}`.toLowerCase();
+      const words = text.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3);
+      if (words.length === 0) return 0;
+      return words.filter((w) => contextWords.has(w)).length / words.length;
+    };
 
-    const topFacts = all.slice(0, limit);
+    // Durable first, then relevance, then confidence, then recency
+    const rank = (a: DbFact, b: DbFact) =>
+      (Number(isDurableFact(b.predicate)) - Number(isDurableFact(a.predicate))) ||
+      (relevanceOf(b) - relevanceOf(a)) ||
+      (b.confidence - a.confidence) ||
+      (b.tValidStart - a.tValidStart);
+
+    const involves = (f: DbFact, id: string) => f.subjectId === id || f.objectId === id;
+
+    const aboutCharacter = all.filter((f) => involves(f, characterId)).sort(rank);
+    const aboutPlayer    = all.filter((f) => !involves(f, characterId) && involves(f, playerId)).sort(rank);
+    const world          = all.filter((f) => !involves(f, characterId) && !involves(f, playerId)).sort(rank);
+
+    // Each participant gets a guaranteed share so neither can be crowded out.
+    // Take quotas first, then backfill any unused room in group order, so a
+    // sparse group never wastes slots.
+    const quota = Math.max(1, Math.floor(limit * 0.4));
+    const groups = [aboutCharacter, aboutPlayer, world];
+    const topFacts: DbFact[] = [
+      ...aboutCharacter.slice(0, quota),
+      ...aboutPlayer.slice(0, quota),
+    ];
+    for (const group of groups) {
+      for (const f of group) {
+        if (topFacts.length >= limit) break;
+        if (!topFacts.includes(f)) topFacts.push(f);
+      }
+    }
+    topFacts.length = Math.min(topFacts.length, limit);
 
     // Batch-fetch all referenced entities in one query (avoids N+1 per fact)
     const entityIds = new Set<string>();

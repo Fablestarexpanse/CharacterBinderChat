@@ -65,6 +65,40 @@ export function isSingleValued(p: string): boolean {
 }
 
 /**
+ * Substrings marking a predicate as character-defining rather than incidental.
+ *
+ * These are the facts a player expects a character to hold onto for the whole
+ * story — who their family is, what they fear, what they promised. Ranking on
+ * recency alone ages them out within a few exchanges, so retrieval reserves
+ * space for them. Matched as substrings because non-vocabulary predicates are
+ * free-form ("has_sister", "is_afraid_of", "promised_to").
+ */
+const DURABLE_PREDICATE_HINTS = [
+  // kinship
+  "sister", "brother", "sibling", "mother", "father", "parent", "child",
+  "son", "daughter", "wife", "husband", "spouse", "married", "family", "kin",
+  // fears and drives
+  "fear", "afraid", "phobia", "dread", "hope", "want",
+  // obligations
+  "promis", "owes", "owed", "swore", "vow", "oath", "commit", "debt", "deadline",
+  // standing relations
+  "loves", "hates", "trusts", "distrusts", "loyal", "betray", "protect", "trust",
+  // self-definition
+  "name", "alias", "title", "rank", "occupation", "job", "profession", "role",
+];
+
+/**
+ * Whether a fact should be treated as part of the character sheet, and so given
+ * reserved space in the prompt regardless of how old it is.
+ * Single-valued predicates (identity, location, workplace, status) always count.
+ */
+export function isDurableFact(predicate: string): boolean {
+  if (isSingleValued(predicate)) return true;
+  const p = normPredicate(predicate);
+  return DURABLE_PREDICATE_HINTS.some((hint) => p.includes(hint));
+}
+
+/**
  * Canonical single-valued predicates, for prompts and docs.
  * Derived so it can't drift out of sync with the family table.
  */
