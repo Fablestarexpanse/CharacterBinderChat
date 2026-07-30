@@ -180,7 +180,8 @@ async function runScenario(scenario, model, cfg, db) {
 
   // Some scenarios need an intermediate reading before a second act
   if (scenario.followUp) {
-    ctx.snapshots.push({ stats: q.stats("player", scenario.characterId) });
+    // character -> player is the canonical direction
+    ctx.snapshots.push({ stats: q.stats(scenario.characterId, "player") });
     await runBatches(scenario, scenario.followUp.batches, model, cfg, metrics);
   }
 

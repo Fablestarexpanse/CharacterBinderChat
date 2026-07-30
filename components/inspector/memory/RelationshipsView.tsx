@@ -42,8 +42,8 @@ export function RelationshipsView({ characterId, extractionVersion }: Props) {
   useEffect(() => {
     let cancelled = false;
     const key = `${characterId}:${extractionVersion}`;
-    // Fetch player → character direction (the primary "how does the character feel about the user")
-    fetch(`/api/drawer/stats?observer=player&target=${encodeURIComponent(characterId)}`)
+    // character → player: how this character feels about the user
+    fetch(`/api/drawer/stats?observer=${encodeURIComponent(characterId)}&target=player`)
       .then((r) => r.json())
       .then((data: { stats?: StatRow[]; error?: string }) => {
         if (data.error) throw new Error(data.error);

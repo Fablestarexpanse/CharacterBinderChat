@@ -88,8 +88,8 @@ export function CharacterTab() {
       })
       .catch(() => {/* silently ignore */});
 
-    // Fetch stats against "player" as a default observer pair
-    fetch(`/api/drawer/stats?observer=player&target=${encodeURIComponent(characterId)}`)
+    // character -> player: how this character feels about the user
+    fetch(`/api/drawer/stats?observer=${encodeURIComponent(characterId)}&target=player`)
       .then((r) => r.json())
       .then((data: { stats?: StatRow[] }) => setStats(data.stats ?? []))
       .catch(() => {/* silently ignore */});

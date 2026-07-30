@@ -59,10 +59,36 @@ Beyond pass/fail, every run reports:
 
 ## What it has already found
 
-- **Location predicates didn't supersede across the family.** `lives_at` and
-  `located_at` are both single-valued, but supersession compared raw predicates,
-  so a model drifting between them left a character living in two places at
-  once. Fixed by comparing *predicate families* (`lib/db/predicates.ts`).
+Three real bugs, all of which had been invisible in normal use:
+
+1. **Location predicates didn't supersede across the family.** `lives_at` and
+   `located_at` are both single-valued, but supersession compared raw
+   predicates, so a model drifting between them left a character living in two
+   places at once. Fixed by comparing *predicate families*
+   (`lib/db/predicates.ts`).
+
+2. **Facts about the protagonist were filed under an id nothing read.** The
+   prompt told the model to reuse roster ids and then, two rules later, to
+   "use snake_case IDs derived from names". Models obeyed the second, emitting
+   `ronan` beside the app's `char-ronan` — so every extracted fact landed on a
+   twin entity and `retrieveFactsForPrompt(characterId)` returned nothing. The
+   read path for the main character was entirely dead. Fixed by anchoring both
+   participant ids in the prompt, removing the contradiction, and resolving
+   incoming ids onto existing entities by name server-side (`EntityResolver`).
+   All four models tested emitted the drifting id, so the prompt alone was
+   never going to be enough.
+
+3. **Relationship stats were written in one direction and read in the other.**
+   Extraction emits `character -> player` (how the character feels about you,
+   which is what the scene implies). But `syncStatsToCore`, `CharacterTab`, and
+   `RelationshipsView` all queried `player -> character`, so the stat block was
+   permanently empty even when extraction worked — while `characterSummary()`
+   read the correct direction, which is why the two disagreed. Aligned
+   everything to `character -> player` and migrated existing rows.
+
+Findings 2 and 3 shared a signature worth remembering: **all models failing a
+scenario identically, with 100% JSON compliance.** That combination means the
+pipeline is broken, not the model.
 
 ## Adding a scenario
 

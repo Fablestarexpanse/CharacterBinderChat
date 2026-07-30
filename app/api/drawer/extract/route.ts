@@ -13,14 +13,28 @@ function buildExtractionPrompt(
   messages:      Array<{ role: string; content: string }>,
   characterName: string,
   knownEntities: Array<{ id: string; name: string; type: string }> = [],
-  userLabel     = "User"
+  userLabel     = "User",
+  characterId   = "",
+  userId        = "player"
 ): string {
   const conversation = messages
     .slice(-12)
     .map((m) => `${m.role === "user" ? userLabel : characterName}: ${m.content}`)
     .join("\n\n");
 
-  // ── Entity roster (Task 2) ────────────────────────────────────────────────
+  // ── Identity anchor ───────────────────────────────────────────────────────
+  // The two participants already have ids in the database. Without stating
+  // them the model mints its own ("ronan" next to "char-ronan"), and every
+  // fact about the protagonist lands on an entity nothing ever reads back.
+  const anchorBlock = `PARTICIPANT IDS — these two entities already exist. Use these exact ids as
+subject/object/observer/target whenever the fact concerns them. Do NOT invent
+alternative ids for them:
+- ${characterId || "unknown"} = ${characterName} (the character speaking)
+- ${userId} = ${userLabel} (the person they are talking to)
+
+`;
+
+  // ── Entity roster ─────────────────────────────────────────────────────────
   const rosterBlock = knownEntities.length > 0
     ? `EXISTING ENTITIES — reuse these exact ids when an entity reappears; only mint a
 new snake_case id for an entity not in this list:
@@ -57,22 +71,27 @@ For any OTHER relationship (knows, distrusts, owns, fears, promised, etc.) use a
 free-form snake_case predicate. Do NOT invent synonyms for the six above — write
 "lives_at", never "resides at" / "is staying at" / "calls home" / "based out of".
 
-FEW-SHOT EXAMPLES (location change across turns):
+FEW-SHOT EXAMPLES (assuming the character's id is "${characterId || "char_x"}"):
 Turn 1 — "I live in the lower city safehouse."
-  -> { "subject": "ronan", "predicate": "lives_at", "object": "lower city safehouse" }
-Turn 2 — "Ronan moved to Kaelen yesterday."
-  -> { "subject": "ronan", "predicate": "lives_at", "object": "kaelen" }
-(Same predicate "lives_at" both times; the new fact supersedes the old one.)
+  -> { "subject": "${characterId || "char_x"}", "predicate": "lives_at", "object": "lower city safehouse" }
+Turn 2 — "I moved to Kaelen yesterday."
+  -> { "subject": "${characterId || "char_x"}", "predicate": "lives_at", "object": "kaelen" }
+(Same predicate "lives_at" both times, and the SAME subject id as the roster
+gives — the new fact supersedes the old one.)
 
 Rules:
 - Only include entities actually mentioned or clearly implied
 - Facts should be concrete statements: X knows Y, X lives_at Y, X distrusts Y
 - stat_changes reflect emotional/relational shifts; delta range -30 to +30 per exchange
-- observer is the entity whose feelings/perspective is being tracked
-- Use snake_case IDs derived from names (e.g. "ronan", "kaspar_division", "sector_7")
+- stat_changes track how ${characterName} feels, so use observer
+  "${characterId || "the character's id"}" and target "${userId}". Only use the
+  reverse direction for a stat that is explicitly about the other person's feelings.
+- For an entity NOT already listed above, mint a new snake_case id from its name
+  (e.g. "kaspar_division", "sector_7"). Never mint one for an entity that is
+  already listed — reuse its id verbatim.
 - If nothing meaningful to extract, return {"entities":[],"facts":[],"stat_changes":[]}
 
-${rosterBlock}Conversation to analyze:
+${anchorBlock}${rosterBlock}Conversation to analyze:
 ${conversation}`;
 }
 
@@ -82,6 +101,65 @@ interface RawExtraction {
   entities:    Array<{ id: string; type: string; name: string; description?: string }>;
   facts:       Array<{ subject: string; predicate: string; object: string; confidence?: number }>;
   stat_changes:Array<{ observer: string; target: string; stat: string; delta: number }>;
+}
+
+// ─── Entity identity resolution ───────────────────────────────────────────────
+// Models drift off the roster no matter how the prompt is worded, emitting
+// "theron" beside an existing "char-theron". Both describe the same person, but
+// facts land on the invented id and retrieveFactsForPrompt(characterId) then
+// reads an empty graph. Resolve incoming ids onto existing entities by name
+// before anything is written, so drift can't fragment the graph.
+
+const normKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+class EntityResolver {
+  /** normalized name -> canonical entity id */
+  private byName = new Map<string, string>();
+  /** id the model used -> canonical entity id */
+  private alias = new Map<string, string>();
+
+  constructor(
+    existing: Array<{ id: string; name: string }>,
+    anchors: Array<{ id: string; name?: string }>
+  ) {
+    for (const e of existing) {
+      const key = normKey(e.name);
+      if (key && !this.byName.has(key)) this.byName.set(key, e.id);
+    }
+    // Anchors win: the character and player ids are authoritative even if some
+    // other entity happens to share their display name.
+    for (const a of anchors) {
+      if (!a.name) continue;
+      const key = normKey(a.name);
+      if (key) this.byName.set(key, a.id);
+      this.byName.set(normKey(a.id), a.id);
+    }
+  }
+
+  /** Record that the model's `id` (with display `name`) means an existing entity */
+  learn(id: string, name: string): string | null {
+    const canonical = this.byName.get(normKey(name));
+    if (canonical && canonical !== id) {
+      this.alias.set(id, canonical);
+      return canonical;
+    }
+    // New entity: register its name so later references resolve to it
+    if (!canonical) this.byName.set(normKey(name), id);
+    return null;
+  }
+
+  /**
+   * Map an id the model emitted onto the canonical one. Falls back to matching
+   * the id itself as a name, which catches bare references like subject
+   * "theron" that never appeared in the entities array.
+   */
+  resolve(id: string): string {
+    return this.alias.get(id) ?? this.byName.get(normKey(id)) ?? id;
+  }
+
+  get remapped(): Array<[string, string]> {
+    return [...this.alias.entries()];
+  }
 }
 
 // ─── Route Handler ────────────────────────────────────────────────────────────
@@ -129,11 +207,16 @@ export async function POST(req: NextRequest) {
       store.ensureEntity("player", "character", personaName, "The user");
     }
 
+    // The character must exist before the roster is built so the prompt can
+    // anchor on its real id
+    store.ensureEntity(characterId, "character", characterName ?? characterId);
+
     const knownEntities = store.listEntities().map((e) => ({
       id: e.id, name: e.name, type: e.type,
     }));
     const prompt = buildExtractionPrompt(
-      messages, characterName ?? characterId, knownEntities, personaName ?? "User"
+      messages, characterName ?? characterId, knownEntities, personaName ?? "User",
+      characterId, "player"
     );
 
     // ── Call LLM ──────────────────────────────────────────────────────────
@@ -162,15 +245,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── Ensure the main character entity exists ───────────────────────────
+    // ── Resolve model-minted ids onto existing entities ───────────────────
 
-    store.ensureEntity(characterId, "character", characterName ?? characterId);
+    const resolver = new EntityResolver(knownEntities, [
+      { id: characterId, name: characterName ?? characterId },
+      { id: "player",    name: personaName },
+    ]);
 
     // ── Write extracted entities ──────────────────────────────────────────
+    // An entity whose name matches one already in the graph is not created;
+    // its id is aliased instead, so the graph never gains a twin.
 
     const writtenEntities: string[] = [];
     for (const e of extracted.entities ?? []) {
       if (!e.id || !e.name) continue;
+      if (resolver.learn(e.id, e.name)) continue; // aliased to an existing entity
       const validTypes = ["character", "place", "object", "faction", "concept"];
       const type = validTypes.includes(e.type) ? (e.type as EntityType) : "character";
       store.ensureEntity(e.id, type, e.name, e.description ?? "");
@@ -186,8 +275,15 @@ export async function POST(req: NextRequest) {
     // 4. Insert the new fact, then supersede the contradicting ones.
 
     const writtenFacts: number[] = [];
-    for (const f of extracted.facts ?? []) {
-      if (!f.subject || !f.predicate || !f.object) continue;
+    for (const raw of extracted.facts ?? []) {
+      if (!raw.subject || !raw.predicate || !raw.object) continue;
+
+      // Route the fact onto canonical entities before anything is written
+      const f = {
+        ...raw,
+        subject: resolver.resolve(raw.subject),
+        object:  resolver.resolve(raw.object),
+      };
 
       if (!store.getEntity(f.subject)) {
         store.ensureEntity(f.subject, "character", f.subject);
@@ -239,9 +335,15 @@ export async function POST(req: NextRequest) {
 
     const writtenStats: string[] = [];
     const validStats = ["affection", "trust", "desire", "connection", "mood"];
-    for (const sc of extracted.stat_changes ?? []) {
-      if (!sc.observer || !sc.target || !validStats.includes(sc.stat)) continue;
-      if (typeof sc.delta !== "number") continue;
+    for (const rawSc of extracted.stat_changes ?? []) {
+      if (!rawSc.observer || !rawSc.target || !validStats.includes(rawSc.stat)) continue;
+      if (typeof rawSc.delta !== "number") continue;
+
+      const sc = {
+        ...rawSc,
+        observer: resolver.resolve(rawSc.observer),
+        target:   resolver.resolve(rawSc.target),
+      };
 
       store.ensureEntity(sc.observer, "character", sc.observer);
       store.ensureEntity(sc.target,   "character", sc.target);
@@ -261,6 +363,9 @@ export async function POST(req: NextRequest) {
       entities: writtenEntities,
       facts:    writtenFacts,
       stats:    writtenStats,
+      // Which model-minted ids were folded onto existing entities. A large or
+      // growing list means the prompt's identity anchoring is losing.
+      remapped: resolver.remapped.map(([from, to]) => `${from}->${to}`),
       rawModel: rawText.slice(0, 200) + (rawText.length > 200 ? "…" : ""),
     });
   } catch (err) {

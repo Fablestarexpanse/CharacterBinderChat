@@ -140,8 +140,9 @@ export const SCENARIOS = [
       ],
     },
     check(q, ctx) {
+      // character -> player: how Mira feels about the user
       const first  = ctx.snapshots[0]?.stats ?? {};
-      const second = q.stats("player", "eval-mira");
+      const second = q.stats("eval-mira", "player");
       const axis = (s, k) => (s[k] === undefined ? null : s[k]);
 
       const trustUp   = axis(first, "trust") !== null && axis(first, "trust") > 0;
@@ -184,10 +185,13 @@ export const SCENARIOS = [
       const facts = q.liveFacts("eval-theron");
       const text = "i'm theron. i keep the lighthouse at bramble point, and i've never once left the coast. my sister elen sends letters from the capital.";
 
-      // Crude grounding signal: every content word of a fact's object should
-      // appear in the source text. Catches invented objects, not subtle errors.
+      // Crude grounding signal: every content word of a fact's free-text object
+      // should appear in the source. Only literals are checked — an object_id
+      // points at a resolved entity whose id carries prefixes ("char-theron")
+      // that legitimately never appear in the conversation.
       const ungrounded = facts.filter((f) => {
-        const obj = objectText(f).replace(/[^a-z0-9 ]/g, " ");
+        if (f.object_id) return false;
+        const obj = (f.object_literal ?? "").toLowerCase().replace(/[^a-z0-9 ]/g, " ");
         const words = obj.split(/\s+/).filter((w) => w.length > 3);
         if (words.length === 0) return false;
         return !words.every((w) => text.includes(w));

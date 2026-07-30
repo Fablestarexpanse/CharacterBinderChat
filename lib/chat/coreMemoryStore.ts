@@ -39,7 +39,11 @@ export function syncStatsToCore(characterId: string): void {
   const existing = store.getCoreMemory(characterId);
   if (!existing) return;
 
-  const stats = store.queryStats("player", characterId);
+  // Direction is character -> player: relationship_with_user means how *this
+  // character* feels about the user, which is also what the system prompt
+  // injects and what characterSummary() reads. Reading player -> character here
+  // meant extraction wrote one direction and every consumer read the other.
+  const stats = store.queryStats(characterId, "player");
   const rel   = { ...existing.data.relationship_with_user };
 
   for (const [statName, row] of Object.entries(stats)) {
