@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { estimateTokens } from "@/lib/chat/promptBuilder";
 import { LORE_TOKEN_BUDGET } from "@/lib/chat/lorebook";
-import { BookOpen, Plus, Trash2, Zap } from "lucide-react";
+import { BookOpen, Plus, Trash2, Zap, Pin } from "lucide-react";
 import type { LoreEntry } from "@/lib/types";
 
 function entryTokens(e: LoreEntry): number {
@@ -143,9 +143,18 @@ export function LorebooksView() {
                         <Input
                           value={entry.key}
                           onChange={(e) => updateLoreEntry(book.id, entry.id, { key: e.target.value })}
-                          placeholder="Keywords, comma, separated"
+                          placeholder={entry.constant ? "Label (always injected)" : "Keywords, comma, separated"}
                           className="h-8 text-xs flex-1"
                         />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={`h-7 w-7 flex-shrink-0 ${entry.constant ? "text-[var(--purple-fg)] bg-[var(--purple-light)]" : ""}`}
+                          title={entry.constant ? "Always injected — click to require keywords" : "Inject only when keywords match — click to always inject"}
+                          onClick={() => updateLoreEntry(book.id, entry.id, { constant: !entry.constant })}
+                        >
+                          <Pin className="h-3 w-3" />
+                        </Button>
                         <div className="flex items-center gap-1 flex-shrink-0" title="Priority — higher injects first">
                           <span className="text-[10px] text-[var(--muted-fg)]">pri</span>
                           <Input

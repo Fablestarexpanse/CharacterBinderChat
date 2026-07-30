@@ -47,7 +47,8 @@ export function matchLoreEntries(
   for (const book of lorebooks) {
     for (const entry of book.entries) {
       if (!entry.enabled || !entry.value.trim()) continue;
-      if (entryKeywords(entry).some((k) => keywordMatches(k, haystack))) {
+      // Constant entries (scenarios, standing context) always inject
+      if (entry.constant || entryKeywords(entry).some((k) => keywordMatches(k, haystack))) {
         matched.push(entry);
       }
     }

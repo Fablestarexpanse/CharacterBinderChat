@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useFableStore } from "@/lib/store";
-import type { Character } from "@/lib/types";
+import { importCardFiles } from "@/lib/import/applyCards";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,36 +18,6 @@ interface MemorySource {
   chatName:  string | null;
   facts:     number;
   updatedAt: number;
-}
-
-// ─── Character card import ────────────────────────────────────────────────────
-// Accepts SillyTavern v2 cards ({spec:"chara_card_v2", data:{…}}), v1 flat
-// cards ({name, description, first_mes, …}), and this app's own Character JSON.
-
-function parseCharacterCard(json: unknown): Partial<Character> | null {
-  if (!json || typeof json !== "object") return null;
-  const obj = json as Record<string, unknown>;
-  const data =
-    obj.spec === "chara_card_v2" && obj.data && typeof obj.data === "object"
-      ? (obj.data as Record<string, unknown>)
-      : obj;
-
-  const str = (k: string) => (typeof data[k] === "string" ? (data[k] as string) : undefined);
-  const name = str("name");
-  if (!name?.trim()) return null;
-
-  const avatar = str("avatar");
-  return {
-    name,
-    description:  str("description") ?? "",
-    personality:  str("personality"),
-    scenario:     str("scenario"),
-    firstMessage: str("first_mes") ?? str("firstMessage"),
-    avatar:       avatar && avatar !== "none" ? avatar : undefined,
-    tags: Array.isArray(data.tags)
-      ? (data.tags as unknown[]).filter((t): t is string => typeof t === "string")
-      : [],
-  };
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -107,17 +77,11 @@ export function CharactersView() {
     e.target.value = ""; // allow re-selecting the same file
     if (!file) return;
     setImportError(null);
-    try {
-      const draft = parseCharacterCard(JSON.parse(await file.text()));
-      if (!draft) {
-        setImportError(`Couldn't find a character in ${file.name} — expected a JSON card with a "name" field.`);
-        return;
-      }
-      // Open the editor prefilled so the import can be reviewed before saving
-      openCharacterEditor(null, draft);
-    } catch {
-      setImportError(`${file.name} isn't valid JSON. PNG cards aren't supported yet — export as JSON.`);
-    }
+    // Same pipeline as window drag-and-drop: PNG cards (CharacterBinder /
+    // SillyTavern) or JSON. Characters open the editor for review; other card
+    // types (lorebook, persona, scenario) land directly in their sections.
+    const [result] = await importCardFiles([file]);
+    if (!result.ok) setImportError(`${result.file}: ${result.message}`);
   };
 
   return (
@@ -181,8 +145,10 @@ export function CharactersView() {
           >
             <div className="text-center">
               <Plus className="h-6 w-6 text-[var(--muted-fg)] mx-auto mb-1" />
-              <div className="text-sm text-[var(--muted-fg)]">Import character</div>
-              <div className="text-xs text-[var(--muted-fg)]">JSON card (SillyTavern v1/v2)</div>
+              <div className="text-sm text-[var(--muted-fg)]">Import card</div>
+              <div className="text-xs text-[var(--muted-fg)]">
+                PNG (CharacterBinder / SillyTavern) or JSON — or drop it anywhere
+              </div>
             </div>
           </Card>
         </div>
@@ -190,7 +156,7 @@ export function CharactersView() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".json,application/json"
+          accept=".json,.png,application/json,image/png"
           className="hidden"
           onChange={handleImportFile}
         />

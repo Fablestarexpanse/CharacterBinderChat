@@ -16,9 +16,10 @@ export function LoreTab() {
   const allEnabled = lorebooks.flatMap((b) =>
     b.entries.filter((e) => e.enabled).map((e) => ({ ...e, bookName: b.name }))
   );
-  // Same trigger logic as generation: does any keyword appear in recent turns?
-  const triggered = allEnabled.filter((e) =>
-    entryKeywords(e).some((k) => k && recentText.includes(k))
+  // Same trigger logic as generation: constant entries always inject,
+  // keyword entries fire when a keyword appears in recent turns.
+  const triggered = allEnabled.filter(
+    (e) => e.constant || entryKeywords(e).some((k) => k && recentText.includes(k))
   );
   const triggeredTokens = triggered.reduce(
     (sum, e) => sum + estimateTokens(`${e.key.split(",")[0]?.trim()}: ${e.value.trim()}`),

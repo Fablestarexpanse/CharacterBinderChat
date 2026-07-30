@@ -60,6 +60,8 @@ export interface LoreEntry {
   enabled: boolean;
   tokens?: number;
   priority?: number;
+  /** Always inject, regardless of keywords — used for scenarios / standing context */
+  constant?: boolean;
 }
 
 export interface Lorebook {

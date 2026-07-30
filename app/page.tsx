@@ -9,6 +9,7 @@ import { CharactersView } from "@/components/sections/CharactersView";
 import { LorebooksView } from "@/components/sections/LorebooksView";
 import { CharacterEditorDialog } from "@/components/characters/CharacterEditorDialog";
 import { StateSync } from "@/components/StateSync";
+import { DropImport } from "@/components/DropImport";
 import { PlaceholderView } from "@/components/sections/PlaceholderView";
 import {
   Group,
@@ -84,6 +85,9 @@ export default function Home() {
 
       {/* Hydrates from SQLite on load, then mirrors edits back (debounced) */}
       <StateSync />
+
+      {/* Window-wide drag-and-drop for CharacterBinder PNG / JSON cards */}
+      <DropImport />
     </div>
   );
 }
