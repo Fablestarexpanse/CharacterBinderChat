@@ -180,6 +180,62 @@ entity resolution follow (Phase C).
 
 ---
 
+## Validation run — the full stack, after the fixes
+
+A third 200-exchange run (completed end to end, $1.27) against everything built
+in response to the first two: chat-scoped memory, headroom-scaled deltas with
+loss aversion, mood blending, importance scoring, wired commitments, episodic
+scene cards, reflections, anti-confabulation, and the persona anchor.
+
+| Beat | Trust | vs baseline (run 1) |
+|---|---|---|
+| first meeting | −12 → +3 | +60 by t15 |
+| working rapport | **−40** (story drifted grimdark) | +100 by t40, pinned |
+| vulnerability → deepening | earned climb to **+73** | already pinned |
+| **conflict (betrayal)** | **+70 → +13 in ten exchanges** | no movement at all |
+| aftermath → repair | +72 → +81, visibly flattened | n/a — conflict never landed |
+| earned trust → parting | +86 → **+94** | pinned at 100 throughout |
+
+**Acceptance criteria:**
+
+- *Trust peaks ≤85 before the conflict* — **pass** (+73).
+- *Falls visibly at the betrayal* — **pass**, −57 points, the first run in three
+  where a betrayal produced any movement whatsoever. Connection stayed ~+75
+  while trust crashed: the axes finally decoupled, which is the psychological
+  texture the five-axis model was designed for.
+- *Recovers only if earned* — **partial.** The recovery was through genuine
+  reconciliation scenes and the final +94 came after a full repair arc with
+  headroom scaling visibly slowing the climb (+43/30 exchanges early game vs
+  +9/40 near the top). But trust re-crossed its old peak ~15 exchanges after
+  the betrayal, before the designated repair beats. Nothing makes the character
+  hold a grudge: once the number recovers, the injected state reads warm and
+  the character plays warm.
+
+Pipeline health across 200 exchanges: **0 extraction failures, 0 persona-drift
+turns, 2 id remaps**, graph steady at 72 entities / 227 live facts (the
+contaminated run had 173 entities at half the length — importance gating works).
+
+**Both directions of the feedback loop are now documented.** The baseline
+ratcheted up because warm prompts begot warm scenes; this run's early grimdark
+drift pulled stats to −40 because ominous prompts begot ominous scenes. Phase A
+changed the attractor without removing the loop. The stats faithfully track the
+fiction — the remaining question is whether the fiction should track the stats
+quite so hard.
+
+### What the validation run says to build next
+
+1. **Post-rupture inertia.** A refractory period on positive deltas after a
+   large negative shock, and/or a "recent rupture" cue in the prompt, so cold
+   scenes stay cold from the character's side. Forgiveness in 15 exchanges is
+   the last unrealism standing.
+2. **Atmosphere ≠ relationship.** The grimdark drift moved trust to −40 between
+   two people who had not wronged each other — the extractor reads scene mood
+   as relational change. Extraction guidance should separate them.
+3. **Memory-only recall is still the weak link.** With full history the probes
+   scored 3/4 throughout; memory alone fluctuated 1–2/4. The 20-fact window is
+   9% of a 227-fact graph, selected lexically. Embedding retrieval (Phase C)
+   is now clearly the highest-value memory upgrade remaining.
+
 ## Appendix — harness reliability notes
 
 - Run 2 inherited run 1's database: a stale eval server held the DB file open,
