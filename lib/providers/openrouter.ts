@@ -70,6 +70,7 @@ export class OpenRouterProvider implements ChatProvider {
       stream: true,
       temperature: settings?.temperature ?? 0.8,
       max_tokens: settings?.maxTokens ?? 2048,
+      top_p: settings?.topP ?? 0.95,
     };
 
     const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {

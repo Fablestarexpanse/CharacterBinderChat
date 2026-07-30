@@ -53,6 +53,7 @@ export class LMStudioProvider implements ChatProvider {
       stream: true,
       temperature: settings?.temperature ?? 0.8,
       max_tokens: settings?.maxTokens ?? 2048,
+      top_p: settings?.topP ?? 0.95,
     };
 
     const res = await fetch(`${this.baseUrl}/v1/chat/completions`, {

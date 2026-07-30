@@ -1,31 +1,66 @@
 /**
  * ComfyUI provider adapter.
- * ComfyUI runs locally and exposes a WebSocket + REST API.
+ * ComfyUI runs locally and exposes a REST API (default http://127.0.0.1:8188).
  * Docs: https://github.com/comfyanonymous/ComfyUI
  *
- * Real integration TODO:
- * 1. Connect the WebSocket at ws://baseUrl/ws?clientId=<uuid> to get live progress.
- * 2. Replace queuePrompt mock with real POST /prompt.
- * 3. Replace getImage mock with real GET /view?filename=...
+ * Flow: load a template from /api/workflows/<name> → inject settings into the
+ * node graph (via the template's _meta.fablechat mapping, plus class_type
+ * inspection for anything unmapped) → POST /prompt → poll /history/<id> →
+ * render /view?… image URLs. All ComfyUI traffic goes through the app's
+ * /api/comfyui/* proxy — ComfyUI doesn't send CORS headers by default, so the
+ * browser can't call it directly. Use startImageJob() for the full
+ * queue-poll-update lifecycle.
  */
 
 import type { ImageJob, ImageGenerationSettings } from "@/lib/types";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:8188";
+const POLL_INTERVAL_MS = 1500;
+const GENERATION_TIMEOUT_MS = 5 * 60 * 1000;
+
+// UI sampler names → ComfyUI sampler_name (+ scheduler override where the UI
+// name bakes one in). Unknown names pass through unchanged.
+const SAMPLER_MAP: Record<string, { sampler: string; scheduler?: string }> = {
+  euler: { sampler: "euler" },
+  euler_a: { sampler: "euler_ancestral" },
+  dpmpp_2m: { sampler: "dpmpp_2m" },
+  dpmpp_2m_karras: { sampler: "dpmpp_2m", scheduler: "karras" },
+  ddim: { sampler: "ddim" },
+  lcm: { sampler: "lcm" },
+};
+
+interface FableWorkflowMeta {
+  promptNode?: string | null;
+  negativePromptNode?: string | null;
+  stepsNode?: string | null;
+  cfgNode?: string | null;
+  seedNode?: string | null;
+  widthNode?: string | null;
+  heightNode?: string | null;
+}
+
+type WorkflowNode = { inputs?: Record<string, unknown>; class_type?: string };
+type Workflow = Record<string, unknown>;
 
 export class ComfyUIProvider {
   private baseUrl: string;
-  private clientId: string;
+  private clientId = "";
 
   constructor(baseUrl = DEFAULT_BASE_URL) {
-    this.baseUrl = baseUrl.replace(/\/$/, "");
-    this.clientId = crypto.randomUUID();
+    this.baseUrl = (baseUrl || DEFAULT_BASE_URL).replace(/\/$/, "");
+  }
+
+  /** Proxy URL for a ComfyUI endpoint (same-origin, so no CORS). */
+  private proxied(path: string, params?: Record<string, string>): string {
+    const search = new URLSearchParams({ ...params, base: this.baseUrl });
+    return `/api/comfyui/${path}?${search}`;
   }
 
   async checkConnection(): Promise<boolean> {
     try {
-      const res = await fetch(`${this.baseUrl}/system_stats`, {
-        signal: AbortSignal.timeout(3000),
+      const res = await fetch(this.proxied("system_stats"), {
+        signal: AbortSignal.timeout(5000),
+        cache: "no-store",
       });
       return res.ok;
     } catch {
@@ -33,61 +68,81 @@ export class ComfyUIProvider {
     }
   }
 
-  /**
-   * Queue a prompt to ComfyUI.
-   * @param workflowJson - The raw ComfyUI workflow JSON (exported from ComfyUI web UI as API format)
-   * @param promptValues - Key-value overrides injected into the workflow nodes
-   * @returns The ComfyUI prompt ID
-   */
-  async queuePrompt(
-    workflowJson: Record<string, unknown>,
-    promptValues: Record<string, unknown> = {}
-  ): Promise<string> {
-    // Merge prompt values into workflow (each key maps to a node + field)
-    const merged = deepMergeWorkflow(workflowJson, promptValues);
-
-    const res = await fetch(`${this.baseUrl}/prompt`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: merged, client_id: this.clientId }),
-    });
-
-    if (!res.ok) throw new Error(`ComfyUI queue error: ${res.status}`);
-    const data = await res.json();
-    return data.prompt_id as string;
-  }
-
-  async getHistory(promptId?: string): Promise<Record<string, unknown>> {
-    const url = promptId
-      ? `${this.baseUrl}/history/${promptId}`
-      : `${this.baseUrl}/history`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`ComfyUI history error: ${res.status}`);
+  /** Load a workflow template by slug via the app's API route. */
+  async loadWorkflowTemplate(name: string): Promise<Workflow> {
+    const res = await fetch(`/api/workflows/${encodeURIComponent(name)}`, { cache: "no-store" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.error ?? `Failed to load workflow "${name}" (${res.status})`);
+    }
     return res.json();
   }
 
   /**
-   * Fetch a generated image as a data URL.
-   * @param filename - The filename returned in ComfyUI history outputs
-   * @param subfolder - Usually "" or "output"
-   * @param type - Usually "output"
+   * Queue a workflow. The top-level _meta key (FableChat's own metadata) is
+   * stripped first — ComfyUI treats every top-level key as a node.
+   * @returns The ComfyUI prompt ID
    */
-  async getImage(
-    filename: string,
-    subfolder = "",
-    type = "output"
-  ): Promise<string> {
-    const params = new URLSearchParams({ filename, subfolder, type });
-    const res = await fetch(`${this.baseUrl}/view?${params}`);
-    if (!res.ok) throw new Error(`ComfyUI image error: ${res.status}`);
-    const blob = await res.blob();
-    return URL.createObjectURL(blob);
+  async queuePrompt(workflowJson: Workflow): Promise<string> {
+    const prompt: Workflow = { ...workflowJson };
+    delete prompt._meta;
+
+    const res = await fetch(this.proxied("prompt"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, client_id: this.clientIdLazy() }),
+    });
+
+    if (!res.ok) {
+      // ComfyUI returns a structured node_errors body on validation failure
+      const data = await res.json().catch(() => null) as
+        { error?: { message?: string }; node_errors?: Record<string, unknown> } | null;
+      const detail = data?.error?.message ?? `HTTP ${res.status}`;
+      const nodes = data?.node_errors ? ` (nodes: ${Object.keys(data.node_errors).join(", ")})` : "";
+      throw new Error(`ComfyUI rejected the workflow: ${detail}${nodes}`);
+    }
+    const data = await res.json();
+    return data.prompt_id as string;
+  }
+
+  /** Poll /history until the prompt completes; returns direct image URLs. */
+  async waitForImages(promptId: string, timeoutMs = GENERATION_TIMEOUT_MS): Promise<string[]> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const res = await fetch(this.proxied(`history/${promptId}`), { cache: "no-store" });
+      if (res.ok) {
+        const history = await res.json() as Record<string, {
+          status?: { completed?: boolean; status_str?: string; messages?: unknown[] };
+          outputs?: Record<string, { images?: Array<{ filename: string; subfolder: string; type: string }> }>;
+        }>;
+        const entry = history[promptId];
+        if (entry) {
+          if (entry.status?.status_str === "error") {
+            throw new Error("ComfyUI reported an execution error — check the ComfyUI console.");
+          }
+          const urls = this.collectImageUrls(entry.outputs);
+          if (entry.status?.completed || urls.length > 0) {
+            if (urls.length === 0) {
+              throw new Error("Workflow finished but produced no images (no SaveImage output?).");
+            }
+            return urls;
+          }
+        }
+      }
+      await sleep(POLL_INTERVAL_MS);
+    }
+    throw new Error(`Timed out after ${Math.round(timeoutMs / 1000)}s waiting for ComfyUI.`);
+  }
+
+  /** URL to a generated image, proxied through the app. */
+  imageUrl(filename: string, subfolder = "", type = "output"): string {
+    return this.proxied("view", { filename, subfolder, type });
   }
 
   async uploadImage(file: File): Promise<string> {
     const formData = new FormData();
     formData.append("image", file);
-    const res = await fetch(`${this.baseUrl}/upload/image`, {
+    const res = await fetch(this.proxied("upload/image"), {
       method: "POST",
       body: formData,
     });
@@ -96,45 +151,149 @@ export class ComfyUIProvider {
     return data.name as string;
   }
 
-  async loadWorkflowTemplate(templatePath: string): Promise<Record<string, unknown>> {
-    const res = await fetch(templatePath);
-    if (!res.ok) throw new Error(`Failed to load workflow: ${templatePath}`);
-    return res.json();
+  private collectImageUrls(
+    outputs?: Record<string, { images?: Array<{ filename: string; subfolder: string; type: string }> }>
+  ): string[] {
+    if (!outputs) return [];
+    const urls: string[] = [];
+    for (const node of Object.values(outputs)) {
+      for (const img of node.images ?? []) {
+        // temp-type images are previews, not final outputs
+        if (img.type === "temp") continue;
+        urls.push(this.imageUrl(img.filename, img.subfolder, img.type));
+      }
+    }
+    return urls;
   }
 
-  /** Build a mock ImageJob for UI development before real ComfyUI is connected */
-  createMockJob(settings: ImageGenerationSettings, chatId?: string): ImageJob {
-    return {
-      id: crypto.randomUUID(),
-      chatId,
-      prompt: settings.prompt,
-      status: "complete",
-      settings,
-      outputUrls: ["/placeholder-image.png"],
-      createdAt: new Date().toISOString(),
-      completedAt: new Date().toISOString(),
-    };
+  // crypto.randomUUID only exists in secure contexts; lazy so constructing the
+  // provider during SSR/module-eval never touches it.
+  private clientIdLazy(): string {
+    if (!this.clientId) {
+      this.clientId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `fablechat-${Math.random().toString(36).slice(2)}`;
+    }
+    return this.clientId;
   }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Settings injection ───────────────────────────────────────────────────────
 
 /**
- * Inject prompt overrides into a ComfyUI API workflow JSON.
- * ComfyUI workflows are node graphs; each node has an "inputs" object.
- * promptValues format: { "nodeId.inputKey": value }
+ * Inject generation settings into a workflow template. Uses the template's
+ * _meta.fablechat node-path mapping first ("6.inputs.text" style), then a
+ * class_type sweep for the knobs the mapping doesn't cover (sampler name,
+ * scheduler, batch size). Returns a modified copy.
  */
-function deepMergeWorkflow(
-  workflow: Record<string, unknown>,
-  overrides: Record<string, unknown>
-): Record<string, unknown> {
-  const result = structuredClone(workflow) as Record<string, { inputs: Record<string, unknown> }>;
-  for (const [key, value] of Object.entries(overrides)) {
-    const [nodeId, inputKey] = key.split(".");
-    const node = result[nodeId];
-    if (node?.inputs && inputKey) {
-      node.inputs[inputKey] = value;
+export function applySettingsToWorkflow(
+  workflow: Workflow,
+  settings: ImageGenerationSettings
+): Workflow {
+  const result = structuredClone(workflow);
+  const meta = (result._meta as { fablechat?: FableWorkflowMeta } | undefined)?.fablechat ?? {};
+  const seed = settings.seed === -1 ? Math.floor(Math.random() * 0xffffffff) : settings.seed;
+
+  const setPath = (nodePath: string | null | undefined, value: unknown) => {
+    if (!nodePath) return;
+    // Paths look like "6.inputs.text" or "6.text" — node id first, input key last
+    const parts = nodePath.split(".");
+    const nodeId = parts[0];
+    const inputKey = parts[parts.length - 1];
+    const node = result[nodeId] as WorkflowNode | undefined;
+    if (node?.inputs && inputKey) node.inputs[inputKey] = value;
+  };
+
+  setPath(meta.promptNode, settings.prompt);
+  setPath(meta.negativePromptNode, settings.negativePrompt);
+  setPath(meta.stepsNode, settings.steps);
+  setPath(meta.cfgNode, settings.cfg);
+  setPath(meta.seedNode, seed);
+  setPath(meta.widthNode, settings.width);
+  setPath(meta.heightNode, settings.height);
+
+  // class_type sweep for everything the mapping can't express
+  const samplerCfg = SAMPLER_MAP[settings.sampler] ?? { sampler: settings.sampler };
+  for (const [key, value] of Object.entries(result)) {
+    if (key === "_meta") continue;
+    const node = value as WorkflowNode;
+    const inputs = node.inputs;
+    if (!inputs || !node.class_type) continue;
+    switch (node.class_type) {
+      case "KSampler":
+      case "KSamplerAdvanced":
+        inputs.sampler_name = samplerCfg.sampler;
+        if (samplerCfg.scheduler) inputs.scheduler = samplerCfg.scheduler;
+        break;
+      case "KSamplerSelect": // Flux-style split samplers
+        inputs.sampler_name = samplerCfg.sampler;
+        break;
+      case "EmptyLatentImage":
+      case "EmptySD3LatentImage":
+        inputs.batch_size = Math.max(1, settings.batchCount);
+        break;
     }
   }
-  return result as Record<string, unknown>;
+
+  return result;
+}
+
+// ─── Job lifecycle ────────────────────────────────────────────────────────────
+
+/**
+ * Create an ImageJob and run the full ComfyUI pipeline for it in the
+ * background. Returns the job immediately (status "queued"); progress lands
+ * via onUpdate — callers pass the store's updateImageJob.
+ */
+export function startImageJob(
+  baseUrl: string,
+  settings: ImageGenerationSettings,
+  chatId: string | undefined,
+  onUpdate: (id: string, updates: Partial<ImageJob>) => void
+): ImageJob {
+  const job: ImageJob = {
+    id: typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `job-${Math.random().toString(36).slice(2)}`,
+    chatId,
+    prompt: settings.prompt,
+    status: "queued",
+    settings,
+    outputUrls: [],
+    createdAt: new Date().toISOString(),
+  };
+
+  void (async () => {
+    const comfyui = new ComfyUIProvider(baseUrl);
+    try {
+      if (!(await comfyui.checkConnection())) {
+        throw new Error(
+          `ComfyUI is not reachable at ${baseUrl || DEFAULT_BASE_URL}. Start ComfyUI (or fix the URL in Settings) and try again.`
+        );
+      }
+      const template = await comfyui.loadWorkflowTemplate(settings.workflow);
+      const workflow = applySettingsToWorkflow(template, settings);
+      const promptId = await comfyui.queuePrompt(workflow);
+      onUpdate(job.id, { status: "generating", promptId });
+      const urls = await comfyui.waitForImages(promptId);
+      onUpdate(job.id, {
+        status: "complete",
+        outputUrls: urls,
+        completedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      onUpdate(job.id, {
+        status: "failed",
+        error: err instanceof Error ? err.message : String(err),
+        completedAt: new Date().toISOString(),
+      });
+    }
+  })();
+
+  return job;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

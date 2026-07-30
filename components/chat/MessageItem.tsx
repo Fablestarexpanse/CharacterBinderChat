@@ -157,21 +157,46 @@ function ImageCard({ message }: { message: Message }) {
           <div className="text-xs font-semibold text-[var(--foreground)] mb-2">Image Generation</div>
           <div className="rounded-xl border border-[var(--border)] overflow-hidden max-w-sm">
             <div className="bg-[var(--muted)] aspect-square flex items-center justify-center relative">
-              {job?.status === "complete" ? (
-                <div className="w-full h-full bg-gradient-to-br from-purple-100 via-purple-200 to-indigo-200 flex flex-col items-center justify-center">
-                  <div className="text-4xl mb-2">🏙️</div>
-                  <div className="text-xs text-[var(--purple-fg)] font-medium px-4 text-center">
-                    Cyberpunk alley scene
+              {job?.status === "complete" && job.outputUrls.length > 0 ? (
+                // eslint-disable-next-line @next/next/no-img-element -- served straight from local ComfyUI
+                <img
+                  src={job.outputUrls[0]}
+                  alt={job.prompt.slice(0, 80)}
+                  className="w-full h-full object-cover cursor-pointer"
+                  onClick={() => window.open(job.outputUrls[0], "_blank")}
+                  title="Open full size"
+                />
+              ) : job?.status === "failed" ? (
+                <div className="flex flex-col items-center gap-2 px-4 text-center">
+                  <ImageIcon className="h-6 w-6 text-red-400" />
+                  <div className="text-xs text-red-600 break-words">
+                    {job.error ?? "Generation failed"}
                   </div>
-                  <div className="text-[10px] text-[var(--muted-fg)] mt-1">Mock · ComfyUI</div>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-2">
                   <div className="h-8 w-8 rounded-full border-2 border-[var(--purple)] border-t-transparent animate-spin" />
-                  <div className="text-xs text-[var(--muted-fg)]">Generating…</div>
+                  <div className="text-xs text-[var(--muted-fg)]">
+                    {job?.status === "generating" ? "Generating…" : "Queued…"}
+                  </div>
                 </div>
               )}
             </div>
+            {/* Extra outputs from batch generation */}
+            {job && job.outputUrls.length > 1 && (
+              <div className="grid grid-cols-3 gap-1 p-1 border-t border-[var(--border)]">
+                {job.outputUrls.slice(1).map((url) => (
+                  // eslint-disable-next-line @next/next/no-img-element -- served straight from local ComfyUI
+                  <img
+                    key={url}
+                    src={url}
+                    alt="Batch output"
+                    className="w-full aspect-square object-cover rounded cursor-pointer"
+                    onClick={() => window.open(url, "_blank")}
+                  />
+                ))}
+              </div>
+            )}
             <div className="p-3 border-t border-[var(--border)]">
               <div className="text-xs text-[var(--foreground)] line-clamp-2">{job?.prompt ?? message.content}</div>
               <div className="flex items-center gap-2 mt-2">
@@ -184,7 +209,11 @@ function ImageCard({ message }: { message: Message }) {
                 </span>
                 <span
                   className={`ml-auto text-[10px] font-medium ${
-                    job?.status === "complete" ? "text-green-600" : "text-yellow-600"
+                    job?.status === "complete"
+                      ? "text-green-600"
+                      : job?.status === "failed"
+                        ? "text-red-600"
+                        : "text-yellow-600"
                   }`}
                 >
                   {job?.status ?? "pending"}

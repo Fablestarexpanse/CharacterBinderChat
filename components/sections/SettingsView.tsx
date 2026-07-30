@@ -267,9 +267,8 @@ export function SettingsView() {
           onTest={testComfyUI}
           helpText={
             <p className="text-xs text-[var(--muted-fg)]">
-              Start ComfyUI with{" "}
-              <code className="bg-[var(--muted)] px-1 rounded">--enable-cors-header</code>{" "}
-              so FableChat can reach it from the browser.
+              Point this at your running ComfyUI instance — no special launch
+              flags needed, FableChat proxies the connection server-side.
             </p>
           }
         >

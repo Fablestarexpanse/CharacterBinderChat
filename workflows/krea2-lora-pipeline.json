@@ -1,0 +1,380 @@
+{
+  "1": {
+    "inputs": {
+      "unet_name": "Krea2\\myKrea2UnlockedInt8_v10.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Krea2 Diffusion Model"
+    }
+  },
+  "2": {
+    "inputs": {
+      "clip_name": "qwen3vl_4b_fp8_scaled.safetensors",
+      "type": "krea2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Qwen3-VL Text Encoder (type = krea2)"
+    }
+  },
+  "3": {
+    "inputs": {
+      "vae_name": "Qwen_Image-VAE.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Qwen-Image VAE"
+    }
+  },
+  "4": {
+    "inputs": {
+      "__lm_autocomplete_meta_text": "<lora:Rusted_Horizons_Krea2_V1.0:0.85>",
+      "text": "<lora:purelens_krea2:1> <lora:canon_krea2:1> <lora:lenovo_krea2:1>",
+      "loras": {
+        "__value__": [
+          {
+            "name": "purelens_krea2",
+            "strength": 1,
+            "active": true,
+            "expanded": false,
+            "clipStrength": 1,
+            "selected": false,
+            "locked": false
+          },
+          {
+            "name": "canon_krea2",
+            "strength": 1,
+            "active": true,
+            "expanded": false,
+            "clipStrength": 1,
+            "selected": false,
+            "locked": false
+          },
+          {
+            "name": "lenovo_krea2",
+            "strength": 1,
+            "active": true,
+            "expanded": false,
+            "clipStrength": 1,
+            "selected": false,
+            "locked": false
+          }
+        ]
+      }
+    },
+    "class_type": "Lora Stacker (LoraManager)",
+    "_meta": {
+      "title": "Style LoRA Stack"
+    }
+  },
+  "5": {
+    "inputs": {
+      "__lm_autocomplete_meta_text": "<lora:chey007_000002500:0.6>",
+      "text": "<lora:Anna007_000002250:1.00>",
+      "loras": {
+        "__value__": [
+          {
+            "name": "Anna007_000002250",
+            "strength": 1,
+            "active": true,
+            "expanded": false,
+            "clipStrength": 1,
+            "selected": true,
+            "locked": false
+          }
+        ]
+      }
+    },
+    "class_type": "Lora Stacker (LoraManager)",
+    "_meta": {
+      "title": "Character LoRA Stack"
+    }
+  },
+  "6": {
+    "inputs": {
+      "lora_stack_a": [
+        "4",
+        0
+      ],
+      "lora_stack_b": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "Lora Stack Combiner (LoraManager)",
+    "_meta": {
+      "title": "Combine LoRA Stacks"
+    }
+  },
+  "7": {
+    "inputs": {
+      "value": ""
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "Inline LoRA Syntax (optional, ad-hoc)"
+    }
+  },
+  "8": {
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "lora_syntax": [
+        "7",
+        0
+      ],
+      "clip": [
+        "2",
+        0
+      ],
+      "lora_stack": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "LoRA Text Loader (LoraManager)",
+    "_meta": {
+      "title": "LoRA Manager — Apply to Model + CLIP"
+    }
+  },
+  "9": {
+    "inputs": {
+      "group_mode": true,
+      "default_active": true,
+      "allow_strength_adjustment": false,
+      "toggle_trigger_words": {
+        "__value__": []
+      },
+      "orinalMessage": "",
+      "trigger_words": [
+        "8",
+        2
+      ]
+    },
+    "class_type": "TriggerWord Toggle (LoraManager)",
+    "_meta": {
+      "title": "Trigger Word Toggle"
+    }
+  },
+  "10": {
+    "inputs": {
+      "value": "DSLR photo, photorealistic, 8k uhd, RAW photo, cinematic lighting, portrait of a woman in a rain-lit neon alley"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "✏️ User Prompt — EDIT THIS"
+    }
+  },
+  "11": {
+    "inputs": {
+      "__lm_autocomplete_meta_text": {
+        "version": 1,
+        "textWidgetName": "text"
+      },
+      "text": [
+        "10",
+        0
+      ],
+      "clip": [
+        "8",
+        1
+      ],
+      "seed": [
+        "14",
+        0
+      ],
+      "trigger_words1": [
+        "9",
+        0
+      ]
+    },
+    "class_type": "Prompt (LoraManager)",
+    "_meta": {
+      "title": "Prompt (LoraManager) — Positive"
+    }
+  },
+  "12": {
+    "inputs": {
+      "conditioning": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "Negative — Zero-Out (required at CFG 1.0)"
+    }
+  },
+  "13": {
+    "inputs": {
+      "mode": "Manual",
+      "latent_type": "latent_4x8",
+      "width": 2128,
+      "height": 2812,
+      "auto_detect": false,
+      "auto_detect_source": "backend",
+      "auto_detect_width": 0,
+      "auto_detect_height": 0,
+      "auto_fit_on_change": false,
+      "auto_resize_on_change": false,
+      "auto_snap_on_change": false,
+      "smart_fit": false,
+      "use_custom_calc": false,
+      "preserve_scaling_ratio": true,
+      "selected_category": "Krea 2 Turbo",
+      "snap_value": 64,
+      "upscale_value": 1,
+      "target_resolution": 1080,
+      "target_megapixels": 6,
+      "auto_detect_presets_json": "{\"__resolutionMasterConfigVersion\":1,\"__resolutionMasterProfile\":{\"strategy\":\"closest_preset\",\"options\":{}},\"__resolutionMasterPresets\":{\"1:1 Square (1024)\":{\"width\":1024,\"height\":1024,\"isCustom\":false,\"isHidden\":false},\"4:3 Landscape (1024)\":{\"width\":1184,\"height\":896,\"isCustom\":false,\"isHidden\":false},\"3:2 Landscape (1024)\":{\"width\":1248,\"height\":832,\"isCustom\":false,\"isHidden\":false},\"16:9 Widescreen (1024)\":{\"width\":1376,\"height\":768,\"isCustom\":false,\"isHidden\":false},\"2.35:1 Cinematic (1024)\":{\"width\":1568,\"height\":672,\"isCustom\":false,\"isHidden\":false},\"4:5 Portrait (1024)\":{\"width\":928,\"height\":1152,\"isCustom\":false,\"isHidden\":false},\"3:4 Portrait (1024)\":{\"width\":896,\"height\":1184,\"isCustom\":false,\"isHidden\":false},\"2:3 Portrait (1024)\":{\"width\":832,\"height\":1248,\"isCustom\":false,\"isHidden\":false},\"9:16 Portrait (1024)\":{\"width\":768,\"height\":1376,\"isCustom\":false,\"isHidden\":false},\"1:1 Square (1536)\":{\"width\":1536,\"height\":1536,\"isCustom\":false,\"isHidden\":false},\"4:3 Landscape (1536)\":{\"width\":1776,\"height\":1344,\"isCustom\":false,\"isHidden\":false},\"3:2 Landscape (1536)\":{\"width\":1872,\"height\":1248,\"isCustom\":false,\"isHidden\":false},\"16:9 Widescreen (1536)\":{\"width\":2064,\"height\":1152,\"isCustom\":false,\"isHidden\":false},\"2.35:1 Cinematic (1536)\":{\"width\":2352,\"height\":1008,\"isCustom\":false,\"isHidden\":false},\"4:5 Portrait (1536)\":{\"width\":1392,\"height\":1728,\"isCustom\":false,\"isHidden\":false},\"3:4 Portrait (1536)\":{\"width\":1344,\"height\":1776,\"isCustom\":false,\"isHidden\":false},\"2:3 Portrait (1536)\":{\"width\":1248,\"height\":1872,\"isCustom\":false,\"isHidden\":false},\"9:16 Portrait (1536)\":{\"width\":1152,\"height\":2064,\"isCustom\":false,\"isHidden\":false},\"1:1 Square (2048)\":{\"width\":2048,\"height\":2048,\"isCustom\":false,\"isHidden\":false},\"4:3 Landscape (2048)\":{\"width\":2368,\"height\":1792,\"isCustom\":false,\"isHidden\":false},\"3:2 Landscape (2048)\":{\"width\":2496,\"height\":1664,\"isCustom\":false,\"isHidden\":false},\"16:9 Widescreen (2048)\":{\"width\":2752,\"height\":1536,\"isCustom\":false,\"isHidden\":false},\"2.35:1 Cinematic (2048)\":{\"width\":3136,\"height\":1344,\"isCustom\":false,\"isHidden\":false},\"4:5 Portrait (2048)\":{\"width\":1856,\"height\":2304,\"isCustom\":false,\"isHidden\":false},\"3:4 Portrait (2048)\":{\"width\":1792,\"height\":2368,\"isCustom\":false,\"isHidden\":false},\"2:3 Portrait (2048)\":{\"width\":1664,\"height\":2496,\"isCustom\":false,\"isHidden\":false},\"9:16 Portrait (2048)\":{\"width\":1536,\"height\":2752,\"isCustom\":false,\"isHidden\":false}}}",
+      "rescale_mode": "megapixels",
+      "rescale_value": 1.0013413607207389,
+      "batch_size": 1,
+      "resolution_master_ui": null
+    },
+    "class_type": "ResolutionMaster",
+    "_meta": {
+      "title": "Resolution Master"
+    }
+  },
+  "14": {
+    "inputs": {
+      "value": 890295042619070
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "🎲 Seed (lock / randomize here)"
+    }
+  },
+  "15": {
+    "inputs": {
+      "width": [
+        "13",
+        0
+      ],
+      "height": [
+        "13",
+        1
+      ],
+      "batch_size": [
+        "13",
+        3
+      ]
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent"
+    }
+  },
+  "16": {
+    "inputs": {
+      "seed": [
+        "14",
+        0
+      ],
+      "steps": 8,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "8",
+        0
+      ],
+      "positive": [
+        "11",
+        0
+      ],
+      "negative": [
+        "12",
+        0
+      ],
+      "latent_image": [
+        "15",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "Krea2 Sampler"
+    }
+  },
+  "17": {
+    "inputs": {
+      "samples": [
+        "16",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "18": {
+    "inputs": {
+      "filename_prefix": "Krea2/Krea2_%seed%",
+      "file_format": "png",
+      "lossless_webp": false,
+      "quality": 100,
+      "embed_workflow": true,
+      "save_with_metadata": true,
+      "add_counter_to_filename": true,
+      "save_as_recipe": false,
+      "images": [
+        "17",
+        0
+      ]
+    },
+    "class_type": "Save Image (LoraManager)",
+    "_meta": {
+      "title": "Save Image + Metadata"
+    }
+  },
+  "20": {
+    "inputs": {
+      "images": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "Debug Metadata (LoraManager)",
+    "_meta": {
+      "title": "Debug Metadata"
+    }
+  },
+  "21": {
+    "inputs": {
+      "source": [
+        "11",
+        1
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "Final Resolved Prompt"
+    }
+  },
+  "_meta": {
+    "title": "Krea2 LoRA Pipeline",
+    "description": "Krea2 Turbo + LoraManager production pipeline (8 steps, CFG 1, euler/simple). Prompt supports inline <lora:name:weight> syntax.",
+    "fablechat": {
+      "promptNode": "10.inputs.value",
+      "negativePromptNode": null,
+      "stepsNode": "16.inputs.steps",
+      "cfgNode": "16.inputs.cfg",
+      "seedNode": "14.inputs.value",
+      "widthNode": "13.inputs.width",
+      "heightNode": "13.inputs.height"
+    }
+  }
+}

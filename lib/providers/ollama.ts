@@ -52,6 +52,7 @@ export class OllamaProvider implements ChatProvider {
       options: {
         temperature: settings?.temperature ?? 0.8,
         num_predict: settings?.maxTokens ?? 2048,
+        top_p:       settings?.topP ?? 0.95,
       },
     };
 

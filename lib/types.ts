@@ -48,6 +48,8 @@ export interface Chat {
   updatedAt: string;
   contextUsed?: number;
   contextMax?: number;
+  /** Per-chat generation parameters; provider defaults apply when unset */
+  settings?: Partial<ChatSettings>;
 }
 
 export interface LoreEntry {

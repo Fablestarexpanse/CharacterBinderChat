@@ -28,7 +28,7 @@ export function InspectorPanel() {
   return (
     <aside className="flex flex-col h-full w-[280px] flex-shrink-0 border-l border-[var(--border)] bg-[var(--sidebar-bg)]">
       {/* Tab bar */}
-      <div className="flex border-b border-[var(--border)] bg-white px-2 pt-2 gap-0.5 flex-shrink-0">
+      <div className="flex border-b border-[var(--border)] bg-white px-2 pt-2 gap-0.5 flex-shrink-0 overflow-x-auto">
         {TABS.map((tab) => (
           <button
             key={tab.id}

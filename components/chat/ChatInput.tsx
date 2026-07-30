@@ -3,7 +3,7 @@
 import { useRef, useEffect, type KeyboardEvent } from "react";
 import { useFableStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
-import { ComfyUIProvider } from "@/lib/providers/comfyui";
+import { startImageJob } from "@/lib/providers/comfyui";
 import { generateAssistantReply, stopGeneration } from "@/lib/chat/generation";
 import {
   Paperclip,
@@ -20,7 +20,7 @@ export function ChatInput() {
     activeChatId,
     inputValue, setInputValue,
     addMessage,
-    addImageJob, imageSettings,
+    addImageJob, updateImageJob, imageSettings,
     providerSettings,
     isGenerating,
   } = useFableStore();
@@ -72,8 +72,14 @@ export function ChatInput() {
   const handleImageGeneration = async (prompt: string) => {
     if (!activeChatId) return;
     const settings = { ...imageSettings, prompt };
-    const comfyui  = new ComfyUIProvider(providerSettings.comfyui.baseUrl);
-    const job       = comfyui.createMockJob(settings, activeChatId);
+    // Queues to ComfyUI and streams status back into the job via the store —
+    // the ImageCard in the message list re-renders as the job progresses.
+    const job = startImageJob(
+      providerSettings.comfyui.baseUrl,
+      settings,
+      activeChatId,
+      updateImageJob
+    );
     addImageJob(job);
     addMessage(activeChatId, {
       chatId:      activeChatId,

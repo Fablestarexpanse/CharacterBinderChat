@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import type {
   Character,
   Chat,
+  ChatSettings,
   Message,
   Lorebook,
   Memory,
@@ -236,6 +237,8 @@ interface FableStore {
   setChatModel: (chatId: string, modelId: string, providerId: string) => void;
   /** Update the real token accounting shown by the header context meter */
   setChatContext: (chatId: string, contextUsed: number, contextMax: number) => void;
+  /** Merge per-chat generation settings (temperature, maxTokens, topP…) */
+  updateChatSettings: (chatId: string, settings: Partial<ChatSettings>) => void;
   createChat: (characterId?: string) => string;
   deleteChat: (chatId: string) => void;
   renameChat: (chatId: string, name: string) => void;
@@ -447,6 +450,14 @@ export const useFableStore = create<FableStore>()(
         }));
       },
 
+      updateChatSettings: (chatId, settings) => {
+        set((state) => ({
+          chats: state.chats.map((c) =>
+            c.id === chatId ? { ...c, settings: { ...c.settings, ...settings } } : c
+          ),
+        }));
+      },
+
       createChat: (characterId) => {
         const id = `chat-${Date.now()}`;
         const character = get().characters.find((c) => c.id === characterId);
@@ -602,6 +613,17 @@ export const useFableStore = create<FableStore>()(
         lorebooks: state.lorebooks,
         imageJobs: state.imageJobs,
       }),
+      // The polling loop that drives queued/generating jobs dies with the
+      // page, so anything still in-flight after a reload can never finish —
+      // mark it failed instead of spinning forever.
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        state.imageJobs = state.imageJobs.map((j) =>
+          j.status === "queued" || j.status === "generating" || j.status === "pending"
+            ? { ...j, status: "failed" as const, error: "Interrupted by page reload" }
+            : j
+        );
+      },
     }
   )
 );

@@ -135,7 +135,7 @@ export async function generateAssistantReply(chatId: string): Promise<void> {
   let failed = false;
 
   try {
-    for await (const token of provider.streamChat(history, modelId, undefined, controller.signal)) {
+    for await (const token of provider.streamChat(history, modelId, chat.settings, controller.signal)) {
       accumulated += token;
       store.updateMessageContent(chatId, assistantMsgId, accumulated);
     }

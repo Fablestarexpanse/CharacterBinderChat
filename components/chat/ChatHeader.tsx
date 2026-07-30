@@ -5,6 +5,7 @@ import { useFableStore } from "@/lib/store";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { OllamaProvider } from "@/lib/providers/ollama";
 import { LMStudioProvider } from "@/lib/providers/lmstudio";
@@ -49,6 +50,7 @@ export function ChatHeader() {
     setChatModel, providerSettings, providerStatuses,
     clearChat, isGenerating,
     customModels, addCustomModel,
+    updateChatSettings,
   } = useFableStore();
 
   const chat      = chats.find((c) => c.id === activeChatId);
@@ -62,6 +64,9 @@ export function ChatHeader() {
   const [customOpen,     setCustomOpen]     = useState(false);
   const [customId,       setCustomId]       = useState("");
   const [customProvider, setCustomProvider] = useState<ProviderId>("openrouter");
+
+  // Generation settings dialog
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // ── Fetch real model lists whenever providers change ──────────────────────
 
@@ -212,7 +217,7 @@ export function ChatHeader() {
 
       {/* Action buttons */}
       <div className="flex items-center gap-1">
-        <Button variant="ghost" size="icon" title="Chat settings">
+        <Button variant="ghost" size="icon" title="Generation settings" onClick={() => setSettingsOpen(true)}>
           <Settings2 className="h-4 w-4" />
         </Button>
         <Button
@@ -256,6 +261,51 @@ export function ChatHeader() {
           )}
         </Button>
       </div>
+
+      {/* Generation settings dialog */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="max-w-sm" aria-describedby={undefined}>
+          <div className="border-b border-[var(--border)] px-5 py-4">
+            <DialogTitle>Generation settings — {chat.name}</DialogTitle>
+          </div>
+          <div className="space-y-5 px-5 py-4">
+            <Slider
+              label={`Temperature — ${(chat.settings?.temperature ?? 0.8) < 0.5 ? "focused" : (chat.settings?.temperature ?? 0.8) > 1.1 ? "wild" : "balanced"}`}
+              value={chat.settings?.temperature ?? 0.8}
+              onChange={(v) => updateChatSettings(chat.id, { temperature: v })}
+              min={0} max={2} step={0.05}
+            />
+            <Slider
+              label="Top P"
+              value={chat.settings?.topP ?? 0.95}
+              onChange={(v) => updateChatSettings(chat.id, { topP: v })}
+              min={0.1} max={1} step={0.05}
+            />
+            <Slider
+              label="Max response tokens"
+              value={chat.settings?.maxTokens ?? 2048}
+              onChange={(v) => updateChatSettings(chat.id, { maxTokens: v })}
+              min={256} max={8192} step={256}
+            />
+            <p className="text-[11px] leading-snug text-[var(--muted-fg)]">
+              Applies to this chat only. Higher temperature means more surprising prose;
+              lower keeps the character precise and consistent.
+            </p>
+          </div>
+          <div className="flex items-center justify-between border-t border-[var(--border)] px-5 py-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => updateChatSettings(chat.id, { temperature: 0.8, topP: 0.95, maxTokens: 2048 })}
+            >
+              Reset defaults
+            </Button>
+            <Button variant="purple" size="sm" onClick={() => setSettingsOpen(false)}>
+              Done
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Custom model ID dialog */}
       <Dialog open={customOpen} onOpenChange={setCustomOpen}>

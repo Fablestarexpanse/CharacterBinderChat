@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
-import { ComfyUIProvider } from "@/lib/providers/comfyui";
+import { startImageJob } from "@/lib/providers/comfyui";
 import { useState } from "react";
 import {
   Zap,
@@ -20,11 +20,12 @@ import {
 } from "lucide-react";
 import type { AspectRatio } from "@/lib/types";
 
+// Must match the template files in workflows/*.json
 const WORKFLOWS = [
+  { value: "krea2-lora-pipeline", label: "Krea2 LoRA Pipeline" },
   { value: "flux-cinematic", label: "Flux Dev - Cinematic" },
   { value: "sdxl-portrait", label: "SDXL Portrait" },
   { value: "anime-character-card", label: "Anime Character Card" },
-  { value: "concept-art", label: "Concept Art" },
 ];
 
 const SAMPLERS = ["euler", "euler_a", "dpmpp_2m", "dpmpp_2m_karras", "ddim", "lcm"];
@@ -32,23 +33,20 @@ const ASPECT_RATIOS: AspectRatio[] = ["1:1", "16:9", "9:16", "4:3", "3:4", "2:1"
 const LORA_OPTIONS = ["Cyberpunk Style", "Anime Face", "Film Grain", "Neon Glow", "Concept Art"];
 
 export function ImageStudioTab() {
-  const { imageSettings, setImageSettings, imageJobs, addImageJob, providerSettings } = useFableStore();
+  const { imageSettings, setImageSettings, imageJobs, addImageJob, updateImageJob, providerSettings, activeChatId } =
+    useFableStore();
   const [newLora, setNewLora] = useState("");
-  const [isQueuing, setIsQueuing] = useState(false);
 
-  const handleGenerate = async () => {
-    setIsQueuing(true);
-    const comfyui = new ComfyUIProvider(providerSettings.comfyui.baseUrl);
-    // Try real connection, fall back to mock
-    const connected = await comfyui.checkConnection();
-    if (connected) {
-      // TODO: load real workflow template and queue
-      // const workflow = await comfyui.loadWorkflowTemplate(`/workflows/${imageSettings.workflow}.json`);
-      // const promptId = await comfyui.queuePrompt(workflow, { "6.inputs.text": imageSettings.prompt });
-    }
-    const job = comfyui.createMockJob(imageSettings);
+  const handleGenerate = () => {
+    // startImageJob returns immediately; connection check, queueing and
+    // polling all happen in the background and land via updateImageJob.
+    const job = startImageJob(
+      providerSettings.comfyui.baseUrl,
+      imageSettings,
+      activeChatId ?? undefined,
+      updateImageJob
+    );
     addImageJob(job);
-    setIsQueuing(false);
   };
 
   const handleAddLora = () => {
@@ -62,6 +60,9 @@ export function ImageStudioTab() {
   };
 
   const recentJobs = imageJobs.slice(0, 4);
+  const runningCount = imageJobs.filter((j) => j.status === "queued" || j.status === "generating").length;
+  // Only surface a failure if the most recent job is the one that failed
+  const lastFailed = imageJobs[0]?.status === "failed" ? imageJobs[0] : undefined;
 
   return (
     <div className="overflow-y-auto h-full">
@@ -294,12 +295,18 @@ export function ImageStudioTab() {
             size="md"
             className="w-full"
             onClick={handleGenerate}
-            disabled={isQueuing || !imageSettings.prompt.trim()}
+            disabled={!imageSettings.prompt.trim()}
           >
             <Zap className="h-3.5 w-3.5 mr-1.5" />
-            {isQueuing ? "Queuing…" : "Generate"}
+            Generate
           </Button>
-          <Button variant="outline" size="md" className="w-full" onClick={handleGenerate} disabled={isQueuing}>
+          <Button
+            variant="outline"
+            size="md"
+            className="w-full"
+            onClick={handleGenerate}
+            disabled={!imageSettings.prompt.trim()}
+          >
             <ListChecks className="h-3.5 w-3.5 mr-1.5" />
             Queue
           </Button>
@@ -312,15 +319,20 @@ export function ImageStudioTab() {
             Queue Status
           </div>
           <div className="text-xs text-[var(--muted-fg)]">
-            {isQueuing ? (
+            {runningCount > 0 ? (
               <div className="flex items-center gap-2">
                 <div className="h-3 w-3 rounded-full border-2 border-[var(--purple)] border-t-transparent animate-spin" />
-                Sending to ComfyUI…
+                {runningCount} job{runningCount === 1 ? "" : "s"} running
               </div>
             ) : (
-              `${imageJobs.filter((j) => j.status === "queued" || j.status === "generating").length} jobs running`
+              "Idle"
             )}
           </div>
+          {lastFailed && runningCount === 0 && (
+            <div className="mt-2 text-[11px] text-red-600 break-words">
+              Last job failed: {lastFailed.error ?? "unknown error"}
+            </div>
+          )}
         </div>
 
         {/* Recent outputs */}
@@ -333,12 +345,28 @@ export function ImageStudioTab() {
               {recentJobs.map((job) => (
                 <div
                   key={job.id}
-                  className="rounded-lg border border-[var(--border)] overflow-hidden aspect-square bg-gradient-to-br from-purple-50 to-indigo-100 flex flex-col items-center justify-center relative cursor-pointer hover:border-[var(--purple)] transition-colors"
+                  className="rounded-lg border border-[var(--border)] overflow-hidden aspect-square bg-[var(--muted)] flex flex-col items-center justify-center relative cursor-pointer hover:border-[var(--purple)] transition-colors"
+                  title={job.status === "failed" ? job.error : job.prompt}
                 >
-                  <div className="text-xl">🏙️</div>
+                  {job.status === "complete" && job.outputUrls[0] ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- ComfyUI serves from localhost; next/image can't optimize it
+                    <img
+                      src={job.outputUrls[0]}
+                      alt={job.prompt.slice(0, 60)}
+                      className="w-full h-full object-cover"
+                      onClick={() => window.open(job.outputUrls[0], "_blank")}
+                    />
+                  ) : job.status === "failed" ? (
+                    <X className="h-5 w-5 text-red-500" />
+                  ) : (
+                    <div className="h-5 w-5 rounded-full border-2 border-[var(--purple)] border-t-transparent animate-spin" />
+                  )}
                   <div className="absolute bottom-0 left-0 right-0 bg-white/80 px-1.5 py-1">
                     <div className="text-[10px] text-[var(--foreground)] truncate">{job.prompt.slice(0, 20)}</div>
-                    <Badge variant={job.status === "complete" ? "green" : "yellow"} className="text-[9px]">
+                    <Badge
+                      variant={job.status === "complete" ? "green" : job.status === "failed" ? "red" : "yellow"}
+                      className="text-[9px]"
+                    >
                       {job.status}
                     </Badge>
                   </div>
