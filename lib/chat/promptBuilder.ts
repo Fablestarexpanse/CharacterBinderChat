@@ -90,7 +90,8 @@ export function buildSystemPrompt(
   knownFacts?: string[],
   persona?:    Persona | null,
   episodes?:   string[],
-  insights?:   string[]
+  insights?:   string[],
+  lore?:       string[]
 ): string {
   if (!character) return "You are a helpful assistant.";
 
@@ -129,6 +130,14 @@ export function buildSystemPrompt(
   if (facts.length > 0) {
     const factLines = facts.map((f) => `  - ${f}`).join("\n");
     sections.push(`[Known Facts]\n${factLines}`);
+  }
+
+  // ── World lore (keyword-triggered lorebook entries) ──────────────────────
+  if (lore && lore.length > 0) {
+    sections.push(
+      `[World Lore]\nEstablished facts about this world, relevant to the current scene:\n` +
+      lore.map((l) => `  - ${l}`).join("\n")
+    );
   }
 
   // ── Episodic memory: scenes remembered as events ─────────────────────────

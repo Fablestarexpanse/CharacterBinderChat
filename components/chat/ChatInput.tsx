@@ -23,6 +23,7 @@ export function ChatInput() {
     addImageJob, updateImageJob, imageSettings,
     providerSettings,
     isGenerating,
+    setActiveSection,
   } = useFableStore();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -156,7 +157,13 @@ export function ChatInput() {
             >
               <ImageIcon className="h-3.5 w-3.5" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7" title="Insert lorebook">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              title="Edit lorebooks"
+              onClick={() => setActiveSection("lorebooks")}
+            >
               <BookOpen className="h-3.5 w-3.5" />
             </Button>
             <Button variant="ghost" size="icon" className="h-7 w-7" title="Tools">

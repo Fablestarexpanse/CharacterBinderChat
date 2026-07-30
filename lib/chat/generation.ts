@@ -9,6 +9,7 @@ import { OllamaProvider } from "@/lib/providers/ollama";
 import { LMStudioProvider } from "@/lib/providers/lmstudio";
 import { OpenRouterProvider } from "@/lib/providers/openrouter";
 import { buildSystemPrompt, estimateTokens } from "./promptBuilder";
+import { matchLoreEntries } from "./lorebook";
 import { fitHistoryToBudget } from "./tokenBudget";
 import type { ChatProvider, MessageRole, ProviderSettings } from "@/lib/types";
 import type { CoreMemory } from "@/lib/db/models";
@@ -106,7 +107,12 @@ export async function generateAssistantReply(chatId: string): Promise<void> {
 
   // ── Build message history within the model's token budget ────────────────
   const persona = store.personas.find((p) => p.id === store.activePersonaId) ?? null;
-  const systemPrompt = buildSystemPrompt(character, coreMemory, knownFacts, persona, episodes, insights);
+  // Lorebook entries fire on keywords in the recent turns — a wider window
+  // than fact retrieval so lore doesn't flicker out one exchange after its
+  // subject was raised.
+  const loreScanText = chat.messages.slice(-6).map((m) => m.content).join("\n");
+  const lore = matchLoreEntries(store.lorebooks, loreScanText);
+  const systemPrompt = buildSystemPrompt(character, coreMemory, knownFacts, persona, episodes, insights, lore);
   const fullHistory: Array<{ role: MessageRole; content: string }> = chat.messages
     .filter((m) => m.content.trim().length > 0 && !m.imageJobId)
     .map((m) => ({ role: m.role as MessageRole, content: m.content }));

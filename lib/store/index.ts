@@ -6,6 +6,7 @@ import type {
   ChatSettings,
   Message,
   Lorebook,
+  LoreEntry,
   Memory,
   ImageJob,
   ImageGenerationSettings,
@@ -227,8 +228,8 @@ interface FableStore {
   chats: Chat[];
   activeChatId: string | null;
   setActiveChatId: (id: string | null) => void;
-  /** Replace characters + chats + personas with the durable SQLite copy (on app load) */
-  hydrateFromServer: (characters: Character[], chats: Chat[], personas: Persona[]) => void;
+  /** Replace characters + chats + personas + lorebooks with the durable SQLite copy (on app load) */
+  hydrateFromServer: (characters: Character[], chats: Chat[], personas: Persona[], lorebooks?: Lorebook[]) => void;
   /** Adds a message and returns its generated ID */
   addMessage: (chatId: string, message: Omit<Message, "id" | "timestamp">) => string;
   /** Stream partial assistant content into an existing message */
@@ -259,6 +260,12 @@ interface FableStore {
 
   // Lorebooks
   lorebooks: Lorebook[];
+  addLorebook: (name: string) => string;
+  updateLorebook: (id: string, updates: Partial<Pick<Lorebook, "name" | "description">>) => void;
+  deleteLorebook: (id: string) => void;
+  addLoreEntry: (lorebookId: string, entry: Omit<LoreEntry, "id" | "lorebookId">) => string;
+  updateLoreEntry: (lorebookId: string, entryId: string, updates: Partial<Omit<LoreEntry, "id" | "lorebookId">>) => void;
+  deleteLoreEntry: (lorebookId: string, entryId: string) => void;
 
   // Image Jobs
   imageJobs: ImageJob[];
@@ -388,11 +395,15 @@ export const useFableStore = create<FableStore>()(
       activeChatId: "chat-1",
       setActiveChatId: (id) => set({ activeChatId: id }),
 
-      hydrateFromServer: (characters, chats, personas) => {
+      hydrateFromServer: (characters, chats, personas, lorebooks) => {
         set((s) => ({
           characters,
           chats,
           personas,
+          // Lorebooks joined the durable mirror later than the rest — an
+          // empty server list may just mean "never synced yet", so keep the
+          // local copy in that case and let the next save push it up.
+          lorebooks: lorebooks && lorebooks.length > 0 ? lorebooks : s.lorebooks,
           activeChatId: chats.some((c) => c.id === s.activeChatId)
             ? s.activeChatId
             : chats[0]?.id ?? null,
@@ -545,7 +556,46 @@ export const useFableStore = create<FableStore>()(
       setInputValue: (v) => set({ inputValue: v }),
 
       memories: PLACEHOLDER_MEMORIES,
+
       lorebooks: [PLACEHOLDER_LORE],
+      addLorebook: (name) => {
+        const id = `lb-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const book: Lorebook = { id, name, entries: [], createdAt: new Date().toISOString() };
+        set((s) => ({ lorebooks: [...s.lorebooks, book] }));
+        return id;
+      },
+      updateLorebook: (id, updates) =>
+        set((s) => ({
+          lorebooks: s.lorebooks.map((b) => (b.id === id ? { ...b, ...updates } : b)),
+        })),
+      deleteLorebook: (id) =>
+        set((s) => ({ lorebooks: s.lorebooks.filter((b) => b.id !== id) })),
+      addLoreEntry: (lorebookId, entry) => {
+        const id = `le-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const full: LoreEntry = { ...entry, id, lorebookId };
+        set((s) => ({
+          lorebooks: s.lorebooks.map((b) =>
+            b.id === lorebookId ? { ...b, entries: [...b.entries, full] } : b
+          ),
+        }));
+        return id;
+      },
+      updateLoreEntry: (lorebookId, entryId, updates) =>
+        set((s) => ({
+          lorebooks: s.lorebooks.map((b) =>
+            b.id === lorebookId
+              ? { ...b, entries: b.entries.map((e) => (e.id === entryId ? { ...e, ...updates } : e)) }
+              : b
+          ),
+        })),
+      deleteLoreEntry: (lorebookId, entryId) =>
+        set((s) => ({
+          lorebooks: s.lorebooks.map((b) =>
+            b.id === lorebookId
+              ? { ...b, entries: b.entries.filter((e) => e.id !== entryId) }
+              : b
+          ),
+        })),
 
       imageJobs: [],
       addImageJob: (job) => set((s) => ({ imageJobs: [job, ...s.imageJobs] })),

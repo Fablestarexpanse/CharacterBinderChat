@@ -121,5 +121,11 @@ CREATE TABLE IF NOT EXISTS app_personas (
   data TEXT    NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS app_lorebooks (
+  id   TEXT    PRIMARY KEY,
+  seq  INTEGER NOT NULL,
+  data TEXT    NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_app_messages_chat ON app_messages(chat_id, seq);
 `;

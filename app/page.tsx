@@ -6,12 +6,12 @@ import { ChatArea } from "@/components/chat/ChatArea";
 import { InspectorPanel } from "@/components/inspector/InspectorPanel";
 import { SettingsView } from "@/components/sections/SettingsView";
 import { CharactersView } from "@/components/sections/CharactersView";
+import { LorebooksView } from "@/components/sections/LorebooksView";
 import { CharacterEditorDialog } from "@/components/characters/CharacterEditorDialog";
 import { StateSync } from "@/components/StateSync";
 import { PlaceholderView } from "@/components/sections/PlaceholderView";
 import {
   Group,
-  BookOpen,
   Sliders,
   ImageIcon,
   GalleryHorizontal,
@@ -39,13 +39,7 @@ export default function Home() {
             description="Multi-character chats with shared context and turn-taking."
           />
         )}
-        {activeSection === "lorebooks" && (
-          <PlaceholderView
-            icon={BookOpen}
-            title="Lorebooks"
-            description="Manage world-building entries that inject context into your chats."
-          />
-        )}
+        {activeSection === "lorebooks" && <LorebooksView />}
         {activeSection === "presets" && (
           <PlaceholderView
             icon={Sliders}

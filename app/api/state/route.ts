@@ -35,23 +35,30 @@ export async function GET(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const body = await req.json() as { characters?: unknown; chats?: unknown; personas?: unknown };
+    const body = await req.json() as { characters?: unknown; chats?: unknown; personas?: unknown; lorebooks?: unknown };
     const characters = Array.isArray(body.characters) ? body.characters as Array<{ id: string }> : null;
     const chats      = Array.isArray(body.chats)      ? body.chats      as Array<{ id: string; messages?: Array<{ id: string }> }> : null;
     const personas   = Array.isArray(body.personas)   ? body.personas   as Array<{ id: string }> : [];
+    const lorebooks  = Array.isArray(body.lorebooks)  ? body.lorebooks  as Array<{ id: string }> : [];
 
     if (!characters || !chats) {
       return Response.json({ error: "characters and chats arrays are required" }, { status: 400 });
     }
-    if (characters.some((c) => !c?.id) || chats.some((c) => !c?.id) || personas.some((p) => !p?.id)) {
-      return Response.json({ error: "every character, chat and persona needs an id" }, { status: 400 });
+    if (
+      characters.some((c) => !c?.id) || chats.some((c) => !c?.id) ||
+      personas.some((p) => !p?.id) || lorebooks.some((l) => !l?.id)
+    ) {
+      return Response.json({ error: "every character, chat, persona and lorebook needs an id" }, { status: 400 });
     }
 
     const store = getStore();
 
-    if (characters.length === 0 && chats.length === 0 && personas.length === 0) {
+    if (characters.length === 0 && chats.length === 0 && personas.length === 0 && lorebooks.length === 0) {
       const existing = store.getAppState();
-      if (existing.characters.length > 0 || existing.chats.length > 0 || existing.personas.length > 0) {
+      if (
+        existing.characters.length > 0 || existing.chats.length > 0 ||
+        existing.personas.length > 0 || existing.lorebooks.length > 0
+      ) {
         return Response.json(
           { error: "refusing to replace existing data with an empty state" },
           { status: 409 }
@@ -59,7 +66,7 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    store.replaceAppState(characters, chats, personas);
+    store.replaceAppState(characters, chats, personas, lorebooks);
     // Deleting a chat must also delete its memory — orphaned drawer rows would
     // otherwise linger forever and resurface in "continue with memories" lists.
     const purged = store.purgeOrphanedChatMemory();
@@ -68,6 +75,7 @@ export async function PUT(req: NextRequest) {
       characters: characters.length,
       chats: chats.length,
       personas: personas.length,
+      lorebooks: lorebooks.length,
       ...(purged.length > 0 ? { purgedChatMemory: purged } : {}),
     });
   } catch (err) {
