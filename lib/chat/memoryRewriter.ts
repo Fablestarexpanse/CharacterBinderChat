@@ -13,16 +13,25 @@ function buildRewritePrompt(
   characterName: string,
   currentMemory: CoreMemory,
   recentMessages: Array<{ role: string; content: string }>,
-  userLabel = "User"
+  userLabel = "User",
+  characterAnchor = ""
 ): string {
   const conversation = recentMessages
     .slice(-16)
     .map((m) => `${m.role === "user" ? userLabel : characterName}: ${m.content}`)
     .join("\n\n");
 
+  // The anchor is the authored character definition. Without it the persona is
+  // rewritten every turn with nothing tying it back to who the character IS,
+  // and it slowly drifts (measured: shrank 433c → 272c over one long run).
+  const anchorBlock = characterAnchor
+    ? `\nWHO THIS CHARACTER FUNDAMENTALLY IS (fixed — persona may grow from this, never contradict it):\n${characterAnchor}\n`
+    : "";
+
   return `You are helping maintain a character's "Core Memory Block" — their conscious internal state for a roleplay story.
 
 Character: ${characterName}
+${anchorBlock}
 
 CURRENT STATE:
 Persona: ${currentMemory.persona}
@@ -73,6 +82,8 @@ export interface RewriteOptions {
   characterId:     string;
   characterName:   string;
   personaName?:    string;
+  /** Authored character definition — the drift anchor for persona rewrites */
+  characterAnchor?: string;
   recentMessages:  Array<{ role: string; content: string }>;
   providerType:    "ollama" | "lmstudio" | "openrouter";
   providerBaseUrl: string;
@@ -95,7 +106,8 @@ export async function rewriteCoreMemory(opts: RewriteOptions): Promise<{
     opts.characterName,
     current.data,
     opts.recentMessages,
-    opts.personaName ?? "User"
+    opts.personaName ?? "User",
+    opts.characterAnchor ?? ""
   );
 
   let rawText: string;

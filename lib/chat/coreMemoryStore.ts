@@ -59,6 +59,26 @@ export function syncStatsToCore(chatId: string, characterId: string): void {
   store.patchCoreMemory(chatId, characterId, { relationship_with_user: rel });
 }
 
+/**
+ * Mirror active commitments (both directions) into Core Memory so the prompt's
+ * [Active Commitments] block is real. Character's own promises first.
+ */
+export function syncCommitmentsToCore(chatId: string, characterId: string, personaLabel = "the user"): void {
+  const store    = getStore();
+  const existing = store.getCoreMemory(chatId, characterId);
+  if (!existing) return;
+
+  const active = store.allCommitments(chatId, "active");
+  const mine   = active.filter((c) => c.promisorId === characterId);
+  const theirs = active.filter((c) => c.promisorId !== characterId);
+  const lines = [
+    ...mine.map((c) => `You promised: ${c.description}`),
+    ...theirs.map((c) => `${c.promisorId === "player" ? personaLabel : c.promisorId} promised: ${c.description}`),
+  ].slice(0, 8);
+
+  store.patchCoreMemory(chatId, characterId, { active_commitments: lines });
+}
+
 /** Push an emotional event; keep only the last 8 */
 export function addEmotionalEvent(
   chatId:      string,

@@ -51,6 +51,7 @@ function rowToFact(r: any): DbFact {
     tValidEnd:     r.t_valid_end ?? null,
     tIngested:     r.t_ingested,
     confidence:    r.confidence,
+    importance:    r.importance ?? 0.5,
     knownTo:       r.known_to ? (JSON.parse(r.known_to) as string[]) : [],
     supersededBy:  r.superseded_by ?? null,
   };
@@ -72,13 +73,14 @@ function rowToStat(r: any): DbRelationshipStat {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function rowToMemoryCard(r: any): DbMemoryCard {
   return {
-    id:        r.id,
-    title:     r.title,
-    content:   r.content,
-    tags:      r.tags ? (JSON.parse(r.tags) as string[]) : [],
-    entityIds: r.entity_ids ? (JSON.parse(r.entity_ids) as string[]) : [],
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
+    id:         r.id,
+    title:      r.title,
+    content:    r.content,
+    tags:       r.tags ? (JSON.parse(r.tags) as string[]) : [],
+    entityIds:  r.entity_ids ? (JSON.parse(r.entity_ids) as string[]) : [],
+    importance: r.importance ?? 0.5,
+    createdAt:  r.created_at,
+    updatedAt:  r.updated_at,
   };
 }
 
@@ -112,6 +114,24 @@ export class FableStore {
     this.db.pragma("foreign_keys = ON");
     this._migrateIfNeeded();
     this._initSchema();
+    this._ensureColumns();
+  }
+
+  // Additive column upgrades — safe on any schema version. CREATE TABLE IF NOT
+  // EXISTS never alters existing tables, so new columns must be added here.
+  private _ensureColumns(): void {
+    const addCol = (table: string, col: string, ddl: string) => {
+      const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+      if (cols.length > 0 && !cols.some((c) => c.name === col)) {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+      }
+    };
+    // Importance: how much a memory matters to the story — the retrieval sort
+    // key. Distinct from confidence (how sure the extractor is): "her sister is
+    // Elen" and "the bridge toll went up" can both be confidence 0.95 while
+    // differing enormously in importance.
+    addCol("facts",        "importance", "importance REAL NOT NULL DEFAULT 0.5");
+    addCol("memory_cards", "importance", "importance REAL NOT NULL DEFAULT 0.5");
   }
 
   // ── Migration: character-global memory → chat-scoped memory ───────────────
@@ -263,6 +283,7 @@ export class FableStore {
     objectId?:     string | null;
     objectLiteral?:string | null;
     confidence?:   number;
+    importance?:   number;
     knownTo?:      string[];
     tValidStart?:  number;
   }): number {
@@ -271,8 +292,8 @@ export class FableStore {
       `INSERT INTO facts
          (chat_id, subject_id, predicate, object_id, object_literal,
           t_valid_start, t_valid_end, t_ingested,
-          confidence, known_to, superseded_by)
-       VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL)`
+          confidence, importance, known_to, superseded_by)
+       VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL)`
     );
     const info = stmt.run(
       chatId,
@@ -283,6 +304,7 @@ export class FableStore {
       fact.tValidStart ?? t,
       t,
       fact.confidence ?? 1.0,
+      Math.max(0, Math.min(1, fact.importance ?? 0.5)),
       JSON.stringify(fact.knownTo ?? []),
     );
     return info.lastInsertRowid as number;
@@ -532,8 +554,8 @@ export class FableStore {
     const t = now();
     const info = this.db
       .prepare(
-        `INSERT INTO memory_cards (chat_id, title, content, tags, entity_ids, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO memory_cards (chat_id, title, content, tags, entity_ids, importance, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         chatId,
@@ -541,6 +563,7 @@ export class FableStore {
         card.content,
         JSON.stringify(card.tags ?? []),
         JSON.stringify(card.entityIds ?? []),
+        Math.max(0, Math.min(1, card.importance ?? 0.5)),
         t, t,
       );
     return info.lastInsertRowid as number;
@@ -553,6 +576,31 @@ export class FableStore {
       .map(rowToMemoryCard);
     if (!entityId) return rows;
     return rows.filter((c) => c.entityIds.includes(entityId));
+  }
+
+  /**
+   * Episodic memories to inject into the prompt: scene cards and reflections,
+   * ranked by importance with a recency tiebreak, optionally boosted by
+   * relevance to the current conversation.
+   */
+  retrieveEpisodesForPrompt(chatId: string, limit = 3, context = ""): DbMemoryCard[] {
+    const cards = this.listMemoryCards(chatId);
+    if (cards.length === 0) return [];
+    const contextWords = new Set(
+      context.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3)
+    );
+    const relevance = (c: DbMemoryCard): number => {
+      if (contextWords.size === 0) return 0;
+      const words = `${c.title} ${c.content}`.toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3);
+      if (words.length === 0) return 0;
+      return words.filter((w) => contextWords.has(w)).length / words.length;
+    };
+    return [...cards]
+      .sort((a, b) =>
+        (b.importance + relevance(b)) - (a.importance + relevance(a)) ||
+        b.createdAt - a.createdAt)
+      .slice(0, limit);
   }
 
   // ── Commitments ───────────────────────────────────────────────────────────
@@ -581,6 +629,21 @@ export class FableStore {
       .all(chatId, entityId)
       .map(rowToCommitment);
     return status ? rows.filter((c) => c.status === status) : rows;
+  }
+
+  /** Every commitment in the chat, either direction, newest first */
+  allCommitments(chatId: string, status?: CommitmentStatus): DbCommitment[] {
+    const rows = this.db
+      .prepare("SELECT * FROM commitments WHERE chat_id = ? ORDER BY created_at DESC")
+      .all(chatId)
+      .map(rowToCommitment);
+    return status ? rows.filter((c) => c.status === status) : rows;
+  }
+
+  updateCommitmentStatus(chatId: string, id: number, status: CommitmentStatus): void {
+    this.db
+      .prepare("UPDATE commitments SET status = ?, resolved_at = ? WHERE chat_id = ? AND id = ?")
+      .run(status, status === "active" ? null : now(), chatId, id);
   }
 
   // ── Character Summary ─────────────────────────────────────────────────────
@@ -972,11 +1035,11 @@ export class FableStore {
       }
       const srcCards = this.db.prepare("SELECT * FROM memory_cards WHERE chat_id = ?").all(fromChatId).map(rowToMemoryCard);
       const insCard = this.db.prepare(
-        `INSERT INTO memory_cards (chat_id, title, content, tags, entity_ids, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO memory_cards (chat_id, title, content, tags, entity_ids, importance, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       );
       for (const c of srcCards) {
-        insCard.run(toChatId, c.title, c.content, JSON.stringify(c.tags), JSON.stringify(c.entityIds), c.createdAt, c.updatedAt);
+        insCard.run(toChatId, c.title, c.content, JSON.stringify(c.tags), JSON.stringify(c.entityIds), c.importance, c.createdAt, c.updatedAt);
       }
 
       // Core memory — only if the target has none yet
@@ -1054,9 +1117,13 @@ export class FableStore {
       return words.filter((w) => contextWords.has(w)).length / words.length;
     };
 
-    // Durable first, then relevance, then confidence, then recency
+    // Importance first (with the durable-predicate heuristic as a floor, so a
+    // model that under-scores kinship/fear/promise facts can't age them out),
+    // then relevance to the current exchange, then confidence, then recency.
+    const importanceOf = (f: DbFact): number =>
+      Math.max(f.importance, isDurableFact(f.predicate) ? 0.75 : 0);
     const rank = (a: DbFact, b: DbFact) =>
-      (Number(isDurableFact(b.predicate)) - Number(isDurableFact(a.predicate))) ||
+      (importanceOf(b) - importanceOf(a)) ||
       (relevanceOf(b) - relevanceOf(a)) ||
       (b.confidence - a.confidence) ||
       (b.tValidStart - a.tValidStart);

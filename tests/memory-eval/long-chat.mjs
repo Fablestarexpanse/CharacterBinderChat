@@ -224,7 +224,7 @@ function describeVAD(v, a, d) {
 const signedPct = (v) =>
   v - 50 > 20 ? "high" : v - 50 > 5 ? "above avg" : v - 50 < -20 ? "low" : v - 50 < -5 ? "below avg" : "neutral";
 
-function buildSystemPrompt(cm, knownFacts, { withMemory = true } = {}) {
+function buildSystemPrompt(cm, knownFacts, { withMemory = true, episodes = [], insights = [] } = {}) {
   const s = [
     `You are ${CHARACTER_NAME}. Stay in character throughout the entire conversation.`,
     CHARACTER.description,
@@ -249,8 +249,11 @@ function buildSystemPrompt(cm, knownFacts, { withMemory = true } = {}) {
     }
     s.push(block.join("\n"));
     if (knownFacts?.length) s.push(`[Known Facts]\n${knownFacts.map((f) => `  - ${f}`).join("\n")}`);
+    if (episodes.length) s.push(`[Memorable Scenes]\n${episodes.map((e) => `  - ${e}`).join("\n")}`);
+    if (insights.length) s.push(`[What You Have Come To Understand]\n${insights.map((i) => `  - ${i}`).join("\n")}`);
   }
-  s.push("Write in first person. Be immersive and emotionally consistent with your current mood and relationship state. Do not break character or refer to yourself as an AI.");
+  s.push("Write in first person. Be immersive and emotionally consistent with your current mood and relationship state. Do not break character or refer to yourself as an AI.\n" +
+    "Your memory above is what you actually know. If asked about something not in your memory or this conversation, say you don't know or don't remember — do not invent specifics such as names, events, or promises.");
   return s.join("\n\n");
 }
 
@@ -323,7 +326,9 @@ async function main() {
       const mem = await fetchMemory(recent);
       const cm = mem.coreMemory ?? null;
       const knownFacts = mem.knownFacts ?? [];
-      const system = buildSystemPrompt(cm, knownFacts);
+      const system = buildSystemPrompt(cm, knownFacts, {
+        episodes: mem.episodes ?? [], insights: mem.insights ?? [],
+      });
 
       const reply = await chat([{ role: "system", content: system }, ...history], {
         temperature: 0.85, maxTokens: 320,
@@ -344,6 +349,12 @@ async function main() {
       await fetch(`${API}/api/chat/core-memory/refresh`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       }).then((r) => r.json()).catch(() => null);
+      if (turn % 8 === 0) {
+        await fetch(`${API}/api/drawer/episode`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...body, mode: turn % 24 === 0 ? "reflect" : "episode" }),
+        }).then((r) => r.json()).catch(() => null);
+      }
 
       // ── Metrics ────────────────────────────────────────────────────────────
       const after = await fetchMemory(recent);

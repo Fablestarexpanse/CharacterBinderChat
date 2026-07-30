@@ -118,6 +118,8 @@ function queryApi(db) {
       const row = db.prepare("SELECT * FROM core_memory WHERE character_id = ?").get(characterId); // chat_id implicit: one chat per scenario DB
       return row ? { ...row, data: JSON.parse(row.data) } : null;
     },
+    commitments: (promisorId) =>
+      db.prepare("SELECT * FROM commitments WHERE promisor_id = ? ORDER BY id").all(promisorId),
     /** Entities whose normalized names collide — the duplicate-drift signal */
     duplicateClusters: () => {
       const groups = new Map();
@@ -182,7 +184,12 @@ async function runScenario(scenario, model, cfg, db) {
   // Some scenarios need an intermediate reading before a second act
   if (scenario.followUp) {
     // character -> player is the canonical direction
-    ctx.snapshots.push({ stats: q.stats(scenario.characterId, "player") });
+    const cmSnap = q.coreMemory(scenario.characterId);
+    ctx.snapshots.push({
+      stats: q.stats(scenario.characterId, "player"),
+      commitments: q.commitments("player").concat(q.commitments(scenario.characterId)),
+      coreCommitments: cmSnap?.data?.active_commitments ?? [],
+    });
     await runBatches(scenario, scenario.followUp.batches, model, cfg, metrics);
   }
 

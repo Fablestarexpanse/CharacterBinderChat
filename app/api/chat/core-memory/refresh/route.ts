@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
       characterId:      string;
       characterName:    string;
       personaName?:     string;
+      characterAnchor?: string;
       // Accept either field name: direct callers send recentMessages,
       // triggerExtraction() sends the shared extractionBody which uses messages.
       recentMessages?:  Array<{ role: string; content: string }>;
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
     };
 
     const {
-      chatId, characterId, characterName, personaName,
+      chatId, characterId, characterName, personaName, characterAnchor,
       providerType, providerBaseUrl, modelId, apiKey,
     } = body;
 
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest) {
       characterId,
       characterName: characterName ?? characterId,
       personaName,
+      characterAnchor,
       recentMessages,
       providerType,
       providerBaseUrl,

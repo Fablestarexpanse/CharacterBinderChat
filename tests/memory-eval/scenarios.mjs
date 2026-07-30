@@ -260,6 +260,51 @@ export const SCENARIOS = [
   },
 
   {
+    id: "commitment-capture",
+    what: "Promises are captured as commitments, surfaced to the character, and resolved",
+    why: "The commitments table sat empty for the app's whole life; the longitudinal soak proved a planted deadline was never captured anywhere. Promises are what players most expect to be held onto.",
+    characterId: "eval-brann",
+    characterName: "Brann",
+    personaName: "Kira",
+    batches: [
+      [
+        u("If you get me across the ford by nightfall, I'll pay you double. You have my word."),
+        a("*spits in palm, offers hand* Double by nightfall. I'll hold you to that, Kira."),
+      ],
+    ],
+    followUp: {
+      batches: [
+        [
+          u("Here — double, as promised. Count it if you like."),
+          a("*weighs the purse without opening it* Paid in full, like you said. That's worth remembering."),
+        ],
+      ],
+    },
+    check(q, ctx) {
+      // Kira made the promise, so it's filed under the player entity
+      const commits = q.commitments("player");
+      const afterFirst = ctx.snapshots[0]?.commitments ?? [];
+      return [
+        {
+          name: "the promise was captured as a commitment",
+          pass: afterFirst.length >= 1,
+          detail: `${afterFirst.length} commitment(s) after act 1: ${afterFirst.map((c) => c.description).join(" | ") || "none"}`,
+        },
+        {
+          name: "active commitments reached Core Memory",
+          pass: afterFirst.length === 0 || (ctx.snapshots[0]?.coreCommitments ?? []).length > 0,
+          detail: JSON.stringify(ctx.snapshots[0]?.coreCommitments ?? []),
+        },
+        {
+          name: "keeping the promise resolved it",
+          pass: commits.some((c) => c.status === "fulfilled"),
+          detail: commits.map((c) => `${c.status}: ${c.description}`).join(" | ") || "no commitments",
+        },
+      ];
+    },
+  },
+
+  {
     id: "core-memory-rewrite",
     what: "The Drawer 1 rewrite produces usable, bounded state",
     why: "narrative_summary is instructed to accumulate with no cap and is injected into every prompt. Unbounded growth is a slow-burn context leak; empty output means the whole drawer is dead weight.",

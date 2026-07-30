@@ -3,6 +3,7 @@
 import { useFableStore, type InspectorTab } from "@/lib/store";
 import { CharacterTab } from "./CharacterTab";
 import { MemoryTab } from "./MemoryTab";
+import { GraphTab } from "./GraphTab";
 import { SummaryTab } from "./SummaryTab";
 import { LoreTab } from "./LoreTab";
 import { ImageStudioTab } from "./ImageStudioTab";
@@ -13,6 +14,7 @@ const TABS: { id: InspectorTab; label: string }[] = [
   { id: "character",    label: "Character" },
   { id: "core-memory",  label: "Core Mem" },
   { id: "memory",       label: "Memory" },
+  { id: "graph",        label: "Web" },
   { id: "summary",      label: "Summary" },
   { id: "lore",         label: "Lore" },
   { id: "image-studio", label: "Image Studio" },
@@ -43,11 +45,12 @@ export function InspectorPanel() {
         ))}
       </div>
 
-      {/* Tab content */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Tab content — the graph manages its own height, others scroll */}
+      <div className={cn("flex-1", inspectorTab === "graph" ? "min-h-0" : "overflow-y-auto")}>
         {inspectorTab === "character"    && <CharacterTab />}
         {inspectorTab === "core-memory"  && <CoreMemoryTab />}
         {inspectorTab === "memory"       && <MemoryTab />}
+        {inspectorTab === "graph"        && <GraphTab />}
         {inspectorTab === "summary"      && <SummaryTab />}
         {inspectorTab === "lore"         && <LoreTab />}
         {inspectorTab === "image-studio" && <ImageStudioTab />}

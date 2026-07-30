@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS facts (
   t_valid_end    INTEGER,
   t_ingested     INTEGER NOT NULL,
   confidence     REAL    NOT NULL DEFAULT 1.0 CHECK(confidence >= 0.0 AND confidence <= 1.0),
+  importance     REAL    NOT NULL DEFAULT 0.5,
   known_to       TEXT    NOT NULL DEFAULT '[]',
   superseded_by  INTEGER REFERENCES facts(id),
   FOREIGN KEY (chat_id, subject_id) REFERENCES entities(chat_id, id),
@@ -58,6 +59,7 @@ CREATE TABLE IF NOT EXISTS memory_cards (
   content    TEXT    NOT NULL,
   tags       TEXT    NOT NULL DEFAULT '[]',
   entity_ids TEXT    NOT NULL DEFAULT '[]',
+  importance REAL    NOT NULL DEFAULT 0.5,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );

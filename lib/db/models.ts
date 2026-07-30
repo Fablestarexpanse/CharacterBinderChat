@@ -36,7 +36,8 @@ export interface DbFact {
   tValidStart:   number;         // story-time start (Unix ms)
   tValidEnd:     number | null;  // story-time end (null = still valid)
   tIngested:     number;         // wall-clock when recorded
-  confidence:    number;         // 0.0–1.0
+  confidence:    number;         // 0.0–1.0 — how sure the extractor is
+  importance:    number;         // 0.0–1.0 — how much it matters (retrieval sort key)
   knownTo:       string[];       // entity IDs who know this fact
   supersededBy:  number | null;  // FK to replacement fact
 }
@@ -56,13 +57,14 @@ export interface DbRelationshipStat {
 // ─── Memory Card ──────────────────────────────────────────────────────────────
 
 export interface DbMemoryCard {
-  id:        number;
-  title:     string;
-  content:   string;
-  tags:      string[];
-  entityIds: string[];
-  createdAt: number;
-  updatedAt: number;
+  id:         number;
+  title:      string;
+  content:    string;
+  tags:       string[];   // ["episode"] for scene cards, ["reflection"] for insights
+  entityIds:  string[];
+  importance: number;     // 0.0–1.0 emotional/story weight
+  createdAt:  number;
+  updatedAt:  number;
 }
 
 // ─── Commitment ───────────────────────────────────────────────────────────────

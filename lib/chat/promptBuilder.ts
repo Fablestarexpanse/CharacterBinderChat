@@ -85,7 +85,9 @@ export function buildSystemPrompt(
   character?:  Character | null,
   coreMemory?: CoreMemory | null,
   knownFacts?: string[],
-  persona?:    Persona | null
+  persona?:    Persona | null,
+  episodes?:   string[],
+  insights?:   string[]
 ): string {
   if (!character) return "You are a helpful assistant.";
 
@@ -120,15 +122,29 @@ export function buildSystemPrompt(
   }
 
   // ── Known Facts (Drawer 2 retrieval) ─────────────────────────────────────
-  const facts = knownFacts?.slice(0, 12) ?? [];
+  const facts = knownFacts?.slice(0, 20) ?? [];
   if (facts.length > 0) {
     const factLines = facts.map((f) => `  - ${f}`).join("\n");
     sections.push(`[Known Facts]\n${factLines}`);
   }
 
+  // ── Episodic memory: scenes remembered as events ─────────────────────────
+  if (episodes && episodes.length > 0) {
+    sections.push(`[Memorable Scenes]\n${episodes.map((e) => `  - ${e}`).join("\n")}`);
+  }
+
+  // ── Reflective insights: patterns the character has come to understand ───
+  if (insights && insights.length > 0) {
+    sections.push(`[What You Have Come To Understand]\n${insights.map((i) => `  - ${i}`).join("\n")}`);
+  }
+
   // ── Instructions ──────────────────────────────────────────────────────────
+  // The anti-confabulation line exists because absence of a memory otherwise
+  // reads as licence to invent one — observed as a fabricated fear ("afraid of
+  // cages") and an invented shared history in the long-run soaks.
   sections.push(
-    `Write in first person. Be immersive and emotionally consistent with your current mood and relationship state. Do not break character or refer to yourself as an AI.`
+    `Write in first person. Be immersive and emotionally consistent with your current mood and relationship state. Do not break character or refer to yourself as an AI.\n` +
+    `Your memory above is what you actually know. If asked about something not in your memory or this conversation, say you don't know or don't remember — do not invent specifics such as names, events, or promises.`
   );
 
   return sections.join("\n\n");

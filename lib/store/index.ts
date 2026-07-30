@@ -32,7 +32,7 @@ export type SidebarSection =
 
 // ─── Inspector Panel ──────────────────────────────────────────────────────────
 
-export type InspectorTab = "character" | "memory" | "summary" | "lore" | "image-studio" | "core-memory";
+export type InspectorTab = "character" | "memory" | "graph" | "summary" | "lore" | "image-studio" | "core-memory";
 
 // ─── Default Image Settings ───────────────────────────────────────────────────
 

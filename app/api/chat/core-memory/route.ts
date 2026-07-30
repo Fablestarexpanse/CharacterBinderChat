@@ -25,7 +25,17 @@ export async function GET(req: NextRequest) {
     const cm         = ensureCoreMemory(chatId, characterId, characterName);
     const store      = getStore();
     const knownFacts = store.retrieveFactsForPrompt(chatId, characterId, 20, context);
-    return Response.json({ ok: true, coreMemory: cm.data, version: cm.version, updatedAt: cm.updatedAt, knownFacts });
+    // Episodic layer: scenes remembered as events, and reflective insights.
+    // Kept separate from facts because they read differently in the prompt.
+    const cards    = store.retrieveEpisodesForPrompt(chatId, 5, context);
+    const episodes = cards.filter((c) => c.tags.includes("episode"))
+      .slice(0, 3).map((c) => `${c.title} — ${c.content}`);
+    const insights = cards.filter((c) => c.tags.includes("reflection"))
+      .slice(0, 2).map((c) => c.content);
+    return Response.json({
+      ok: true, coreMemory: cm.data, version: cm.version, updatedAt: cm.updatedAt,
+      knownFacts, episodes, insights,
+    });
   } catch (err) {
     console.error("[core-memory GET]", err);
     return Response.json({ error: String(err) }, { status: 500 });

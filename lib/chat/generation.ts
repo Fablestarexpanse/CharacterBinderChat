@@ -41,7 +41,9 @@ function instantiateProvider(
 
 interface CoreMemoryResponse {
   coreMemory: CoreMemory | null;
-  knownFacts:  string[];
+  knownFacts: string[];
+  episodes:   string[];
+  insights:   string[];
 }
 
 async function fetchCoreMemory(
@@ -58,14 +60,18 @@ async function fetchCoreMemory(
       `/api/chat/core-memory?chatId=${encodeURIComponent(chatId)}&characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}${ctxParam}`,
       { cache: "no-store" }
     );
-    if (!res.ok) return { coreMemory: null, knownFacts: [] };
-    const data = (await res.json()) as { ok: boolean; coreMemory: CoreMemory; knownFacts?: string[] };
+    if (!res.ok) return { coreMemory: null, knownFacts: [], episodes: [], insights: [] };
+    const data = (await res.json()) as {
+      ok: boolean; coreMemory: CoreMemory; knownFacts?: string[]; episodes?: string[]; insights?: string[];
+    };
     return {
       coreMemory: data.ok ? data.coreMemory : null,
-      knownFacts:  data.knownFacts ?? [],
+      knownFacts: data.knownFacts ?? [],
+      episodes:   data.episodes ?? [],
+      insights:   data.insights ?? [],
     };
   } catch {
-    return { coreMemory: null, knownFacts: [] };
+    return { coreMemory: null, knownFacts: [], episodes: [], insights: [] };
   }
 }
 
@@ -94,13 +100,13 @@ export async function generateAssistantReply(chatId: string): Promise<void> {
   // ── Fetch Core Memory (Drawer 1) + Drawer 2 known facts ──────────────────
   // The last few turns act as the relevance signal for fact retrieval
   const recentText = chat.messages.slice(-3).map((m) => m.content).join(" ");
-  const { coreMemory, knownFacts } = character
+  const { coreMemory, knownFacts, episodes, insights } = character
     ? await fetchCoreMemory(chatId, character.id, character.name, recentText)
-    : { coreMemory: null, knownFacts: [] };
+    : { coreMemory: null, knownFacts: [], episodes: [], insights: [] };
 
   // ── Build message history within the model's token budget ────────────────
   const persona = store.personas.find((p) => p.id === store.activePersonaId) ?? null;
-  const systemPrompt = buildSystemPrompt(character, coreMemory, knownFacts, persona);
+  const systemPrompt = buildSystemPrompt(character, coreMemory, knownFacts, persona, episodes, insights);
   const fullHistory: Array<{ role: MessageRole; content: string }> = chat.messages
     .filter((m) => m.content.trim().length > 0 && !m.imageJobId)
     .map((m) => ({ role: m.role as MessageRole, content: m.content }));
@@ -212,6 +218,8 @@ function triggerExtraction(chatId: string): void {
     characterId:     character.id,
     characterName:   character.name,
     personaName:     persona?.name,
+    // Drift anchor for the persona rewrite
+    characterAnchor: [character.description, character.personality].filter(Boolean).join(" "),
     providerType,
     providerBaseUrl: baseUrl,
     modelId,
@@ -240,12 +248,34 @@ function triggerExtraction(chatId: string): void {
         return `${label}: ${e instanceof Error ? e.message : String(e)}`;
       });
 
-  Promise.all([
+  // Episodic cadence: a scene card every ~8 exchanges, a reflection every ~24.
+  // Derived from message count so it needs no separate bookkeeping.
+  const exchanges = Math.floor(chat.messages.filter((m) => m.role === "assistant").length);
+  const calls: Array<Promise<string | null>> = [
     post("/api/drawer/extract",           "extraction"),
     post("/api/chat/core-memory/refresh", "core memory"),
-  ])
-    .then(([extractErr, refreshErr]) => {
-      setLastExtractionError(extractErr ?? refreshErr ?? null);
+  ];
+  if (exchanges > 0 && exchanges % 8 === 0) {
+    calls.push(post("/api/drawer/episode", "episode"));
+  }
+  if (exchanges > 0 && exchanges % 24 === 0) {
+    calls.push(
+      fetch("/api/drawer/episode", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ ...extractionBody, mode: "reflect" }),
+      })
+        .then(async (res) => {
+          const data = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+          return !res.ok || data?.ok === false ? `reflection: ${data?.error ?? res.status}` : null;
+        })
+        .catch((e) => `reflection: ${e instanceof Error ? e.message : String(e)}`)
+    );
+  }
+
+  Promise.all(calls)
+    .then((errors) => {
+      setLastExtractionError(errors.find((e) => e !== null) ?? null);
       bumpExtraction();
     })
     .finally(() => setIsExtracting(false));

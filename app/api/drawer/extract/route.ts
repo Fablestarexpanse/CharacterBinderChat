@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { normPredicate, predicateFamily, isSingleValued } from "@/lib/db/predicates";
 import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
-import { ensureCoreMemory, syncStatsToCore } from "@/lib/chat/coreMemoryStore";
+import { ensureCoreMemory, syncStatsToCore, syncCommitmentsToCore } from "@/lib/chat/coreMemoryStore";
 import type { EntityType, StatName } from "@/lib/db/models";
 
 export const dynamic = "force-dynamic";
@@ -52,12 +52,31 @@ Return ONLY valid JSON. No markdown, no explanation, just the JSON object.
     { "id": "snake_case_id", "type": "character|place|object|faction|concept", "name": "Display Name", "description": "Brief description" }
   ],
   "facts": [
-    { "subject": "entity_id", "predicate": "lives_at", "object": "entity_id or literal string", "confidence": 0.9 }
+    { "subject": "entity_id", "predicate": "lives_at", "object": "entity_id or literal string", "confidence": 0.9, "importance": 0.8 }
   ],
   "stat_changes": [
     { "observer": "entity_id", "target": "entity_id", "stat": "affection|trust|desire|connection|mood", "delta": 5 }
+  ],
+  "commitments": [
+    { "promisor": "entity_id", "promisee": "entity_id", "description": "what was promised, concretely, with any deadline" }
+  ],
+  "resolved_commitments": [
+    { "match": "distinctive words from the earlier promise", "status": "fulfilled|broken" }
   ]
 }
+
+IMPORTANCE (0.0-1.0) — how much this fact matters to the story and relationship,
+independent of how certain it is:
+- 0.8-1.0: identity, kinship, fears, promises, betrayals, deaths, debts
+- 0.4-0.7: occupations, homes, standing relationships, significant possessions
+- 0.1-0.3: scenery, passing objects, small talk detail
+Do NOT create entities for incidental props, weather, or abstractions
+(cobblestones, darkness, a coin pouch). An entity must be something the story
+could return to.
+
+COMMITMENTS — capture promises, oaths, debts and deadlines as commitments, not
+just facts. When a conversation shows an earlier promise being kept or broken,
+emit a resolved_commitments entry instead of a new commitment.
 
 PREDICATE VOCABULARY — for these relationship kinds you MUST use the exact predicate
 shown, never a synonym:
@@ -104,8 +123,10 @@ ${conversation}`;
 
 interface RawExtraction {
   entities:    Array<{ id: string; type: string; name: string; description?: string }>;
-  facts:       Array<{ subject: string; predicate: string; object: string; confidence?: number }>;
+  facts:       Array<{ subject: string; predicate: string; object: string; confidence?: number; importance?: number }>;
   stat_changes:Array<{ observer: string; target: string; stat: string; delta: number }>;
+  commitments?: Array<{ promisor: string; promisee?: string; description: string }>;
+  resolved_commitments?: Array<{ match: string; status: string }>;
 }
 
 // ─── Entity identity resolution ───────────────────────────────────────────────
@@ -330,6 +351,7 @@ export async function POST(req: NextRequest) {
         objectId:      objectEntity ? f.object : null,
         objectLiteral: objectEntity ? null : f.object,
         confidence:    f.confidence ?? 0.85,
+        importance:    typeof f.importance === "number" ? f.importance : 0.5,
       });
       writtenFacts.push(newFactId);
 
@@ -358,18 +380,60 @@ export async function POST(req: NextRequest) {
       writtenStats.push(`${sc.observer}->${sc.target}:${sc.stat}(${sc.delta > 0 ? "+" : ""}${sc.delta})`);
     }
 
+    // ── Write commitments ─────────────────────────────────────────────────
+    // Promises are what players most expect a character to hold onto; the
+    // commitments table sat empty until the longitudinal soak proved a planted
+    // deadline was never captured anywhere.
+
+    const writtenCommitments: string[] = [];
+    for (const rawC of extracted.commitments ?? []) {
+      if (!rawC.promisor || !rawC.description?.trim()) continue;
+      const promisor = resolver.resolve(rawC.promisor);
+      const promisee = rawC.promisee ? resolver.resolve(rawC.promisee) : undefined;
+      store.ensureEntity(chatId, promisor, "character", promisor);
+      if (promisee) store.ensureEntity(chatId, promisee, "character", promisee);
+
+      // Dedup on near-identical description among active commitments
+      const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+      const dup = store.allCommitments(chatId, "active")
+        .some((c) => norm(c.description) === norm(rawC.description));
+      if (dup) continue;
+
+      store.insertCommitment(chatId, promisor, rawC.description.trim(), promisee);
+      writtenCommitments.push(rawC.description.trim());
+    }
+
+    for (const res of extracted.resolved_commitments ?? []) {
+      if (!res.match?.trim() || !["fulfilled", "broken"].includes(res.status)) continue;
+      const words = res.match.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+      if (words.length === 0) continue;
+      // Best overlap match among active commitments
+      const active = store.allCommitments(chatId, "active");
+      let best: { id: number; score: number } | null = null;
+      for (const c of active) {
+        const desc = c.description.toLowerCase();
+        const score = words.filter((w) => desc.includes(w)).length / words.length;
+        if (score >= 0.5 && (!best || score > best.score)) best = { id: c.id, score };
+      }
+      if (best) {
+        store.updateCommitmentStatus(chatId, best.id, res.status as "fulfilled" | "broken");
+      }
+    }
+
     // ── Mirror Drawer-2 stats into the Core Memory Block (Drawer 1) ────────
     // Without this, relationship_with_user stays at its 50-neutral defaults
     // and buildSystemPrompt never emits the [Relationship with User] line.
     // Run unconditionally so pre-existing stat drift is backfilled too.
     ensureCoreMemory(chatId, characterId, characterName ?? characterId);
     syncStatsToCore(chatId, characterId);
+    syncCommitmentsToCore(chatId, characterId, personaName ?? "the user");
 
     return Response.json({
-      ok:       true,
-      entities: writtenEntities,
-      facts:    writtenFacts,
-      stats:    writtenStats,
+      ok:          true,
+      entities:    writtenEntities,
+      facts:       writtenFacts,
+      stats:       writtenStats,
+      commitments: writtenCommitments,
       // Which model-minted ids were folded onto existing entities. A large or
       // growing list means the prompt's identity anchoring is losing.
       remapped: resolver.remapped.map(([from, to]) => `${from}->${to}`),
