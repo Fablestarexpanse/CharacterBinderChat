@@ -4,10 +4,13 @@ import { useEffect, useState } from "react";
 import { useFableStore } from "@/lib/store";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { OllamaProvider } from "@/lib/providers/ollama";
 import { LMStudioProvider } from "@/lib/providers/lmstudio";
 import { OpenRouterProvider } from "@/lib/providers/openrouter";
-import type { ModelInfo } from "@/lib/types";
+import { regenerateLastReply } from "@/lib/chat/generation";
+import type { ModelInfo, ProviderId } from "@/lib/types";
 import {
   PanelRightOpen,
   PanelRightClose,
@@ -44,6 +47,8 @@ export function ChatHeader() {
     activeChatId, chats, characters,
     inspectorOpen, setInspectorOpen,
     setChatModel, providerSettings, providerStatuses,
+    clearChat, isGenerating,
+    customModels, addCustomModel,
   } = useFableStore();
 
   const chat      = chats.find((c) => c.id === activeChatId);
@@ -51,8 +56,17 @@ export function ChatHeader() {
 
   const [models,        setModels]        = useState<ModelInfo[]>(FALLBACK_MODELS);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [confirmClear,  setConfirmClear]  = useState(false);
+
+  // Custom model entry
+  const [customOpen,     setCustomOpen]     = useState(false);
+  const [customId,       setCustomId]       = useState("");
+  const [customProvider, setCustomProvider] = useState<ProviderId>("openrouter");
 
   // ── Fetch real model lists whenever providers change ──────────────────────
+
+  // Flattened so the deps array holds a plain string (statically checkable)
+  const providerConnectivity = providerStatuses.map((p) => `${p.id}:${p.connected}`).join(",");
 
   useEffect(() => {
     let cancelled = false;
@@ -64,7 +78,7 @@ export function ChatHeader() {
         new OllamaProvider(providerSettings.ollama.baseUrl).listModels().catch(() => [] as ModelInfo[]),
         new LMStudioProvider(providerSettings.lmstudio.baseUrl).listModels().catch(() => [] as ModelInfo[]),
         providerSettings.openrouter.apiKey
-          ? new OpenRouterProvider(providerSettings.openrouter.apiKey).listModels().then((ms) => ms.slice(0, 30)).catch(() => [] as ModelInfo[])
+          ? new OpenRouterProvider(providerSettings.openrouter.apiKey).listModels().catch(() => [] as ModelInfo[])
           : Promise.resolve([] as ModelInfo[]),
       ]);
 
@@ -77,14 +91,12 @@ export function ChatHeader() {
 
     fetchAll();
     return () => { cancelled = true; };
-    // Re-fetch whenever settings or connection status changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Re-fetch whenever settings change or a provider comes online
   }, [
     providerSettings.ollama.baseUrl,
     providerSettings.lmstudio.baseUrl,
     providerSettings.openrouter.apiKey,
-    // Trigger when a provider comes online
-    providerStatuses.map((p) => `${p.id}:${p.connected}`).join(","),
+    providerConnectivity,
   ]);
 
   if (!chat) return null;
@@ -93,18 +105,49 @@ export function ChatHeader() {
     ? Math.round(((chat.contextUsed ?? 0) / chat.contextMax) * 100)
     : 0;
 
-  const currentModel = chat.modelId ?? models[0]?.id ?? "";
+  // Custom models the user typed in, plus whatever the providers reported. If
+  // the chat's saved model isn't in either list (e.g. set before a provider
+  // went offline), surface it so the selector still shows the truth.
+  const knownModels: ModelInfo[] = [...customModels, ...models];
+  const savedModelMissing =
+    !!chat.modelId && !knownModels.some((m) => m.id === chat.modelId);
+  const allModels: ModelInfo[] = savedModelMissing
+    ? [
+        { id: chat.modelId!, name: chat.modelId!, providerId: (chat.providerId ?? "ollama") as ProviderId },
+        ...knownModels,
+      ]
+    : knownModels;
+
+  const currentModel = chat.modelId ?? allModels[0]?.id ?? "";
+
+  const CUSTOM_SENTINEL = "__custom__";
 
   const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const modelId  = e.target.value;
-    const model    = models.find((m) => m.id === modelId);
+    const modelId = e.target.value;
+    if (modelId === CUSTOM_SENTINEL) {
+      setCustomId("");
+      setCustomOpen(true);
+      return;
+    }
+    const model = allModels.find((m) => m.id === modelId);
+    // Only fall back to ollama for genuinely unknown ids; a known model always
+    // carries its own provider, so cloud models can't get routed locally.
     const provider = model?.providerId ?? "ollama";
     setChatModel(chat.id, modelId, provider);
   };
 
+  const handleCustomSave = () => {
+    const id = customId.trim();
+    if (!id) return;
+    addCustomModel({ id, name: id, providerId: customProvider });
+    setChatModel(chat.id, id, customProvider);
+    setCustomOpen(false);
+    setCustomId("");
+  };
+
   // Group models by provider for <optgroup>
   const grouped = Object.entries(
-    models.reduce<Record<string, ModelInfo[]>>((acc, m) => {
+    allModels.reduce<Record<string, ModelInfo[]>>((acc, m) => {
       const key = m.providerId ?? "other";
       (acc[key] ??= []).push(m);
       return acc;
@@ -151,6 +194,7 @@ export function ChatHeader() {
                 ))}
               </optgroup>
             ))}
+            <option value={CUSTOM_SENTINEL}>＋ Custom model ID…</option>
           </select>
         </div>
 
@@ -171,10 +215,31 @@ export function ChatHeader() {
         <Button variant="ghost" size="icon" title="Chat settings">
           <Settings2 className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" title="Regenerate last message">
+        <Button
+          variant="ghost"
+          size="icon"
+          title="Regenerate last message"
+          disabled={isGenerating || chat.messages.length === 0}
+          onClick={() => regenerateLastReply(chat.id)}
+        >
           <RefreshCw className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" title="Clear chat">
+        <Button
+          variant="ghost"
+          size="icon"
+          className={confirmClear ? "text-red-500 hover:bg-red-50" : ""}
+          title={confirmClear ? "Click again to clear all messages" : "Clear chat"}
+          disabled={isGenerating || chat.messages.length === 0}
+          onClick={() => {
+            if (confirmClear) {
+              clearChat(chat.id);
+              setConfirmClear(false);
+            } else {
+              setConfirmClear(true);
+              setTimeout(() => setConfirmClear(false), 3000);
+            }
+          }}
+        >
           <Trash2 className="h-4 w-4" />
         </Button>
         <div className="h-4 w-px bg-[var(--border)] mx-1" />
@@ -191,6 +256,71 @@ export function ChatHeader() {
           )}
         </Button>
       </div>
+
+      {/* Custom model ID dialog */}
+      <Dialog open={customOpen} onOpenChange={setCustomOpen}>
+        <DialogContent className="max-w-md" aria-describedby={undefined}>
+          <div className="border-b border-[var(--border)] px-5 py-4">
+            <DialogTitle>Use a custom model</DialogTitle>
+          </div>
+
+          <div className="space-y-4 px-5 py-4">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[var(--foreground)]">Model ID</label>
+              <Input
+                autoFocus
+                value={customId}
+                onChange={(e) => setCustomId(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleCustomSave(); }}
+                placeholder="deepseek/deepseek-chat"
+                className="font-mono text-xs"
+              />
+              <p className="text-[11px] text-[var(--muted-fg)]">
+                Exactly as the provider names it. OpenRouter uses{" "}
+                <code className="bg-[var(--muted)] px-1 rounded">vendor/model</code> slugs — copy
+                the ID from{" "}
+                <a
+                  href="https://openrouter.ai/models"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[var(--purple-fg)] underline"
+                >
+                  openrouter.ai/models
+                </a>
+                . Ollama uses{" "}
+                <code className="bg-[var(--muted)] px-1 rounded">name:tag</code>.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[var(--foreground)]">Provider</label>
+              <select
+                value={customProvider}
+                onChange={(e) => setCustomProvider(e.target.value as ProviderId)}
+                className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--purple)]"
+              >
+                <option value="openrouter">OpenRouter</option>
+                <option value="ollama">Ollama</option>
+                <option value="lmstudio">LM Studio</option>
+              </select>
+              {customProvider === "openrouter" && !providerSettings.openrouter.apiKey && (
+                <p className="text-[11px] text-amber-600">
+                  No OpenRouter API key set — add one in Settings or the request will fail.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 border-t border-[var(--border)] px-5 py-3">
+            <Button variant="outline" size="sm" onClick={() => setCustomOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="purple" size="sm" onClick={handleCustomSave} disabled={!customId.trim()}>
+              Use model
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

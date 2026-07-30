@@ -44,7 +44,9 @@ export function syncStatsToCore(characterId: string): void {
 
   for (const [statName, row] of Object.entries(stats)) {
     if (row) {
-      (rel as Record<string, number>)[statName] = Math.round(row.value);
+      // Drawer 2 stats live on −100..100; Core Memory's relationship block
+      // uses 0..100 with 50 as neutral. Rescale so e.g. trust +42 → 71.
+      (rel as Record<string, number>)[statName] = Math.round((row.value + 100) / 2);
     }
   }
 

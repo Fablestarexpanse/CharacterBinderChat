@@ -129,8 +129,14 @@ export class FableStore {
     for (const sql of statements) {
       try {
         this.db.exec(sql + ";");
-      } catch {
-        // Ignore "already exists" errors from indexes etc.
+      } catch (err) {
+        // "already exists" is expected on re-init; anything else is a real
+        // schema failure that must not be swallowed silently.
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!/already exists/i.test(msg)) {
+          console.error("[FableStore] schema statement failed:", msg, "\nSQL:", sql.slice(0, 120));
+          throw err;
+        }
       }
     }
   }
@@ -363,11 +369,8 @@ export class FableStore {
    * timestamp, so recently-updated stats decay less than stale ones.
    *
    * new_value = old_value × (1 − decay_rate)^(rowDays / 7)
-   *
-   * The `_daysElapsed` parameter is retained for API compatibility but is
-   * no longer used — per-row elapsed time is always computed from last_updated.
    */
-  applyDecay(_daysElapsed?: number): Array<{
+  applyDecay(): Array<{
     observerId: string;
     targetId:   string;
     statName:   string;
@@ -635,6 +638,71 @@ export class FableStore {
     return this.getCoreMemory(characterId)!;
   }
 
+  // ── App State (characters / chats / messages persistence) ─────────────────
+  // Durable mirror of the client store. Objects are stored as JSON blobs;
+  // `seq` preserves array order. Full-replace semantics: the client sends its
+  // complete state and the transaction rewrites the mirror atomically.
+
+  getAppState(): { characters: unknown[]; chats: unknown[]; personas: unknown[] } {
+    const characters = (this.db
+      .prepare("SELECT data FROM app_characters ORDER BY seq")
+      .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
+
+    const personas = (this.db
+      .prepare("SELECT data FROM app_personas ORDER BY seq")
+      .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
+
+    const chatRows = this.db
+      .prepare("SELECT id, data FROM app_chats ORDER BY seq")
+      .all() as Array<{ id: string; data: string }>;
+    const msgStmt = this.db.prepare(
+      "SELECT data FROM app_messages WHERE chat_id = ? ORDER BY seq"
+    );
+
+    const chats = chatRows.map((row) => ({
+      ...(JSON.parse(row.data) as Record<string, unknown>),
+      messages: (msgStmt.all(row.id) as Array<{ data: string }>).map((m) => JSON.parse(m.data)),
+    }));
+
+    return { characters, chats, personas };
+  }
+
+  replaceAppState(
+    characters: Array<{ id: string }>,
+    chats:      Array<{ id: string; messages?: Array<{ id: string }> }>,
+    personas:   Array<{ id: string }> = []
+  ): void {
+    const tx = this.db.transaction(() => {
+      this.db.prepare("DELETE FROM app_characters").run();
+      this.db.prepare("DELETE FROM app_chats").run();
+      this.db.prepare("DELETE FROM app_messages").run();
+      this.db.prepare("DELETE FROM app_personas").run();
+
+      const insChar = this.db.prepare(
+        "INSERT OR REPLACE INTO app_characters (id, seq, data) VALUES (?, ?, ?)"
+      );
+      characters.forEach((c, i) => insChar.run(c.id, i, JSON.stringify(c)));
+
+      const insPersona = this.db.prepare(
+        "INSERT OR REPLACE INTO app_personas (id, seq, data) VALUES (?, ?, ?)"
+      );
+      personas.forEach((p, i) => insPersona.run(p.id, i, JSON.stringify(p)));
+
+      const insChat = this.db.prepare(
+        "INSERT OR REPLACE INTO app_chats (id, seq, data) VALUES (?, ?, ?)"
+      );
+      const insMsg = this.db.prepare(
+        "INSERT OR REPLACE INTO app_messages (id, chat_id, seq, data) VALUES (?, ?, ?, ?)"
+      );
+      chats.forEach((chat, i) => {
+        const { messages = [], ...meta } = chat;
+        insChat.run(chat.id, i, JSON.stringify(meta));
+        messages.forEach((m, j) => insMsg.run(m.id, chat.id, j, JSON.stringify(m)));
+      });
+    });
+    tx();
+  }
+
   // ── Export ────────────────────────────────────────────────────────────────
 
   exportJson(): {
@@ -699,10 +767,9 @@ export class FableStore {
     if (entityIds.size > 0) {
       const ids          = Array.from(entityIds);
       const placeholders = ids.map(() => "?").join(",");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const fetched = this.db
         .prepare(`SELECT * FROM entities WHERE id IN (${placeholders})`)
-        .all(...ids) as any[];
+        .all(...ids) as Array<{ id: string }>;
       for (const row of fetched) entityMap.set(row.id, rowToEntity(row));
     }
 

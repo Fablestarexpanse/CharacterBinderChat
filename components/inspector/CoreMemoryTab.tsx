@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useFableStore } from "@/lib/store";
 import { Brain, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -90,45 +90,64 @@ export function CoreMemoryTab() {
   const chat      = chats.find((c) => c.id === activeChatId);
   const character = characters.find((c) => c.id === chat?.characterId);
 
-  const [cm,          setCm]          = useState<CoreMemory | null>(null);
-  const [loading,     setLoading]     = useState(false);
-  const [refreshing,  setRefreshing]  = useState(false);
-  const [error,       setError]       = useState<string | null>(null);
-  const [version,     setVersion]     = useState<number | null>(null);
-  const [updatedAt,   setUpdatedAt]   = useState<number | null>(null);
+  // Result keyed by what was fetched; `loading` is derived so the effect
+  // never calls setState synchronously. relAge is computed at fetch time
+  // (Date.now() is impure during render). `refreshTick` re-fetches after an
+  // LLM rewrite.
+  interface MemoryResult {
+    key:     string;
+    cm:      CoreMemory | null;
+    version: number | null;
+    relAge:  string | null;
+    error:   string | null;
+  }
+  const [refreshTick,  setRefreshTick]  = useState(0);
+  const [result,       setResult]       = useState<MemoryResult | null>(null);
+  const [refreshing,   setRefreshing]   = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
-  const fetchMemory = useCallback(async () => {
-    if (!character) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res  = await fetch(
-        `/api/chat/core-memory?characterId=${encodeURIComponent(character.id)}&name=${encodeURIComponent(character.name)}`
-      );
-      const data = await res.json() as {
-        ok: boolean; coreMemory: CoreMemory; version: number; updatedAt: number;
-      };
-      if (data.ok) {
-        setCm(data.coreMemory);
-        setVersion(data.version);
-        setUpdatedAt(data.updatedAt);
-      } else {
-        setError("Failed to load core memory");
-      }
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [character]);
+  const characterId   = character?.id;
+  const characterName = character?.name;
+  const fetchKey      = `${characterId}:${extractionVersion}:${refreshTick}`;
 
   useEffect(() => {
-    fetchMemory();
-  }, [fetchMemory, extractionVersion]);
+    if (!characterId || !characterName) return;
+    let cancelled = false;
+    const key = `${characterId}:${extractionVersion}:${refreshTick}`;
+    (async () => {
+      try {
+        const res  = await fetch(
+          `/api/chat/core-memory?characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}`
+        );
+        const data = await res.json() as {
+          ok: boolean; coreMemory: CoreMemory; version: number; updatedAt: number;
+        };
+        if (cancelled) return;
+        if (data.ok) {
+          const relAge = data.updatedAt
+            ? Math.round((Date.now() / 1000 - data.updatedAt) / 60) + "m ago"
+            : null;
+          setResult({ key, cm: data.coreMemory, version: data.version, relAge, error: null });
+        } else {
+          setResult({ key, cm: null, version: null, relAge: null, error: "Failed to load core memory" });
+        }
+      } catch (e) {
+        if (!cancelled) setResult({ key, cm: null, version: null, relAge: null, error: String(e) });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [characterId, characterName, extractionVersion, refreshTick]);
+
+  const loading = !!characterId && result?.key !== fetchKey;
+  const cm      = result?.cm ?? null;
+  const version = result?.version ?? null;
+  const relAge  = result?.relAge ?? null;
+  const error   = refreshError ?? result?.error ?? null;
 
   const handleRefresh = async () => {
     if (!character || !chat) return;
     setRefreshing(true);
+    setRefreshError(null);
 
     const providerType =
       chat.providerId === "lmstudio"    ? "lmstudio"
@@ -153,9 +172,9 @@ export function CoreMemoryTab() {
           apiKey:          providerType === "openrouter" ? providerSettings.openrouter.apiKey : undefined,
         }),
       });
-      await fetchMemory();
+      setRefreshTick((t) => t + 1); // re-fetch the rewritten memory
     } catch (e) {
-      setError(String(e));
+      setRefreshError(String(e));
     } finally {
       setRefreshing(false);
     }
@@ -168,10 +187,6 @@ export function CoreMemoryTab() {
       </div>
     );
   }
-
-  const relAge = updatedAt
-    ? Math.round((Date.now() / 1000 - updatedAt) / 60) + "m ago"
-    : null;
 
   return (
     <div className="p-3 space-y-3">

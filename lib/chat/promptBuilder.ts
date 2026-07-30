@@ -3,7 +3,7 @@
 // The enriched prompt replaces the simple `buildSystemPrompt(character)` used
 // in ChatInput.tsx for bare character-only chats.
 
-import type { Character } from "@/lib/types";
+import type { Character, Persona } from "@/lib/types";
 import type { CoreMemory } from "@/lib/db/models";
 
 // ─── Token estimation ─────────────────────────────────────────────────────────
@@ -84,7 +84,8 @@ export function formatCoreMemoryBlock(cm: CoreMemory): string {
 export function buildSystemPrompt(
   character?:  Character | null,
   coreMemory?: CoreMemory | null,
-  knownFacts?: string[]
+  knownFacts?: string[],
+  persona?:    Persona | null
 ): string {
   if (!character) return "You are a helpful assistant.";
 
@@ -96,6 +97,14 @@ export function buildSystemPrompt(
   if (character.description) sections.push(character.description);
   if (character.personality)  sections.push(`Personality: ${character.personality}`);
   if (character.scenario)     sections.push(`Current scenario: ${character.scenario}`);
+
+  // ── User Persona ──────────────────────────────────────────────────────────
+  if (persona) {
+    const personaLines = [`The user is roleplaying as ${persona.name}.`];
+    if (persona.description.trim()) personaLines.push(`About ${persona.name}: ${persona.description.trim()}`);
+    personaLines.push(`Address and refer to the user as ${persona.name}, not "user".`);
+    sections.push(`[User Persona]\n${personaLines.join("\n")}`);
+  }
 
   // ── Core Memory Block (Drawer 1) ──────────────────────────────────────────
   if (coreMemory) {

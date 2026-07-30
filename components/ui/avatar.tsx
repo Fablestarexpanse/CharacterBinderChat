@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { cn, getInitials } from "@/lib/utils";
 
 interface AvatarProps {
@@ -16,21 +19,26 @@ const sizeMap = {
 
 export function Avatar({ name, src, size = "md", className }: AvatarProps) {
   const sizeClass = sizeMap[size];
-  if (src) {
+  // A missing image falls back to initials rather than collapsing to blank
+  // space — character cards often reference avatars that aren't present.
+  const [failed, setFailed] = useState(false);
+
+  if (src && !failed) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={src}
         alt={name}
         className={cn("rounded-full object-cover flex-shrink-0", sizeClass, className)}
-        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+        onError={() => setFailed(true)}
       />
     );
   }
+
   return (
     <div
       className={cn(
-        "rounded-full bg-[var(--purple-light)] text-[var(--purple-fg)] font-semibold flex items-center justify-center flex-shrink-0",
+        "rounded-full bg-[var(--purple-light)] text-[var(--purple-fg)] font-semibold flex items-center justify-center flex-shrink-0 select-none",
         sizeClass,
         className
       )}

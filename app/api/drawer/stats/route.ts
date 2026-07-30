@@ -47,7 +47,17 @@ export async function POST(req: NextRequest) {
     if (!observer || !target || !stat) {
       return Response.json({ error: "observer, target and stat required" }, { status: 400 });
     }
+    // Validate here rather than letting the CHECK constraint turn a typo
+    // into an opaque SQL 500
+    if (!STAT_NAMES.includes(stat)) {
+      return Response.json(
+        { error: `stat must be one of: ${STAT_NAMES.join(", ")}` },
+        { status: 400 }
+      );
+    }
     const store = getStore();
+    store.ensureEntity(observer, "character", observer);
+    store.ensureEntity(target,   "character", target);
     let updated;
     if (typeof body.delta === "number") {
       updated = store.deltaStat(observer, target, stat, body.delta);

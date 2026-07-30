@@ -15,6 +15,17 @@ export interface Character {
   updatedAt: string;
 }
 
+/** The user's identity in the roleplay — like a Character, but for the player */
+export interface Persona {
+  id: string;
+  name: string;
+  avatar?: string;
+  /** Who the user is in the story — appearance, role, backstory */
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Message {
   id: string;
   chatId: string;
@@ -169,6 +180,7 @@ export interface ChatProvider {
   streamChat(
     messages: Array<{ role: MessageRole; content: string }>,
     modelId: string,
-    settings?: Partial<ChatSettings>
+    settings?: Partial<ChatSettings>,
+    signal?: AbortSignal
   ): AsyncIterable<string>;
 }

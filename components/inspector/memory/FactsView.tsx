@@ -22,24 +22,32 @@ interface Props {
 }
 
 export function FactsView({ characterId, extractionVersion, isExtracting }: Props) {
-  const [facts,       setFacts]       = useState<EnrichedFact[]>([]);
-  const [loading,     setLoading]     = useState(false);
-  const [error,       setError]       = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  // Result keyed by what was fetched; `loading` is derived so the effect
+  // never calls setState synchronously (react-hooks/set-state-in-effect).
+  const [result, setResult] = useState<{ key: string; facts: EnrichedFact[]; error: string | null } | null>(null);
+
+  const fetchKey = `${characterId}:${extractionVersion}:${showHistory ? 1 : 0}`;
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
+    let cancelled = false;
+    const key = `${characterId}:${extractionVersion}:${showHistory ? 1 : 0}`;
     const url = `/api/drawer/facts?subject=${encodeURIComponent(characterId)}${showHistory ? "&includeSuperseded=1" : ""}`;
     fetch(url)
       .then((r) => r.json())
       .then((data: { facts?: EnrichedFact[]; error?: string }) => {
         if (data.error) throw new Error(data.error);
-        setFacts(data.facts ?? []);
+        if (!cancelled) setResult({ key, facts: data.facts ?? [], error: null });
       })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
+      .catch((e: Error) => {
+        if (!cancelled) setResult({ key, facts: [], error: e.message });
+      });
+    return () => { cancelled = true; };
   }, [characterId, extractionVersion, showHistory]);
+
+  const loading = result?.key !== fetchKey;
+  const facts   = result?.facts ?? [];
+  const error   = result?.error ?? null;
 
   // Separate live from superseded for the history view
   const liveFacts       = facts.filter((f) => f.tValidEnd === null);

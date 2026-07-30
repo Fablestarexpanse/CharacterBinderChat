@@ -1,7 +1,7 @@
 "use client";
 
 import { useFableStore } from "@/lib/store";
-import { Pin, Brain, RefreshCw } from "lucide-react";
+import { Pin, Brain } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
@@ -24,7 +24,7 @@ interface PinnedMemory {
 }
 
 export function MemoryTab() {
-  const { activeChatId, chats, characters, extractionVersion, isExtracting, memories } =
+  const { activeChatId, chats, characters, extractionVersion, isExtracting, memories, lastExtractionError } =
     useFableStore();
 
   const chat      = chats.find((c) => c.id === activeChatId);
@@ -86,6 +86,13 @@ export function MemoryTab() {
             )}
           </div>
         </div>
+
+        {/* Last extraction failure — otherwise a broken pipeline is invisible */}
+        {lastExtractionError && (
+          <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[10px] text-red-600">
+            Last memory update failed — {lastExtractionError}
+          </div>
+        )}
 
         {/* Segmented control */}
         <div className="flex rounded-lg border border-[var(--border)] overflow-hidden mb-3 bg-[var(--muted)]">

@@ -6,6 +6,8 @@ import { ChatArea } from "@/components/chat/ChatArea";
 import { InspectorPanel } from "@/components/inspector/InspectorPanel";
 import { SettingsView } from "@/components/sections/SettingsView";
 import { CharactersView } from "@/components/sections/CharactersView";
+import { CharacterEditorDialog } from "@/components/characters/CharacterEditorDialog";
+import { StateSync } from "@/components/StateSync";
 import { PlaceholderView } from "@/components/sections/PlaceholderView";
 import {
   Group,
@@ -82,6 +84,12 @@ export default function Home() {
 
         {showInspector && <InspectorPanel />}
       </main>
+
+      {/* Global — openable from CharactersView and the inspector */}
+      <CharacterEditorDialog />
+
+      {/* Hydrates from SQLite on load, then mirrors edits back (debounced) */}
+      <StateSync />
     </div>
   );
 }

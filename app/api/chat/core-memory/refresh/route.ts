@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json() as {
       characterId:      string;
       characterName:    string;
+      personaName?:     string;
       // Accept either field name: direct callers send recentMessages,
       // triggerExtraction() sends the shared extractionBody which uses messages.
       recentMessages?:  Array<{ role: string; content: string }>;
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
     };
 
     const {
-      characterId, characterName,
+      characterId, characterName, personaName,
       providerType, providerBaseUrl, modelId, apiKey,
     } = body;
 
@@ -51,6 +52,7 @@ export async function POST(req: NextRequest) {
     const result = await rewriteCoreMemory({
       characterId,
       characterName: characterName ?? characterId,
+      personaName,
       recentMessages,
       providerType,
       providerBaseUrl,

@@ -28,7 +28,7 @@ interface ProviderCardProps {
   helpText?:   React.ReactNode;
 }
 
-function ProviderCard({ id, name, description, children, onTest, helpText }: ProviderCardProps) {
+function ProviderCard({ name, description, children, onTest, helpText }: ProviderCardProps) {
   const [testing, setTesting]       = useState(false);
   const [result,  setResult]        = useState<TestResult | null>(null);
   const [expanded, setExpanded]     = useState(false);
@@ -283,13 +283,35 @@ export function SettingsView() {
           </div>
         </ProviderCard>
 
+        {/* Data */}
+        <Card>
+          <CardHeader>
+            <div className="font-semibold text-sm">Your Data</div>
+            <div className="text-xs text-[var(--muted-fg)]">
+              Chats, characters and the memory graph live in <code className="bg-[var(--muted)] px-1 rounded">data/fablestore.db</code>
+            </div>
+          </CardHeader>
+          <CardBody>
+            <a
+              href="/api/state?download=1"
+              download
+              className="inline-flex items-center h-7 px-3 text-xs font-medium rounded-lg border border-[var(--border)] hover:bg-[var(--muted)] text-[var(--foreground)] transition-colors"
+            >
+              Export chats &amp; characters (JSON)
+            </a>
+            <p className="text-xs text-[var(--muted-fg)] mt-2">
+              Chats sync to the database automatically a moment after each change.
+            </p>
+          </CardBody>
+        </Card>
+
         {/* About */}
         <Card>
           <CardBody>
             <div className="text-xs text-[var(--muted-fg)] space-y-1">
               <div className="font-semibold text-[var(--foreground)]">FableChat v0.1.0</div>
               <div>Local-first AI roleplay studio.</div>
-              <div>Settings are stored in your browser&apos;s localStorage.</div>
+              <div>Provider settings are stored in your browser&apos;s localStorage.</div>
             </div>
           </CardBody>
         </Card>

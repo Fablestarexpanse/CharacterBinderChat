@@ -8,6 +8,8 @@ import type {
   Memory,
   ImageJob,
   ImageGenerationSettings,
+  ModelInfo,
+  Persona,
   ProviderSettings,
   ProviderStatus,
   ProviderId,
@@ -53,6 +55,14 @@ const defaultImageSettings: ImageGenerationSettings = {
 };
 
 // ─── Placeholder Data ─────────────────────────────────────────────────────────
+// Timestamps are FIXED, not Date.now()-derived. These objects are evaluated at
+// module load, which happens once on the server and again in the browser — any
+// clock-derived value differs between the two and makes React throw away the
+// hydrated tree. Real chats get real timestamps at creation time.
+
+const SEED_EPOCH = "2026-06-06T00:00:00.000Z";
+const seedTime = (msOffset: number) =>
+  new Date(Date.parse(SEED_EPOCH) + msOffset).toISOString();
 
 const PLACEHOLDER_CHARACTERS: Character[] = [
   {
@@ -63,8 +73,8 @@ const PLACEHOLDER_CHARACTERS: Character[] = [
     personality: "Sarcastic, loyal, world-weary but optimistic underneath the cynicism.",
     tags: ["cyberpunk", "mercenary", "male", "action"],
     avatar: "/avatars/ronan.png",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: seedTime(0),
+    updatedAt: seedTime(0),
   },
   {
     id: "char-fen",
@@ -74,8 +84,8 @@ const PLACEHOLDER_CHARACTERS: Character[] = [
     personality: "Introspective, brilliant, cautious. Speaks sparingly but precisely.",
     tags: ["cyberpunk", "hacker", "female", "mystery"],
     avatar: "/avatars/fen.png",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: seedTime(0),
+    updatedAt: seedTime(0),
   },
 ];
 
@@ -87,7 +97,7 @@ const PLACEHOLDER_MESSAGES: Message[] = [
     content:
       "The rain hammers the corrugated roof above us. I lean against the wall of the safehouse, arms crossed, watching you with that half-lidded expression I've perfected over a decade of bad deals.\n\n\"You're late,\" I say. Not an accusation — just a statement of fact. \"The shuttle to the upper levels leaves in forty minutes. You want to tell me what kept you, or do we move?\"",
     characterId: "char-ronan",
-    timestamp: new Date(Date.now() - 600000).toISOString(),
+    timestamp: seedTime(-600000),
   },
   {
     id: "msg-2",
@@ -95,7 +105,7 @@ const PLACEHOLDER_MESSAGES: Message[] = [
     role: "user",
     content:
       "Sorry — the checkpoint at Sector 7 was locked down. Corporate security sweep. I had to go three levels underground to get around it.",
-    timestamp: new Date(Date.now() - 480000).toISOString(),
+    timestamp: seedTime(-480000),
   },
   {
     id: "msg-3",
@@ -104,7 +114,7 @@ const PLACEHOLDER_MESSAGES: Message[] = [
     content:
       "A low exhale. I push off the wall and move to the window, peering through a crack in the boards at the alley below.\n\n\"Sector 7.\" My jaw tightens. \"That's Kaspar's territory. If they were running a sweep, it means someone's been talking.\" I turn back, eyes sharp. \"Anyone follow you down here?\"",
     characterId: "char-ronan",
-    timestamp: new Date(Date.now() - 360000).toISOString(),
+    timestamp: seedTime(-360000),
   },
 ];
 
@@ -116,8 +126,8 @@ const PLACEHOLDER_CHATS: Chat[] = [
     modelId: "llama3.2:latest",
     providerId: "ollama",
     messages: PLACEHOLDER_MESSAGES,
-    createdAt: new Date(Date.now() - 86400000).toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: seedTime(-86400000),
+    updatedAt: seedTime(0),
     contextUsed: 2847,
     contextMax: 8192,
   },
@@ -128,8 +138,8 @@ const PLACEHOLDER_CHATS: Chat[] = [
     modelId: "mistral:latest",
     providerId: "ollama",
     messages: [],
-    createdAt: new Date(Date.now() - 172800000).toISOString(),
-    updatedAt: new Date(Date.now() - 172800000).toISOString(),
+    createdAt: seedTime(-172800000),
+    updatedAt: seedTime(-172800000),
     contextUsed: 512,
     contextMax: 8192,
   },
@@ -142,7 +152,7 @@ const PLACEHOLDER_MEMORIES: Memory[] = [
     content: "The player character is a courier working freelance jobs in the lower city.",
     pinned: true,
     type: "manual",
-    createdAt: new Date(Date.now() - 3600000).toISOString(),
+    createdAt: seedTime(-3600000),
   },
   {
     id: "mem-2",
@@ -150,7 +160,7 @@ const PLACEHOLDER_MEMORIES: Memory[] = [
     content: "Ronan distrusts corporate security forces, especially Kaspar Division.",
     pinned: true,
     type: "extracted",
-    createdAt: new Date(Date.now() - 1800000).toISOString(),
+    createdAt: seedTime(-1800000),
   },
   {
     id: "mem-3",
@@ -158,7 +168,7 @@ const PLACEHOLDER_MEMORIES: Memory[] = [
     content: "The safehouse is located in Sector 4, three levels underground.",
     pinned: false,
     type: "extracted",
-    createdAt: new Date(Date.now() - 900000).toISOString(),
+    createdAt: seedTime(-900000),
   },
 ];
 
@@ -171,7 +181,7 @@ const PLACEHOLDER_LORE: Lorebook = {
     { id: "le-2", lorebookId: "lb-1", key: "lower city", value: "The sprawling underground districts beneath the sky bridges, home to the majority of the city's population.", enabled: true, tokens: 30, priority: 5 },
     { id: "le-3", lorebookId: "lb-1", key: "netrunner", value: "A hacker capable of interfacing directly with the city's data grid using neural implants.", enabled: true, tokens: 22, priority: 5 },
   ],
-  createdAt: new Date().toISOString(),
+  createdAt: seedTime(0),
 };
 
 // ─── Store Shape ──────────────────────────────────────────────────────────────
@@ -189,18 +199,53 @@ interface FableStore {
 
   // Characters
   characters: Character[];
+  /** Create a character; returns the generated id (slug of the name) */
+  addCharacter: (data: Omit<Character, "id" | "createdAt" | "updatedAt">) => string;
+  updateCharacter: (id: string, updates: Partial<Omit<Character, "id" | "createdAt">>) => void;
+  deleteCharacter: (id: string) => void;
+
+  // Personas — the user's identity in the roleplay
+  personas: Persona[];
+  /** Which persona is active in chats (null = plain "User") */
+  activePersonaId: string | null;
+  setActivePersona: (id: string | null) => void;
+  addPersona: (data: Omit<Persona, "id" | "createdAt" | "updatedAt">) => string;
+  updatePersona: (id: string, updates: Partial<Omit<Persona, "id" | "createdAt">>) => void;
+  deletePersona: (id: string) => void;
+
+  // Character editor dialog (global — opened from CharactersView or the inspector)
+  characterEditorOpen: boolean;
+  /** id of the character being edited, or null when creating a new one */
+  characterEditorId: string | null;
+  /** Prefill values for create mode (e.g. from an imported character card) */
+  characterEditorDraft: Partial<Character> | null;
+  openCharacterEditor: (id?: string | null, draft?: Partial<Character> | null) => void;
+  closeCharacterEditor: () => void;
 
   // Chats
   chats: Chat[];
   activeChatId: string | null;
   setActiveChatId: (id: string | null) => void;
+  /** Replace characters + chats + personas with the durable SQLite copy (on app load) */
+  hydrateFromServer: (characters: Character[], chats: Chat[], personas: Persona[]) => void;
   /** Adds a message and returns its generated ID */
   addMessage: (chatId: string, message: Omit<Message, "id" | "timestamp">) => string;
   /** Stream partial assistant content into an existing message */
   updateMessageContent: (chatId: string, messageId: string, content: string) => void;
   /** Update which model / provider a chat uses */
   setChatModel: (chatId: string, modelId: string, providerId: string) => void;
+  /** Update the real token accounting shown by the header context meter */
+  setChatContext: (chatId: string, contextUsed: number, contextMax: number) => void;
   createChat: (characterId?: string) => string;
+  deleteChat: (chatId: string) => void;
+  renameChat: (chatId: string, name: string) => void;
+  /** Wipe messages (re-seeds the character's greeting if they have one) */
+  clearChat: (chatId: string) => void;
+  removeMessage: (chatId: string, messageId: string) => void;
+
+  // Generation (transient — one generation at a time)
+  isGenerating: boolean;
+  setIsGenerating: (v: boolean) => void;
 
   // Input
   inputValue: string;
@@ -221,6 +266,12 @@ interface FableStore {
   imageSettings: ImageGenerationSettings;
   setImageSettings: (s: Partial<ImageGenerationSettings>) => void;
 
+  // Custom model IDs the user typed in (e.g. an OpenRouter slug that isn't in
+  // the fetched catalogue). Merged into the model selector.
+  customModels: ModelInfo[];
+  addCustomModel: (model: ModelInfo) => void;
+  removeCustomModel: (id: string) => void;
+
   // Provider Settings
   providerSettings: ProviderSettings;
   setProviderSetting: <K extends keyof ProviderSettings>(
@@ -238,6 +289,9 @@ interface FableStore {
   bumpExtraction: () => void;
   isExtracting: boolean;
   setIsExtracting: (v: boolean) => void;
+  /** Error from the most recent extraction / core-memory refresh, or null */
+  lastExtractionError: string | null;
+  setLastExtractionError: (e: string | null) => void;
 }
 
 // ─── Store Implementation ─────────────────────────────────────────────────────
@@ -255,9 +309,95 @@ export const useFableStore = create<FableStore>()(
 
       characters: PLACEHOLDER_CHARACTERS,
 
+      addCharacter: (data) => {
+        // Readable slug id — doubles as the Drawer 2 entity id
+        const base =
+          data.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ||
+          "character";
+        const taken = (i: string) => get().characters.some((c) => c.id === i);
+        let id = `char-${base}`;
+        for (let n = 2; taken(id); n++) id = `char-${base}-${n}`;
+
+        const now = new Date().toISOString();
+        const character: Character = { ...data, id, createdAt: now, updatedAt: now };
+        set((s) => ({ characters: [...s.characters, character] }));
+        return id;
+      },
+
+      updateCharacter: (id, updates) => {
+        set((s) => ({
+          characters: s.characters.map((c) =>
+            c.id === id ? { ...c, ...updates, id, updatedAt: new Date().toISOString() } : c
+          ),
+        }));
+      },
+
+      deleteCharacter: (id) => {
+        set((s) => ({ characters: s.characters.filter((c) => c.id !== id) }));
+      },
+
+      personas: [],
+      activePersonaId: null,
+      setActivePersona: (id) => set({ activePersonaId: id }),
+
+      addPersona: (data) => {
+        const base =
+          data.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ||
+          "persona";
+        const taken = (i: string) => get().personas.some((p) => p.id === i);
+        let id = `persona-${base}`;
+        for (let n = 2; taken(id); n++) id = `persona-${base}-${n}`;
+
+        const now = new Date().toISOString();
+        const persona: Persona = { ...data, id, createdAt: now, updatedAt: now };
+        set((s) => ({
+          personas: [...s.personas, persona],
+          // First persona becomes active automatically
+          activePersonaId: s.activePersonaId ?? id,
+        }));
+        return id;
+      },
+
+      updatePersona: (id, updates) => {
+        set((s) => ({
+          personas: s.personas.map((p) =>
+            p.id === id ? { ...p, ...updates, id, updatedAt: new Date().toISOString() } : p
+          ),
+        }));
+      },
+
+      deletePersona: (id) => {
+        set((s) => ({
+          personas: s.personas.filter((p) => p.id !== id),
+          activePersonaId: s.activePersonaId === id ? null : s.activePersonaId,
+        }));
+      },
+
+      characterEditorOpen:  false,
+      characterEditorId:    null,
+      characterEditorDraft: null,
+      openCharacterEditor: (id = null, draft = null) =>
+        set({ characterEditorOpen: true, characterEditorId: id, characterEditorDraft: draft }),
+      closeCharacterEditor: () =>
+        set({ characterEditorOpen: false, characterEditorId: null, characterEditorDraft: null }),
+
       chats: PLACEHOLDER_CHATS,
       activeChatId: "chat-1",
       setActiveChatId: (id) => set({ activeChatId: id }),
+
+      hydrateFromServer: (characters, chats, personas) => {
+        set((s) => ({
+          characters,
+          chats,
+          personas,
+          activeChatId: chats.some((c) => c.id === s.activeChatId)
+            ? s.activeChatId
+            : chats[0]?.id ?? null,
+          activePersonaId: personas.some((p) => p.id === s.activePersonaId)
+            ? s.activePersonaId
+            : personas[0]?.id ?? null,
+        }));
+      },
 
       addMessage: (chatId, msg) => {
         const id = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -299,14 +439,36 @@ export const useFableStore = create<FableStore>()(
         }));
       },
 
+      setChatContext: (chatId, contextUsed, contextMax) => {
+        set((state) => ({
+          chats: state.chats.map((c) =>
+            c.id === chatId ? { ...c, contextUsed, contextMax } : c
+          ),
+        }));
+      },
+
       createChat: (characterId) => {
         const id = `chat-${Date.now()}`;
         const character = get().characters.find((c) => c.id === characterId);
+
+        // Seed with the character's greeting so the scene opens in-fiction
+        const messages: Message[] = [];
+        if (character?.firstMessage?.trim()) {
+          messages.push({
+            id:          `msg-${Date.now()}-first`,
+            chatId:      id,
+            role:        "assistant",
+            content:     character.firstMessage,
+            characterId: character.id,
+            timestamp:   new Date().toISOString(),
+          });
+        }
+
         const newChat: Chat = {
           id,
           name: character ? `Chat with ${character.name}` : "New Chat",
           characterId,
-          messages: [],
+          messages,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           contextUsed: 0,
@@ -315,6 +477,58 @@ export const useFableStore = create<FableStore>()(
         set((state) => ({ chats: [newChat, ...state.chats], activeChatId: id }));
         return id;
       },
+
+      deleteChat: (chatId) => {
+        set((state) => {
+          const chats = state.chats.filter((c) => c.id !== chatId);
+          return {
+            chats,
+            activeChatId:
+              state.activeChatId === chatId ? chats[0]?.id ?? null : state.activeChatId,
+          };
+        });
+      },
+
+      renameChat: (chatId, name) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        set((state) => ({
+          chats: state.chats.map((c) => (c.id === chatId ? { ...c, name: trimmed } : c)),
+        }));
+      },
+
+      clearChat: (chatId) => {
+        set((state) => ({
+          chats: state.chats.map((c) => {
+            if (c.id !== chatId) return c;
+            const character = state.characters.find((ch) => ch.id === c.characterId);
+            const messages: Message[] = character?.firstMessage?.trim()
+              ? [{
+                  id:          `msg-${Date.now()}-first`,
+                  chatId,
+                  role:        "assistant",
+                  content:     character.firstMessage,
+                  characterId: character.id,
+                  timestamp:   new Date().toISOString(),
+                }]
+              : [];
+            return { ...c, messages, contextUsed: 0, updatedAt: new Date().toISOString() };
+          }),
+        }));
+      },
+
+      removeMessage: (chatId, messageId) => {
+        set((state) => ({
+          chats: state.chats.map((c) =>
+            c.id === chatId
+              ? { ...c, messages: c.messages.filter((m) => m.id !== messageId) }
+              : c
+          ),
+        }));
+      },
+
+      isGenerating: false,
+      setIsGenerating: (v) => set({ isGenerating: v }),
 
       inputValue: "",
       setInputValue: (v) => set({ inputValue: v }),
@@ -330,6 +544,16 @@ export const useFableStore = create<FableStore>()(
       imageSettings: defaultImageSettings,
       setImageSettings: (s) =>
         set((state) => ({ imageSettings: { ...state.imageSettings, ...s } })),
+
+      customModels: [],
+      addCustomModel: (model) =>
+        set((s) => ({
+          customModels: s.customModels.some((m) => m.id === model.id)
+            ? s.customModels
+            : [...s.customModels, model],
+        })),
+      removeCustomModel: (id) =>
+        set((s) => ({ customModels: s.customModels.filter((m) => m.id !== id) })),
 
       providerSettings: {
         ollama: { baseUrl: "http://127.0.0.1:11434", enabled: true },
@@ -362,6 +586,8 @@ export const useFableStore = create<FableStore>()(
       bumpExtraction:    () => set((s) => ({ extractionVersion: s.extractionVersion + 1 })),
       isExtracting:      false,
       setIsExtracting:   (v) => set({ isExtracting: v }),
+      lastExtractionError:    null,
+      setLastExtractionError: (e) => set({ lastExtractionError: e }),
     }),
     {
       name: "fablechat-store",
@@ -370,6 +596,9 @@ export const useFableStore = create<FableStore>()(
         providerSettings: state.providerSettings,
         characters: state.characters,
         chats: state.chats,
+        personas: state.personas,
+        activePersonaId: state.activePersonaId,
+        customModels: state.customModels,
         lorebooks: state.lorebooks,
         imageJobs: state.imageJobs,
       }),

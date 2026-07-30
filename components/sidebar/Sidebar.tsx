@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { useFableStore, type SidebarSection } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { NavItem } from "./NavItem";
 import { SystemStatus } from "./SystemStatus";
+import { useHydrated } from "@/lib/hooks/useHydrated";
 import { truncate, formatRelative } from "@/lib/utils";
+import type { Chat, Character } from "@/lib/types";
 import {
   Users,
   MessageSquare,
@@ -19,6 +22,8 @@ import {
   Settings,
   Plus,
   Sparkles,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 
 const NAV_ITEMS: { id: SidebarSection; label: string; icon: React.ElementType }[] = [
@@ -35,7 +40,7 @@ const NAV_ITEMS: { id: SidebarSection; label: string; icon: React.ElementType }[
 ];
 
 export function Sidebar() {
-  const { activeSection, setActiveSection, chats, characters, activeChatId, setActiveChatId, createChat } =
+  const { activeSection, setActiveSection, chats, characters, activeChatId, createChat } =
     useFableStore();
 
   const recentChats = [...chats]
@@ -89,40 +94,135 @@ export function Sidebar() {
           Recent Chats
         </div>
         <div className="space-y-0.5">
-          {recentChats.map((chat) => {
-            const character = characters.find((c) => c.id === chat.characterId);
-            const lastMsg = chat.messages[chat.messages.length - 1];
-            const isActive = chat.id === activeChatId;
-            return (
-              <button
-                key={chat.id}
-                onClick={() => { setActiveChatId(chat.id); setActiveSection("chats"); }}
-                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-colors cursor-pointer ${
-                  isActive
-                    ? "bg-[var(--purple-light)] text-[var(--purple-fg)]"
-                    : "hover:bg-[var(--muted)] text-[var(--foreground)]"
-                }`}
-              >
-                <Avatar name={character?.name ?? chat.name} src={character?.avatar} size="xs" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium truncate">{chat.name}</div>
-                  {lastMsg && (
-                    <div className="text-[10px] text-[var(--muted-fg)] truncate">
-                      {truncate(lastMsg.content, 30)}
-                    </div>
-                  )}
-                </div>
-                <div className="text-[10px] text-[var(--muted-fg)] flex-shrink-0">
-                  {formatRelative(chat.updatedAt)}
-                </div>
-              </button>
-            );
-          })}
+          {recentChats.map((chat) => (
+            <ChatRow
+              key={chat.id}
+              chat={chat}
+              character={characters.find((c) => c.id === chat.characterId)}
+              isActive={chat.id === activeChatId}
+            />
+          ))}
         </div>
       </div>
 
       {/* System Status */}
       <SystemStatus />
     </aside>
+  );
+}
+
+// ─── Chat row ─────────────────────────────────────────────────────────────────
+// A div (not a button) so the hover rename/delete controls can nest inside.
+
+function ChatRow({
+  chat,
+  character,
+  isActive,
+}: {
+  chat: Chat;
+  character?: Character;
+  isActive: boolean;
+}) {
+  const { setActiveChatId, setActiveSection, renameChat, deleteChat } = useFableStore();
+
+  const [renaming,      setRenaming]      = useState(false);
+  const [draft,         setDraft]         = useState(chat.name);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Relative times depend on the current clock, so they can't be rendered
+  // during SSR without a hydration mismatch.
+  const hydrated = useHydrated();
+
+  const lastMsg = chat.messages[chat.messages.length - 1];
+
+  const commitRename = () => {
+    renameChat(chat.id, draft);
+    setRenaming(false);
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => { setActiveChatId(chat.id); setActiveSection("chats"); }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && !renaming) {
+          setActiveChatId(chat.id);
+          setActiveSection("chats");
+        }
+      }}
+      className={`group w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-colors cursor-pointer ${
+        isActive
+          ? "bg-[var(--purple-light)] text-[var(--purple-fg)]"
+          : "hover:bg-[var(--muted)] text-[var(--foreground)]"
+      }`}
+    >
+      <Avatar name={character?.name ?? chat.name} src={character?.avatar} size="xs" />
+
+      <div className="flex-1 min-w-0">
+        {renaming ? (
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitRename();
+              if (e.key === "Escape") { setDraft(chat.name); setRenaming(false); }
+            }}
+            className="w-full rounded border border-[var(--purple)] bg-white px-1 py-0.5 text-xs text-[var(--foreground)] focus:outline-none"
+          />
+        ) : (
+          <>
+            <div className="text-xs font-medium truncate">{chat.name}</div>
+            {lastMsg && (
+              <div className="text-[10px] text-[var(--muted-fg)] truncate">
+                {truncate(lastMsg.content, 30)}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {!renaming && (
+        <>
+          {/* Timestamp — swapped for actions on hover */}
+          <div className="text-[10px] text-[var(--muted-fg)] flex-shrink-0 group-hover:hidden">
+            {hydrated ? formatRelative(chat.updatedAt) : ""}
+          </div>
+          <div
+            className="hidden group-hover:flex items-center gap-0.5 flex-shrink-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              title="Rename chat"
+              onClick={() => { setDraft(chat.name); setRenaming(true); }}
+              className="rounded p-1 text-[var(--muted-fg)] hover:bg-[var(--border)] hover:text-[var(--foreground)] transition-colors"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+            <button
+              title={confirmDelete ? "Click again to delete" : "Delete chat"}
+              onClick={() => {
+                if (confirmDelete) {
+                  deleteChat(chat.id);
+                } else {
+                  setConfirmDelete(true);
+                  setTimeout(() => setConfirmDelete(false), 3000);
+                }
+              }}
+              className={`rounded p-1 transition-colors ${
+                confirmDelete
+                  ? "text-red-500 bg-red-50 hover:bg-red-100"
+                  : "text-[var(--muted-fg)] hover:bg-[var(--border)] hover:text-red-500"
+              }`}
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

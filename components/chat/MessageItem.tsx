@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useFableStore } from "@/lib/store";
+import { regenerateLastReply } from "@/lib/chat/generation";
 import { formatTime } from "@/lib/utils";
 import type { Message } from "@/lib/types";
 import {
@@ -36,7 +37,7 @@ function renderContent(content: string) {
 }
 
 export function MessageItem({ message }: MessageItemProps) {
-  const { characters } = useFableStore();
+  const { characters, chats, isGenerating } = useFableStore();
   const [copied, setCopied] = useState(false);
   const [liked, setLiked] = useState<"up" | "down" | null>(null);
 
@@ -44,6 +45,10 @@ export function MessageItem({ message }: MessageItemProps) {
   const character = characters.find((c) => c.id === message.characterId);
   const displayName = isUser ? "You" : character?.name ?? "Assistant";
   const avatarSrc = isUser ? undefined : character?.avatar;
+
+  // Regenerate only applies to the newest message in the chat
+  const chat = chats.find((c) => c.id === message.chatId);
+  const isLastMessage = chat?.messages[chat.messages.length - 1]?.id === message.id;
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(message.content);
@@ -99,8 +104,15 @@ export function MessageItem({ message }: MessageItemProps) {
           <Button variant="ghost" size="icon" className="h-6 w-6" title="Edit">
             <Pencil className="h-3 w-3" />
           </Button>
-          {!isUser && (
-            <Button variant="ghost" size="icon" className="h-6 w-6" title="Regenerate">
+          {!isUser && isLastMessage && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              title="Regenerate"
+              disabled={isGenerating}
+              onClick={() => regenerateLastReply(message.chatId)}
+            >
               <RefreshCw className="h-3 w-3" />
             </Button>
           )}

@@ -33,23 +33,31 @@ interface Props {
 }
 
 export function RelationshipsView({ characterId, extractionVersion }: Props) {
-  const [stats,   setStats]   = useState<StatRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState<string | null>(null);
+  // Single result object keyed by what was fetched; `loading` is derived so
+  // the effect never calls setState synchronously (react-hooks/set-state-in-effect).
+  const [result, setResult] = useState<{ key: string; stats: StatRow[]; error: string | null } | null>(null);
+
+  const fetchKey = `${characterId}:${extractionVersion}`;
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
+    let cancelled = false;
+    const key = `${characterId}:${extractionVersion}`;
     // Fetch player → character direction (the primary "how does the character feel about the user")
     fetch(`/api/drawer/stats?observer=player&target=${encodeURIComponent(characterId)}`)
       .then((r) => r.json())
       .then((data: { stats?: StatRow[]; error?: string }) => {
         if (data.error) throw new Error(data.error);
-        setStats(data.stats ?? []);
+        if (!cancelled) setResult({ key, stats: data.stats ?? [], error: null });
       })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
+      .catch((e: Error) => {
+        if (!cancelled) setResult({ key, stats: [], error: e.message });
+      });
+    return () => { cancelled = true; };
   }, [characterId, extractionVersion]);
+
+  const loading = result?.key !== fetchKey;
+  const stats   = result?.stats ?? [];
+  const error   = result?.error ?? null;
 
   if (loading) {
     return (
@@ -79,7 +87,9 @@ export function RelationshipsView({ characterId, extractionVersion }: Props) {
       {stats.map((s) => {
         const Icon  = STAT_ICONS[s.name] ?? Heart;
         const color = STAT_COLORS[s.name] ?? "#8b5cf6";
-        const pct   = s.value !== null ? Math.max(0, Math.min(100, s.value)) : 0;
+        // Stats are −100..100; map to 0..100% so negatives don't render empty
+        // (same mapping as CharacterTab / SummaryTab).
+        const pct   = s.value !== null ? Math.max(0, Math.min(100, ((s.value + 100) / 200) * 100)) : 0;
         return (
           <div key={s.name}>
             <div className="flex items-center justify-between mb-1">
@@ -94,7 +104,7 @@ export function RelationshipsView({ characterId, extractionVersion }: Props) {
               <div className="flex items-center gap-2">
                 {s.value !== null ? (
                   <span className="text-[10px] tabular-nums text-[var(--foreground)] font-medium">
-                    {Math.round(s.value)}
+                    {s.value >= 0 ? "+" : ""}{Math.round(s.value)}
                   </span>
                 ) : (
                   <span className="text-[10px] text-[var(--muted-fg)]">unset</span>

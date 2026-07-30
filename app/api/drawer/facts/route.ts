@@ -59,6 +59,18 @@ export async function POST(req: NextRequest) {
     if (!subjectId || !predicate) {
       return Response.json({ error: "subjectId and predicate are required" }, { status: 400 });
     }
+    if (confidence !== undefined && (typeof confidence !== "number" || confidence < 0 || confidence > 1)) {
+      return Response.json({ error: "confidence must be a number between 0 and 1" }, { status: 400 });
+    }
+    // The facts table has FK constraints on subject_id/object_id — surface a
+    // clear 400 instead of an opaque SQL 500.
+    store.ensureEntity(subjectId, "character", subjectId);
+    if (objectId && !store.getEntity(objectId)) {
+      return Response.json(
+        { error: `objectId "${objectId}" does not exist — create the entity first or pass objectLiteral` },
+        { status: 400 }
+      );
+    }
 
     const incomingNorm   = normPredicate(predicate);
     const isSingleValued = SINGLE_VALUED_PREDICATES.has(incomingNorm);
@@ -88,7 +100,7 @@ export async function POST(req: NextRequest) {
 
     const factId = store.insertFact({
       subjectId,
-      predicate,
+      predicate:     incomingNorm,
       objectId:      objectId      ?? null,
       objectLiteral: objectLiteral ?? null,
       confidence:    confidence    ?? 1.0,

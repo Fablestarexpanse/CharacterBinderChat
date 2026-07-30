@@ -53,28 +53,34 @@ export function SummaryTab() {
   const chat      = chats.find((c) => c.id === activeChatId);
   const character = characters.find((c) => c.id === chat?.characterId);
 
-  const [summary, setSummary]   = useState<CharacterSummaryData | null>(null);
-  const [loading, setLoading]   = useState(false);
-  const [error,   setError]     = useState<string | null>(null);
+  // Result keyed by what was fetched; `loading` is derived so the effect
+  // never calls setState synchronously. `refreshTick` powers the manual
+  // refresh button.
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [result, setResult] = useState<{ key: string; summary: CharacterSummaryData | null; error: string | null } | null>(null);
 
-  const fetchSummary = () => {
-    if (!character) return;
-    setLoading(true);
-    setError(null);
-    fetch(`/api/drawer/summary/${encodeURIComponent(character.id)}`)
+  const characterId = character?.id;
+  const fetchKey    = `${characterId}:${extractionVersion}:${refreshTick}`;
+
+  useEffect(() => {
+    if (!characterId) return;
+    let cancelled = false;
+    const key = `${characterId}:${extractionVersion}:${refreshTick}`;
+    fetch(`/api/drawer/summary/${encodeURIComponent(characterId)}`)
       .then((r) => r.json())
       .then((data: CharacterSummaryData & { error?: string }) => {
         if (data.error) throw new Error(data.error);
-        setSummary(data);
+        if (!cancelled) setResult({ key, summary: data, error: null });
       })
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false));
-  };
+      .catch((err: Error) => {
+        if (!cancelled) setResult({ key, summary: null, error: err.message });
+      });
+    return () => { cancelled = true; };
+  }, [characterId, extractionVersion, refreshTick]);
 
-  useEffect(() => {
-    fetchSummary();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [character?.id, extractionVersion]);
+  const loading = !!characterId && result?.key !== fetchKey;
+  const summary = result?.summary ?? null;
+  const error   = result?.error ?? null;
 
   // ── No character ──────────────────────────────────────────────────────────
 
@@ -97,7 +103,7 @@ export function SummaryTab() {
           </span>
         </div>
         <button
-          onClick={fetchSummary}
+          onClick={() => setRefreshTick((t) => t + 1)}
           disabled={loading}
           className="text-[var(--muted-fg)] hover:text-[var(--foreground)] disabled:opacity-40 transition-colors"
           title="Refresh summary"

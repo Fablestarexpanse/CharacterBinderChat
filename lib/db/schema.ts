@@ -72,4 +72,37 @@ CREATE TABLE IF NOT EXISTS core_memory (
   version      INTEGER NOT NULL DEFAULT 1,
   updated_at   INTEGER NOT NULL
 );
+
+-- ─── App State: characters / chats / messages ───────────────────────────────
+-- Durable mirror of the client store (chats used to live only in
+-- localStorage). Rows hold the full JSON of each object and seq preserves
+-- array order. Drawer 2 remains the queryable layer — these are storage.
+-- NOTE: never put a semicolon inside a comment — _initSchema splits on them.
+
+CREATE TABLE IF NOT EXISTS app_characters (
+  id   TEXT    PRIMARY KEY,
+  seq  INTEGER NOT NULL,
+  data TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS app_chats (
+  id   TEXT    PRIMARY KEY,
+  seq  INTEGER NOT NULL,
+  data TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS app_messages (
+  id      TEXT    PRIMARY KEY,
+  chat_id TEXT    NOT NULL,
+  seq     INTEGER NOT NULL,
+  data    TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS app_personas (
+  id   TEXT    PRIMARY KEY,
+  seq  INTEGER NOT NULL,
+  data TEXT    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_messages_chat ON app_messages(chat_id, seq);
 `;

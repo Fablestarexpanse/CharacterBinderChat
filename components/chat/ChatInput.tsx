@@ -1,83 +1,31 @@
 "use client";
 
-import { useRef, useState, useEffect, type KeyboardEvent } from "react";
+import { useRef, useEffect, type KeyboardEvent } from "react";
 import { useFableStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { ComfyUIProvider } from "@/lib/providers/comfyui";
-import { OllamaProvider } from "@/lib/providers/ollama";
-import { LMStudioProvider } from "@/lib/providers/lmstudio";
-import { OpenRouterProvider } from "@/lib/providers/openrouter";
-import { buildSystemPrompt } from "@/lib/chat/promptBuilder";
-import type { Character, ChatProvider, ProviderSettings, MessageRole } from "@/lib/types";
-import type { CoreMemory } from "@/lib/db/models";
+import { generateAssistantReply, stopGeneration } from "@/lib/chat/generation";
 import {
   Paperclip,
   ImageIcon,
   BookOpen,
   Wrench,
   Send,
+  Square,
   Wand2,
 } from "lucide-react";
 
-// ─── Provider factory ─────────────────────────────────────────────────────────
-
-function instantiateProvider(
-  providerId: string | undefined,
-  settings: ProviderSettings
-): ChatProvider | null {
-  switch (providerId) {
-    case "lmstudio":
-      return new LMStudioProvider(settings.lmstudio.baseUrl);
-    case "openrouter":
-      if (!settings.openrouter.apiKey) return null;
-      return new OpenRouterProvider(settings.openrouter.apiKey);
-    case "ollama":
-    default:
-      return new OllamaProvider(settings.ollama.baseUrl);
-  }
-}
-
-// ─── Core Memory fetcher ──────────────────────────────────────────────────────
-
-interface CoreMemoryResponse {
-  coreMemory: CoreMemory | null;
-  knownFacts:  string[];
-}
-
-async function fetchCoreMemory(
-  characterId:   string,
-  characterName: string
-): Promise<CoreMemoryResponse> {
-  try {
-    const res = await fetch(
-      `/api/chat/core-memory?characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}`,
-      { cache: "no-store" }
-    );
-    if (!res.ok) return { coreMemory: null, knownFacts: [] };
-    const data = (await res.json()) as { ok: boolean; coreMemory: CoreMemory; knownFacts?: string[] };
-    return {
-      coreMemory: data.ok ? data.coreMemory : null,
-      knownFacts:  data.knownFacts ?? [],
-    };
-  } catch {
-    return { coreMemory: null, knownFacts: [] };
-  }
-}
-
-// ─── Component ────────────────────────────────────────────────────────────────
-
 export function ChatInput() {
   const {
-    activeChatId, chats, characters,
+    activeChatId,
     inputValue, setInputValue,
-    addMessage, updateMessageContent,
+    addMessage,
     addImageJob, imageSettings,
     providerSettings,
-    bumpExtraction, setIsExtracting,
+    isGenerating,
   } = useFableStore();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
 
   // ── Lazy stat decay ────────────────────────────────────────────────────────
   // On the first render of this component (i.e. first session), compute how
@@ -98,10 +46,9 @@ export function ChatInput() {
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ days: daysElapsed }),
     }).catch((e) => console.warn("[decay]", e));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Core send handler ─────────────────────────────────────────────────────
+  // ── Send handler ──────────────────────────────────────────────────────────
 
   const handleSend = async () => {
     if (!inputValue.trim() || !activeChatId || isGenerating) return;
@@ -116,129 +63,8 @@ export function ChatInput() {
       return;
     }
 
-    // Add user message
     addMessage(activeChatId, { chatId: activeChatId, role: "user", content: userContent });
-
-    // ── Resolve provider + model ────────────────────────────────────────────
-    const chat      = chats.find((c) => c.id === activeChatId);
-    const character = characters.find((c) => c.id === chat?.characterId);
-    const providerId = chat?.providerId ?? "ollama";
-    const modelId    = chat?.modelId    ?? "llama3.2:latest";
-    const provider   = instantiateProvider(providerId, providerSettings);
-
-    // ── No provider / missing API key ───────────────────────────────────────
-    if (!provider) {
-      addMessage(activeChatId, {
-        chatId:  activeChatId,
-        role:    "assistant",
-        content: "⚠️ No provider available. Check Settings — make sure your provider is running and any required API key is set.",
-      });
-      return;
-    }
-
-    // ── Fetch Core Memory (Drawer 1) + Drawer 2 known facts ────────────────
-    const { coreMemory, knownFacts } = character
-      ? await fetchCoreMemory(character.id, character.name)
-      : { coreMemory: null, knownFacts: [] };
-
-    // ── Build message history ───────────────────────────────────────────────
-    const systemPrompt = buildSystemPrompt(character, coreMemory, knownFacts);
-    const history: Array<{ role: MessageRole; content: string }> = [
-      { role: "system", content: systemPrompt },
-      // Existing messages (skip image-only placeholders)
-      ...(chat?.messages
-        .filter((m) => m.content.trim().length > 0)
-        .map((m) => ({ role: m.role as MessageRole, content: m.content })) ?? []),
-      // The message we just sent
-      { role: "user", content: userContent },
-    ];
-
-    // ── Create placeholder assistant message ────────────────────────────────
-    setIsGenerating(true);
-    const assistantMsgId = addMessage(activeChatId, {
-      chatId:      activeChatId,
-      role:        "assistant",
-      content:     "",
-      characterId: character?.id,
-    });
-
-    // ── Stream tokens ───────────────────────────────────────────────────────
-    try {
-      let accumulated = "";
-
-      for await (const token of provider.streamChat(history, modelId)) {
-        accumulated += token;
-        updateMessageContent(activeChatId, assistantMsgId, accumulated);
-      }
-
-      // Extraction runs after the full response is received
-      if (accumulated.trim()) {
-        triggerExtraction(activeChatId);
-      }
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
-      updateMessageContent(
-        activeChatId,
-        assistantMsgId,
-        `⚠️ **Response failed** — ${detail}\n\nMake sure **${providerId}** is running and the model \`${modelId}\` is available.`
-      );
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  // ── Knowledge extraction ──────────────────────────────────────────────────
-
-  const triggerExtraction = (chatId: string) => {
-    // Read current store state directly rather than using the closed-over `chats`
-    // snapshot from the last render — the assistant's completed reply is only
-    // present in the live store state, not in the render-time closure.
-    const { chats: currentChats, characters: currentCharacters } = useFableStore.getState();
-    const chat      = currentChats.find((c) => c.id === chatId);
-    const character = currentCharacters.find((c) => c.id === chat?.characterId);
-    if (!chat || !character) return;
-
-    const providerType =
-      chat.providerId === "lmstudio"   ? "lmstudio"
-      : chat.providerId === "openrouter" ? "openrouter"
-      : "ollama";
-    const baseUrl =
-      providerType === "lmstudio"    ? providerSettings.lmstudio.baseUrl
-      : providerType === "openrouter"  ? "https://openrouter.ai/api"
-      : providerSettings.ollama.baseUrl;
-    const modelId = chat.modelId ?? "llama3.2:latest";
-    const apiKey  = providerType === "openrouter" ? providerSettings.openrouter.apiKey : undefined;
-
-    setIsExtracting(true);
-
-    const recentMessages = chat.messages.slice(-16).map((m) => ({ role: m.role, content: m.content }));
-
-    // Run Drawer-2 extraction and Core Memory refresh in parallel
-    const extractionBody = {
-      messages:        recentMessages,
-      characterId:     character.id,
-      characterName:   character.name,
-      providerType,
-      providerBaseUrl: baseUrl,
-      modelId,
-      apiKey,
-    };
-
-    Promise.all([
-      fetch("/api/drawer/extract", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(extractionBody),
-      }).catch((e) => console.warn("[drawer2/extract]", e)),
-
-      fetch("/api/chat/core-memory/refresh", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(extractionBody),
-      }).catch((e) => console.warn("[core-memory/refresh]", e)),
-    ])
-      .then(() => bumpExtraction())
-      .finally(() => setIsExtracting(false));
+    generateAssistantReply(activeChatId);
   };
 
   // ── Image generation ──────────────────────────────────────────────────────
@@ -336,11 +162,13 @@ export function ChatInput() {
             variant="purple"
             size="icon"
             className="h-8 w-8 rounded-xl"
-            onClick={handleSend}
-            disabled={!inputValue.trim() || isGenerating}
-            title="Send (Enter)"
+            onClick={isGenerating ? stopGeneration : handleSend}
+            disabled={!isGenerating && !inputValue.trim()}
+            title={isGenerating ? "Stop generating" : "Send (Enter)"}
           >
-            <Send className="h-3.5 w-3.5" />
+            {isGenerating
+              ? <Square className="h-3.5 w-3.5" />
+              : <Send   className="h-3.5 w-3.5" />}
           </Button>
         </div>
       </div>

@@ -42,7 +42,8 @@ export class OllamaProvider implements ChatProvider {
   async *streamChat(
     messages: Array<{ role: MessageRole; content: string }>,
     modelId: string,
-    settings?: Partial<ChatSettings>
+    settings?: Partial<ChatSettings>,
+    signal?: AbortSignal
   ): AsyncIterable<string> {
     const body = {
       model: modelId,
@@ -58,26 +59,46 @@ export class OllamaProvider implements ChatProvider {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal,
     });
 
     if (!res.ok || !res.body) {
       throw new Error(`Ollama error: ${res.status}`);
     }
 
+    // Ollama streams NDJSON. Network chunks can split a JSON line (or even a
+    // multi-byte UTF-8 character) anywhere, so buffer the trailing partial
+    // line and use a streaming decoder — same approach as parseOpenAIStream.
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = "";
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      const lines = decoder.decode(value).split("\n").filter(Boolean);
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
       for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
         try {
-          const json = JSON.parse(line);
+          const json = JSON.parse(trimmed);
           if (json.message?.content) yield json.message.content;
         } catch {
           // skip malformed chunks
         }
+      }
+    }
+
+    // Flush the final line (streams don't always end with a newline)
+    const tail = (buffer + decoder.decode()).trim();
+    if (tail) {
+      try {
+        const json = JSON.parse(tail);
+        if (json.message?.content) yield json.message.content;
+      } catch {
+        // ignore trailing partial
       }
     }
   }

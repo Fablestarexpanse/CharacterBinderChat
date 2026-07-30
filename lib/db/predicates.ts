@@ -7,29 +7,39 @@
  * A new fact with one of these predicates supersedes any prior live fact
  * for the same (subject, predicate) pair with a different object.
  *
+ * Contains canonical forms only — normPredicate() maps synonyms and legacy
+ * spellings onto these before lookup.
  * Must stay in sync with the PREDICATE VOCABULARY section of buildExtractionPrompt.
  */
 export const SINGLE_VALUED_PREDICATES = new Set([
-  // canonical forms — what the LLM is instructed to emit
   "lives_at",
   "located_at",
   "works_at",
   "current_location",
   "status",
   "is",
-  // loose variants kept for robustness against legacy data or manual API calls
-  "lives at",
-  "located at",
-  "located in",
-  "works at",
-  "current location",
-  "resides_at",
-  "resides at",
-  "based_at",
-  "based at",
 ]);
 
-/** Normalise a predicate for lookup in SINGLE_VALUED_PREDICATES */
+/**
+ * Synonyms / legacy spellings → canonical predicate.
+ * Keyed by snake_case (normPredicate lowercases and snake_cases before lookup).
+ * "is_located_at" appears in pre-vocabulary data written before commit 483048b.
+ */
+const PREDICATE_ALIASES: Record<string, string> = {
+  is_located_at: "located_at",
+  located_in:    "located_at",
+  based_at:      "located_at",
+  resides_at:    "lives_at",
+  lives_in:      "lives_at",
+};
+
+/**
+ * Normalise a predicate to its canonical snake_case form.
+ * Used both for SINGLE_VALUED_PREDICATES lookups and for equality checks
+ * during dedup/supersession, so "is_located_at", "located in" and
+ * "located_at" all compare equal.
+ */
 export function normPredicate(p: string): string {
-  return p.toLowerCase().trim().replace(/\s+/g, " ");
+  const snake = p.toLowerCase().trim().replace(/\s+/g, "_");
+  return PREDICATE_ALIASES[snake] ?? snake;
 }

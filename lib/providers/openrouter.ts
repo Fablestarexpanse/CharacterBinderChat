@@ -40,14 +40,17 @@ export class OpenRouterProvider implements ChatProvider {
       });
       if (!res.ok) return [];
       const data = await res.json();
-      return (data.data ?? []).slice(0, 50).map(
-        (m: { id: string; name: string; context_length?: number }) => ({
+      // Return the full catalogue (OpenRouter lists hundreds) sorted by id, so
+      // the selector's type-ahead can find any vendor. Previously capped at 50,
+      // which silently hid most models.
+      return (data.data ?? [])
+        .map((m: { id: string; name: string; context_length?: number }) => ({
           id: m.id,
           name: m.name ?? m.id,
           contextLength: m.context_length,
           providerId: this.id,
-        })
-      );
+        }))
+        .sort((a: ModelInfo, b: ModelInfo) => a.id.localeCompare(b.id));
     } catch {
       return [];
     }
@@ -56,7 +59,8 @@ export class OpenRouterProvider implements ChatProvider {
   async *streamChat(
     messages: Array<{ role: MessageRole; content: string }>,
     modelId: string,
-    settings?: Partial<ChatSettings>
+    settings?: Partial<ChatSettings>,
+    signal?: AbortSignal
   ): AsyncIterable<string> {
     if (!this.apiKey) throw new Error("OpenRouter API key not set");
 
@@ -77,6 +81,7 @@ export class OpenRouterProvider implements ChatProvider {
         "X-Title": "FableChat",
       },
       body: JSON.stringify(body),
+      signal,
     });
 
     if (!res.ok || !res.body) {

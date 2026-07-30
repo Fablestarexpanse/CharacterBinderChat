@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { SINGLE_VALUED_PREDICATES, normPredicate } from "@/lib/db/predicates";
 import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
+import { ensureCoreMemory, syncStatsToCore } from "@/lib/chat/coreMemoryStore";
 import type { EntityType, StatName } from "@/lib/db/models";
 
 export const dynamic = "force-dynamic";
@@ -11,11 +12,12 @@ export const dynamic = "force-dynamic";
 function buildExtractionPrompt(
   messages:      Array<{ role: string; content: string }>,
   characterName: string,
-  knownEntities: Array<{ id: string; name: string; type: string }> = []
+  knownEntities: Array<{ id: string; name: string; type: string }> = [],
+  userLabel     = "User"
 ): string {
   const conversation = messages
     .slice(-12)
-    .map((m) => `${m.role === "user" ? "User" : characterName}: ${m.content}`)
+    .map((m) => `${m.role === "user" ? userLabel : characterName}: ${m.content}`)
     .join("\n\n");
 
   // ── Entity roster (Task 2) ────────────────────────────────────────────────
@@ -91,6 +93,7 @@ export async function POST(req: NextRequest) {
       messages,
       characterId,
       characterName,
+      personaName,
       providerType,
       providerBaseUrl,
       modelId,
@@ -99,6 +102,7 @@ export async function POST(req: NextRequest) {
       messages:        Array<{ role: string; content: string }>;
       characterId:     string;
       characterName:   string;
+      personaName?:    string;
       providerType:    "ollama" | "lmstudio" | "openrouter";
       providerBaseUrl: string;
       modelId:         string;
@@ -115,10 +119,22 @@ export async function POST(req: NextRequest) {
     // ── Build prompt with known entity roster (prevents ID drift) ────────────
 
     const store = getStore();
+
+    // Keep the "player" entity named after the active persona so the graph
+    // and the conversation labels agree on who the user is.
+    const player = store.getEntity("player");
+    if (personaName && player && player.name !== personaName) {
+      store.insertEntity({ ...player, name: personaName });
+    } else if (personaName && !player) {
+      store.ensureEntity("player", "character", personaName, "The user");
+    }
+
     const knownEntities = store.listEntities().map((e) => ({
       id: e.id, name: e.name, type: e.type,
     }));
-    const prompt = buildExtractionPrompt(messages, characterName ?? characterId, knownEntities);
+    const prompt = buildExtractionPrompt(
+      messages, characterName ?? characterId, knownEntities, personaName ?? "User"
+    );
 
     // ── Call LLM ──────────────────────────────────────────────────────────
 
@@ -130,7 +146,21 @@ export async function POST(req: NextRequest) {
       rawText = await callOpenAICompat(providerBaseUrl, modelId, prompt, apiKey);
     }
 
-    const extracted = parseLLMJson<RawExtraction>(rawText, { entities: [], facts: [], stat_changes: [] });
+    // Parse failure must be distinguishable from "nothing to extract" — an
+    // empty-object fallback here would make a model that can't emit JSON look
+    // identical to a quiet conversation, and nothing would ever reach the DB.
+    const extracted = parseLLMJson<RawExtraction | null>(rawText, null);
+    if (!extracted) {
+      console.warn("[drawer/extract] unparseable LLM output:", rawText.slice(0, 300));
+      return Response.json(
+        {
+          ok:       false,
+          error:    "model returned unparseable JSON — nothing extracted",
+          rawModel: rawText.slice(0, 200) + (rawText.length > 200 ? "…" : ""),
+        },
+        { status: 502 }
+      );
+    }
 
     // ── Ensure the main character entity exists ───────────────────────────
 
@@ -190,7 +220,7 @@ export async function POST(req: NextRequest) {
 
       const newFactId = store.insertFact({
         subjectId:     f.subject,
-        predicate:     f.predicate,
+        predicate:     incomingNorm,
         objectId:      objectEntity ? f.object : null,
         objectLiteral: objectEntity ? null : f.object,
         confidence:    f.confidence ?? 0.85,
@@ -215,6 +245,13 @@ export async function POST(req: NextRequest) {
       store.deltaStat(sc.observer, sc.target, sc.stat as StatName, sc.delta);
       writtenStats.push(`${sc.observer}->${sc.target}:${sc.stat}(${sc.delta > 0 ? "+" : ""}${sc.delta})`);
     }
+
+    // ── Mirror Drawer-2 stats into the Core Memory Block (Drawer 1) ────────
+    // Without this, relationship_with_user stays at its 50-neutral defaults
+    // and buildSystemPrompt never emits the [Relationship with User] line.
+    // Run unconditionally so pre-existing stat drift is backfilled too.
+    ensureCoreMemory(characterId, characterName ?? characterId);
+    syncStatsToCore(characterId);
 
     return Response.json({
       ok:       true,

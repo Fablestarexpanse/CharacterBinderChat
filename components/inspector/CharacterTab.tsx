@@ -68,18 +68,20 @@ function StatBar({ name, value }: { name: string; value: number }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CharacterTab() {
-  const { activeChatId, chats, characters, extractionVersion } = useFableStore();
+  const { activeChatId, chats, characters, extractionVersion, openCharacterEditor, setActiveSection } = useFableStore();
   const chat      = chats.find((c) => c.id === activeChatId);
   const character = characters.find((c) => c.id === chat?.characterId);
 
   const [relationships, setRelationships] = useState<RelationshipGroup[]>([]);
   const [stats, setStats]                 = useState<StatRow[]>([]);
 
+  const characterId = character?.id;
+
   useEffect(() => {
-    if (!character) return;
+    if (!characterId) return;
 
     // Fetch summary (which includes relationships + stats)
-    fetch(`/api/drawer/summary/${encodeURIComponent(character.id)}`)
+    fetch(`/api/drawer/summary/${encodeURIComponent(characterId)}`)
       .then((r) => r.json())
       .then((data: { relationships?: RelationshipGroup[] }) => {
         setRelationships(data.relationships ?? []);
@@ -87,11 +89,11 @@ export function CharacterTab() {
       .catch(() => {/* silently ignore */});
 
     // Fetch stats against "player" as a default observer pair
-    fetch(`/api/drawer/stats?observer=player&target=${encodeURIComponent(character.id)}`)
+    fetch(`/api/drawer/stats?observer=player&target=${encodeURIComponent(characterId)}`)
       .then((r) => r.json())
       .then((data: { stats?: StatRow[] }) => setStats(data.stats ?? []))
       .catch(() => {/* silently ignore */});
-  }, [character?.id, extractionVersion]);
+  }, [characterId, extractionVersion]);
 
   if (!character) {
     return (
@@ -181,11 +183,11 @@ export function CharacterTab() {
 
       {/* Actions */}
       <div className="flex gap-2">
-        <Button variant="outline" size="sm" className="flex-1">
+        <Button variant="outline" size="sm" className="flex-1" onClick={() => openCharacterEditor(character.id)}>
           <Edit2 className="h-3 w-3 mr-1.5" />
           Edit
         </Button>
-        <Button variant="outline" size="sm" className="flex-1">
+        <Button variant="outline" size="sm" className="flex-1" onClick={() => setActiveSection("characters")}>
           <ExternalLink className="h-3 w-3 mr-1.5" />
           Full Profile
         </Button>

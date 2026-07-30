@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { Loader2, AlertTriangle, GitMerge } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 
 interface EntityOverview {
   id:          string;
@@ -31,29 +30,38 @@ interface Props {
 }
 
 export function EntitiesView({ extractionVersion }: Props) {
-  const [data,    setData]    = useState<OverviewResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState<string | null>(null);
+  // Result keyed by what was fetched; `loading` is derived so the effect
+  // never calls setState synchronously (react-hooks/set-state-in-effect).
+  // `refreshTick` triggers a refetch after a merge.
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [result, setResult] = useState<{ key: string; data: OverviewResponse | null; error: string | null } | null>(null);
 
   // Merge UI state: { clusterId → { confirmingMerge: boolean, fromId, toId } }
   const [mergeState, setMergeState] = useState<
     Record<string, { confirming: boolean; fromId: string; toId: string; merging: boolean; done: boolean }>
   >({});
+  const [mergeError, setMergeError] = useState<string | null>(null);
 
-  const fetchData = () => {
-    setLoading(true);
-    setError(null);
+  const fetchKey = `${extractionVersion}:${refreshTick}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    const key = `${extractionVersion}:${refreshTick}`;
     fetch("/api/drawer/entities/overview")
       .then((r) => r.json())
       .then((d: OverviewResponse) => {
         if (d.error) throw new Error(d.error);
-        setData(d);
+        if (!cancelled) setResult({ key, data: d, error: null });
       })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  };
+      .catch((e: Error) => {
+        if (!cancelled) setResult({ key, data: null, error: e.message });
+      });
+    return () => { cancelled = true; };
+  }, [extractionVersion, refreshTick]);
 
-  useEffect(() => { fetchData(); }, [extractionVersion]);
+  const loading = result?.key !== fetchKey;
+  const data    = result?.data ?? null;
+  const error   = mergeError ?? result?.error ?? null;
 
   const handleMergeClick = (clusterId: string, cluster: string[]) => {
     // Default: merge smaller-id into larger-id (first alpha → second)
@@ -78,9 +86,9 @@ export function EntitiesView({ extractionVersion }: Props) {
       if (!result.ok) throw new Error(result.error ?? "Merge failed");
       setMergeState((prev) => ({ ...prev, [clusterId]: { ...ms, merging: false, done: true, confirming: false } }));
       // Refresh to reflect the merge
-      fetchData();
+      setRefreshTick((t) => t + 1);
     } catch (e) {
-      setError(String(e));
+      setMergeError(String(e));
       setMergeState((prev) => ({ ...prev, [clusterId]: { ...ms, merging: false } }));
     }
   };
@@ -139,7 +147,7 @@ export function EntitiesView({ extractionVersion }: Props) {
                     </span>
                   ))}
                   {names[0] !== cluster[0] && (
-                    <span className="ml-1.5 text-amber-600">"{names[0]}"</span>
+                    <span className="ml-1.5 text-amber-600">&quot;{names[0]}&quot;</span>
                   )}
                 </div>
 

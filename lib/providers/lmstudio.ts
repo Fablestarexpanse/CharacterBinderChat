@@ -44,7 +44,8 @@ export class LMStudioProvider implements ChatProvider {
   async *streamChat(
     messages: Array<{ role: MessageRole; content: string }>,
     modelId: string,
-    settings?: Partial<ChatSettings>
+    settings?: Partial<ChatSettings>,
+    signal?: AbortSignal
   ): AsyncIterable<string> {
     const body = {
       model: modelId,
@@ -58,6 +59,7 @@ export class LMStudioProvider implements ChatProvider {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal,
     });
 
     if (!res.ok || !res.body) {

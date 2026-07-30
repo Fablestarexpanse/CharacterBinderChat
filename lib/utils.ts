@@ -7,7 +7,10 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatTime(isoString: string): string {
   const date = new Date(isoString);
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  // Fixed locale + UTC would drift from the user's clock; en-US with an
+  // explicit shape keeps server and client output identical for a given
+  // timestamp, which matters because these render during SSR.
+  return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 }
 
 export function formatRelative(isoString: string): string {

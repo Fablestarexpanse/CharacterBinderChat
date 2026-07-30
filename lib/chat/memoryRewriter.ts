@@ -12,11 +12,12 @@ import type { CoreMemory } from "@/lib/db/models";
 function buildRewritePrompt(
   characterName: string,
   currentMemory: CoreMemory,
-  recentMessages: Array<{ role: string; content: string }>
+  recentMessages: Array<{ role: string; content: string }>,
+  userLabel = "User"
 ): string {
   const conversation = recentMessages
     .slice(-16)
-    .map((m) => `${m.role === "user" ? "User" : characterName}: ${m.content}`)
+    .map((m) => `${m.role === "user" ? userLabel : characterName}: ${m.content}`)
     .join("\n\n");
 
   return `You are helping maintain a character's "Core Memory Block" — their conscious internal state for a roleplay story.
@@ -68,6 +69,7 @@ interface RewriteResult {
 export interface RewriteOptions {
   characterId:     string;
   characterName:   string;
+  personaName?:    string;
   recentMessages:  Array<{ role: string; content: string }>;
   providerType:    "ollama" | "lmstudio" | "openrouter";
   providerBaseUrl: string;
@@ -89,7 +91,8 @@ export async function rewriteCoreMemory(opts: RewriteOptions): Promise<{
   const prompt = buildRewritePrompt(
     opts.characterName,
     current.data,
-    opts.recentMessages
+    opts.recentMessages,
+    opts.personaName ?? "User"
   );
 
   let rawText: string;
