@@ -56,7 +56,14 @@ export function syncStatsToCore(chatId: string, characterId: string): void {
     }
   }
 
-  store.patchCoreMemory(chatId, characterId, { relationship_with_user: rel });
+  // The rupture note keeps a wound present in the prompt even after the
+  // numbers start to recover — otherwise the character forgives the moment
+  // the stats do.
+  const relationship_note = store.isRecentlyRuptured(chatId, characterId, "player")
+    ? "Something between you was recently damaged. It has not fully healed — warmth returns slowly, and it colours how you respond."
+    : null;
+
+  store.patchCoreMemory(chatId, characterId, { relationship_with_user: rel, relationship_note });
 }
 
 /**

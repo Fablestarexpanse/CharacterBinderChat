@@ -69,10 +69,11 @@ async function startServer() {
   }
 
   console.log(`  starting eval server on :${PORT} (db: ${path.relative(APP_ROOT, EVAL_DB)})`);
-  const proc = spawn("npx", ["next", "dev", "--port", String(PORT)], {
+  // Direct node spawn (no shell): proc IS the server, so proc.kill() works.
+  const nextBin = path.join(APP_ROOT, "node_modules", "next", "dist", "bin", "next");
+  const proc = spawn(process.execPath, [nextBin, "dev", "--port", String(PORT)], {
     cwd: APP_ROOT,
     env: { ...process.env, FABLE_DB_PATH: EVAL_DB },
-    shell: true,
     stdio: "ignore",
   });
 
@@ -189,6 +190,7 @@ async function runScenario(scenario, model, cfg, db) {
       stats: q.stats(scenario.characterId, "player"),
       commitments: q.commitments("player").concat(q.commitments(scenario.characterId)),
       coreCommitments: cmSnap?.data?.active_commitments ?? [],
+      coreNote: cmSnap?.data?.relationship_note ?? null,
     });
     await runBatches(scenario, scenario.followUp.batches, model, cfg, metrics);
   }

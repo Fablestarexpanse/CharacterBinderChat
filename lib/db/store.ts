@@ -7,6 +7,7 @@ import fs from "fs";
 import path from "path";
 import { CREATE_TABLES_SQL } from "./schema";
 import { isDurableFact } from "./predicates";
+import { bufferToVec, cosine } from "@/lib/llm/embeddings";
 import type {
   DbEntity,
   DbFact,
@@ -132,6 +133,14 @@ export class FableStore {
     // differing enormously in importance.
     addCol("facts",        "importance", "importance REAL NOT NULL DEFAULT 0.5");
     addCol("memory_cards", "importance", "importance REAL NOT NULL DEFAULT 0.5");
+    // Rupture recovery: a countdown set when a stat takes a large negative hit.
+    // While positive, positive deltas on that stat are dampened — the
+    // validation soak showed trust re-crossing its pre-betrayal peak within 15
+    // exchanges because nothing made the character hold the wound.
+    addCol("relationship_stats", "rupture_recovery", "rupture_recovery INTEGER NOT NULL DEFAULT 0");
+    // Embeddings for semantic retrieval (Phase C) — nullable, lexical fallback
+    addCol("facts",        "embedding", "embedding BLOB");
+    addCol("memory_cards", "embedding", "embedding BLOB");
   }
 
   // ── Migration: character-global memory → chat-scoped memory ───────────────
@@ -352,6 +361,21 @@ export class FableStore {
     return rows.map(rowToFact);
   }
 
+  setFactEmbedding(factId: number, embedding: Buffer): void {
+    this.db.prepare("UPDATE facts SET embedding = ? WHERE id = ?").run(embedding, factId);
+  }
+
+  setCardEmbedding(cardId: number, embedding: Buffer): void {
+    this.db.prepare("UPDATE memory_cards SET embedding = ? WHERE id = ?").run(embedding, cardId);
+  }
+
+  /** Raw embedding blob for a fact (null when never embedded) */
+  private factEmbedding(factId: number): Float32Array | null {
+    const row = this.db.prepare("SELECT embedding FROM facts WHERE id = ?").get(factId) as
+      { embedding: Buffer | null } | undefined;
+    return bufferToVec(row?.embedding ?? null);
+  }
+
   supersedeFact(oldId: number, newId: number, atTime?: number): void {
     const t = atTime ?? now();
     this.db
@@ -446,18 +470,57 @@ export class FableStore {
   ): DbRelationshipStat {
     const existing = this.getStat(chatId, observerId, targetId, statName);
     const current  = existing?.value ?? 0;
+    const bondStat = statName === "affection" || statName === "trust" || statName === "connection";
+
+    // Rupture refractory: after a large drop, the next several positive deltas
+    // land at reduced strength — trust rebuilds slowly after being broken.
+    const recovery = this.db
+      .prepare("SELECT rupture_recovery FROM relationship_stats WHERE chat_id = ? AND observer_id = ? AND target_id = ? AND stat_name = ?")
+      .get(chatId, observerId, targetId, statName) as { rupture_recovery: number } | undefined;
+    const inRecovery = (recovery?.rupture_recovery ?? 0) > 0;
 
     let effective = delta;
-    if (delta < 0 && (statName === "affection" || statName === "trust" || statName === "connection")) {
-      effective *= 1.5;
+    if (delta < 0 && bondStat) {
+      effective *= 1.5; // loss aversion
+    }
+    if (delta > 0 && bondStat && inRecovery) {
+      effective *= 0.35; // wounds heal slowly
     }
     const towardExtreme = Math.sign(effective) === Math.sign(current) || current === 0;
     if (towardExtreme) {
       effective *= 1 - Math.abs(current) / 100;
     }
 
-    return this.setStat(chatId, observerId, targetId, statName,
+    const updated = this.setStat(chatId, observerId, targetId, statName,
       Math.max(-100, Math.min(100, current + effective)));
+
+    // Bookkeeping: a big hit opens a recovery window; positive movement
+    // consumes it one step at a time.
+    if (bondStat) {
+      if (effective <= -12) {
+        this.db.prepare(
+          "UPDATE relationship_stats SET rupture_recovery = 6 WHERE chat_id = ? AND observer_id = ? AND target_id = ? AND stat_name = ?"
+        ).run(chatId, observerId, targetId, statName);
+      } else if (delta > 0 && inRecovery) {
+        this.db.prepare(
+          "UPDATE relationship_stats SET rupture_recovery = rupture_recovery - 1 WHERE chat_id = ? AND observer_id = ? AND target_id = ? AND stat_name = ? AND rupture_recovery > 0"
+        ).run(chatId, observerId, targetId, statName);
+      }
+    }
+
+    return updated;
+  }
+
+  /** True while any bond stat of the pair is inside its post-rupture window */
+  isRecentlyRuptured(chatId: string, observerId: string, targetId: string): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT MAX(rupture_recovery) AS r FROM relationship_stats
+         WHERE chat_id = ? AND observer_id = ? AND target_id = ?
+           AND stat_name IN ('trust','affection','connection')`
+      )
+      .get(chatId, observerId, targetId) as { r: number | null } | undefined;
+    return (row?.r ?? 0) > 0;
   }
 
   getStat(
@@ -583,13 +646,27 @@ export class FableStore {
    * ranked by importance with a recency tiebreak, optionally boosted by
    * relevance to the current conversation.
    */
-  retrieveEpisodesForPrompt(chatId: string, limit = 3, context = ""): DbMemoryCard[] {
+  retrieveEpisodesForPrompt(
+    chatId: string,
+    limit = 3,
+    context = "",
+    queryEmbedding: Float32Array | null = null
+  ): DbMemoryCard[] {
     const cards = this.listMemoryCards(chatId);
     if (cards.length === 0) return [];
     const contextWords = new Set(
       context.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3)
     );
+    const cardVec = (id: number): Float32Array | null => {
+      const row = this.db.prepare("SELECT embedding FROM memory_cards WHERE id = ?").get(id) as
+        { embedding: Buffer | null } | undefined;
+      return bufferToVec(row?.embedding ?? null);
+    };
     const relevance = (c: DbMemoryCard): number => {
+      if (queryEmbedding) {
+        const v = cardVec(c.id);
+        if (v) return Math.max(0, (cosine(queryEmbedding, v) - 0.3) / 0.6);
+      }
       if (contextWords.size === 0) return 0;
       const words = `${c.title} ${c.content}`.toLowerCase()
         .replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3);
@@ -1101,15 +1178,24 @@ export class FableStore {
     characterId: string,
     limit = 20,
     context = "",
-    playerId = "player"
+    playerId = "player",
+    queryEmbedding: Float32Array | null = null
   ): string[] {
     const all = this.queryAllLiveFacts(chatId);
 
-    // Relevance: overlap between the fact's words and the recent conversation
+    // Relevance: cosine similarity against the current exchange when both
+    // sides have embeddings (semantic — "the crossing" matches "afraid of deep
+    // water"), keyword overlap otherwise (lexical fallback).
     const contextWords = new Set(
       context.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3)
     );
     const relevanceOf = (f: DbFact): number => {
+      if (queryEmbedding) {
+        const v = this.factEmbedding(f.id);
+        // Rescale cosine (~0.3..0.9 in practice) onto roughly the same 0..1
+        // band lexical overlap produces, so mixed corpora rank sanely
+        if (v) return Math.max(0, (cosine(queryEmbedding, v) - 0.3) / 0.6);
+      }
       if (contextWords.size === 0) return 0;
       const text = `${f.predicate} ${f.objectId ?? ""} ${f.objectLiteral ?? ""}`.toLowerCase();
       const words = text.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3);

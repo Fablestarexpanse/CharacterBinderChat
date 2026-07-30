@@ -143,10 +143,12 @@ async function startServer() {
   const logFile = path.join(HERE, ".eval-db", "server.log");
   const log = fs.openSync(logFile, "w");
   console.log(`  starting server on :${PORT} (log: ${path.relative(APP_ROOT, logFile)})`);
-  const proc = spawn("npx", ["next", "dev", "--port", String(PORT)], {
+  // Direct node spawn (no shell): proc IS the server, so proc.kill() works.
+  const nextBin = path.join(APP_ROOT, "node_modules", "next", "dist", "bin", "next");
+  const proc = spawn(process.execPath, [nextBin, "dev", "--port", String(PORT)], {
     cwd: APP_ROOT,
     env: { ...process.env, FABLE_DB_PATH: EVAL_DB },
-    shell: true, stdio: ["ignore", log, log],
+    stdio: ["ignore", log, log],
   });
   for (let i = 0; i < 90; i++) {
     await sleep(1000);

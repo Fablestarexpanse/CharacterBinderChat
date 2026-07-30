@@ -305,6 +305,53 @@ export const SCENARIOS = [
   },
 
   {
+    id: "rupture-inertia",
+    what: "After a betrayal, trust rebuilds slowly and the wound is visible in the prompt",
+    why: "The validation soak showed trust re-crossing its pre-betrayal peak within ~15 exchanges — nothing made the character hold the wound. The refractory window dampens positive deltas and a relationship_note keeps the rupture present in the prompt.",
+    characterId: "eval-vala",
+    characterName: "Vala",
+    personaName: "Kira",
+    batches: [
+      [
+        u("Vala... you should hear it from me. I sold your route map. Every road you shared with me."),
+        a("*goes very quiet* You sold my roads. The ones I gave you because I thought— *turns away* Get your gear off my cart."),
+      ],
+    ],
+    followUp: {
+      batches: [
+        [
+          u("I spent everything I had and bought back every copy. The roads are yours again. All of them."),
+          a("*takes the papers slowly, counting them twice* ...Every copy. *long silence* That buys back the maps, Kira. Not yet the rest."),
+        ],
+      ],
+    },
+    check(q, ctx) {
+      const snap = ctx.snapshots[0] ?? {};
+      const afterRupture = snap.stats?.trust;
+      const final = q.stats("eval-vala", "player").trust;
+      const recovered = (typeof final === "number" && typeof afterRupture === "number")
+        ? final - afterRupture : null;
+      return [
+        {
+          name: "the betrayal landed hard (loss aversion)",
+          pass: typeof afterRupture === "number" && afterRupture <= -20,
+          detail: `trust after betrayal: ${afterRupture ?? "none"}`,
+        },
+        {
+          name: "the wound is visible in the prompt (relationship_note)",
+          pass: typeof snap.coreNote === "string" && snap.coreNote.length > 0,
+          detail: String(snap.coreNote ?? "null"),
+        },
+        {
+          name: "amends recover trust only PARTIALLY (refractory dampening)",
+          pass: recovered !== null && recovered > 0 && recovered < 10,
+          detail: `recovered ${recovered ?? "?"} of a +15 gesture (undampened would be ~+15)`,
+        },
+      ];
+    },
+  },
+
+  {
     id: "core-memory-rewrite",
     what: "The Drawer 1 rewrite produces usable, bounded state",
     why: "narrative_summary is instructed to accumulate with no cap and is injected into every prompt. Unbounded growth is a slow-burn context leak; empty output means the whole drawer is dead weight.",

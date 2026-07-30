@@ -134,6 +134,9 @@ export interface CoreMemory {
   persona:                 string;
   mood:                    CoreMood;
   relationship_with_user:  CoreStats;
+  /** Set while the relationship is inside a post-rupture window — e.g.
+   *  "Trust was recently broken and has not fully healed." */
+  relationship_note?:      string | null;
   /** Active promises / obligations the character holds */
   active_commitments:      string[];
   /** Last N emotionally significant exchanges */

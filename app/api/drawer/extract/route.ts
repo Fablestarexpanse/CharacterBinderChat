@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { normPredicate, predicateFamily, isSingleValued } from "@/lib/db/predicates";
 import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
+import { embedTexts, vecToBuffer } from "@/lib/llm/embeddings";
 import { ensureCoreMemory, syncStatsToCore, syncCommitmentsToCore } from "@/lib/chat/coreMemoryStore";
 import type { EntityType, StatName } from "@/lib/db/models";
 
@@ -107,6 +108,10 @@ Rules:
   genuinely move how someone feels: a confession, a sacrifice, a betrayal, a
   rescue, a gift, a wound. Magnitude: ±3-8 for notable moments, ±10-20 for major
   ones, beyond that only for story-defining events.
+- Stats track what happened BETWEEN these two people, never the scene's
+  atmosphere. A storm, an eerie street, danger from third parties, or a dark
+  mood in the prose is NOT a relationship change — if neither person did
+  anything to the other, emit no delta, however ominous the scene feels.
 - stat_changes track how ${characterName} feels, so use observer
   "${characterId || "the character's id"}" and target "${userId}". Only use the
   reverse direction for a stat that is explicitly about the other person's feelings.
@@ -378,6 +383,23 @@ export async function POST(req: NextRequest) {
       store.ensureEntity(chatId, sc.target,   "character", sc.target);
       store.deltaStat(chatId, sc.observer, sc.target, sc.stat as StatName, sc.delta);
       writtenStats.push(`${sc.observer}->${sc.target}:${sc.stat}(${sc.delta > 0 ? "+" : ""}${sc.delta})`);
+    }
+
+    // ── Embed the new facts for semantic retrieval ────────────────────────
+    // Best-effort: null when local embeddings are unavailable, and retrieval
+    // falls back to lexical ranking for un-embedded facts.
+    if (writtenFacts.length > 0) {
+      const byId = new Map(store.queryAllLiveFacts(chatId).map((f) => [f.id, f]));
+      const factTexts = writtenFacts.map((id) => {
+        const f = byId.get(id);
+        return f ? `${f.subjectId} ${f.predicate} ${f.objectId ?? f.objectLiteral ?? ""}` : "";
+      });
+      const vecs = await embedTexts(factTexts);
+      if (vecs) {
+        writtenFacts.forEach((id, i) => {
+          if (vecs[i]) store.setFactEmbedding(id, vecToBuffer(vecs[i]));
+        });
+      }
     }
 
     // ── Write commitments ─────────────────────────────────────────────────

@@ -39,6 +39,9 @@ export function formatCoreMemoryBlock(cm: CoreMemory): string {
   if (relParts.length > 0) {
     lines.push(`[Relationship with User] ${relParts.join(", ")}`);
   }
+  if (cm.relationship_note) {
+    lines.push(`[Between You] ${cm.relationship_note}`);
+  }
 
   // ── Active commitments ────────────────────────────────────────────────────
   if (cm.active_commitments.length > 0) {

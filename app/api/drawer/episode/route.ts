@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
+import { embedText, vecToBuffer } from "@/lib/llm/embeddings";
 
 export const dynamic = "force-dynamic";
 
@@ -135,13 +136,16 @@ export async function POST(req: NextRequest) {
       const written: number[] = [];
       for (const ins of parsed.insights ?? []) {
         if (!ins.content?.trim()) continue;
-        written.push(store.insertMemoryCard(chatId, {
+        const id = store.insertMemoryCard(chatId, {
           title:      ins.title?.trim() || "An understanding",
           content:    ins.content.trim(),
           tags:       ["reflection"],
           entityIds:  [characterId, "player"],
           importance: typeof ins.importance === "number" ? ins.importance : 0.7,
-        }));
+        });
+        const vec = await embedText(`${ins.title ?? ""} ${ins.content}`);
+        if (vec) store.setCardEmbedding(id, vecToBuffer(vec));
+        written.push(id);
       }
       return Response.json({ ok: true, mode, cards: written });
     }
@@ -158,6 +162,8 @@ export async function POST(req: NextRequest) {
       entityIds:  (parsed.entities ?? []).filter((id) => known.has(id)),
       importance: typeof parsed.importance === "number" ? parsed.importance : 0.5,
     });
+    const vec = await embedText(`${parsed.title ?? ""} ${parsed.content}`);
+    if (vec) store.setCardEmbedding(cardId, vecToBuffer(vec));
     return Response.json({ ok: true, mode, cards: [cardId] });
   } catch (err) {
     console.error("[drawer/episode]", err);

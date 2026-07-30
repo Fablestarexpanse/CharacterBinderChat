@@ -31,6 +31,12 @@ Two memory layers, both per-character:
 
 **Stat deltas are not linear.** `deltaStat` applies headroom scaling toward extremes and ×1.5 loss aversion on negative trust/affection/connection changes, and the Drawer 1 rewrite blends mood with the prior (0.6/0.4) instead of replacing it. These exist because the 200-exchange soak showed linear deltas pin every stat at +100 by exchange ~40, which locks the character's emotional range. Don't "simplify" them back to raw addition.
 
+**Ruptures have inertia.** A bond-stat drop of ≥12 effective points opens a 6-step refractory window (`rupture_recovery` on relationship_stats): positive deltas land at ×0.35 until it drains, and `syncStatsToCore` sets `relationship_note` so the prompt carries the wound. Don't bypass `deltaStat` with `setStat` for story events — it skips all of this.
+
+**Embeddings are optional infrastructure.** `lib/llm/embeddings.ts` uses local Ollama (`nomic-embed-text`) with a 60s unavailability cache; every caller must handle `null` and fall back to lexical ranking. Vectors are L2-normalised at creation so `cosine()` is a plain dot product. Never make retrieval *require* embeddings — local-first means Ollama may not be running.
+
+**Eval harnesses spawn Next directly** (`process.execPath` + `node_modules/next/dist/bin/next`), never via `npx` with `shell:true` — the shell wrapper orphaned real servers three separate times, and Next 16 refuses to start while an orphan owns `.next`.
+
 **Stat direction is `character -> player`.** `relationship_stats` rows are directed: observer is the character, target is `player`. That matches what `relationship_with_user` means and what the prompt injects. Querying `player -> character` reads an empty set — that bug shipped once already.
 
 **Entity ids from the model are untrusted.** Extraction will mint `ronan` next to an existing `char-ronan` however the prompt is worded. `EntityResolver` in the extract route folds incoming ids onto existing entities by normalized name before anything is written; never bypass it when adding a new write path. The response's `remapped` field shows what got folded — a growing list means prompt anchoring is losing.

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { ensureCoreMemory, getCoreMemory, patchCoreMemory } from "@/lib/chat/coreMemoryStore";
 import { getStore } from "@/lib/db";
+import { embedText } from "@/lib/llm/embeddings";
 import type { CoreMemory } from "@/lib/db/models";
 
 export const dynamic = "force-dynamic";
@@ -22,12 +23,15 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const cm         = ensureCoreMemory(chatId, characterId, characterName);
-    const store      = getStore();
-    const knownFacts = store.retrieveFactsForPrompt(chatId, characterId, 20, context);
+    const cm    = ensureCoreMemory(chatId, characterId, characterName);
+    const store = getStore();
+    // Semantic query vector for retrieval — null when Ollama embeddings are
+    // unavailable, in which case ranking falls back to keyword overlap
+    const queryVec   = context ? await embedText(context) : null;
+    const knownFacts = store.retrieveFactsForPrompt(chatId, characterId, 20, context, "player", queryVec);
     // Episodic layer: scenes remembered as events, and reflective insights.
     // Kept separate from facts because they read differently in the prompt.
-    const cards    = store.retrieveEpisodesForPrompt(chatId, 5, context);
+    const cards    = store.retrieveEpisodesForPrompt(chatId, 5, context, queryVec);
     const episodes = cards.filter((c) => c.tags.includes("episode"))
       .slice(0, 3).map((c) => `${c.title} — ${c.content}`);
     const insights = cards.filter((c) => c.tags.includes("reflection"))
@@ -63,6 +67,11 @@ function sanitizePatch(raw: Record<string, unknown>): Partial<CoreMemory> | stri
       case "narrative_summary":
         if (!isStr(value)) return `${key} must be a string`;
         patch[key] = value;
+        break;
+
+      case "relationship_note":
+        if (value !== null && !isStr(value)) return "relationship_note must be a string or null";
+        patch.relationship_note = value as string | null;
         break;
 
       case "mood": {
