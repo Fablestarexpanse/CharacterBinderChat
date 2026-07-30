@@ -8,7 +8,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PersonaEditorDialog } from "@/components/characters/PersonaEditorDialog";
-import { Plus, MessageSquare, UserCircle2, Check } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Plus, MessageSquare, UserCircle2, Check, Sparkles, History } from "lucide-react";
+
+// A chat that holds memories involving a character — offered as a source when
+// starting a new chat, because memory never carries over implicitly.
+interface MemorySource {
+  chatId:    string;
+  chatName:  string | null;
+  facts:     number;
+  updatedAt: number;
+}
 
 // ─── Character card import ────────────────────────────────────────────────────
 // Accepts SillyTavern v2 cards ({spec:"chara_card_v2", data:{…}}), v1 flat
@@ -54,11 +64,42 @@ export function CharactersView() {
     open: false,
     id: null,
   });
+  // Fresh-vs-continue chooser, shown only when prior chats hold memories
+  const [memoryChooser, setMemoryChooser] = useState<{
+    characterId: string; sources: MemorySource[];
+  } | null>(null);
 
-  const handleStartChat = (characterId: string) => {
+  const beginChat = (characterId: string, fromChatId?: string) => {
     const chatId = createChat(characterId);
     setActiveChatId(chatId);
     setActiveSection("chats");
+    setMemoryChooser(null);
+    if (fromChatId) {
+      // Copy the source chat's memories into the new one, then nudge the
+      // inspector to re-fetch
+      fetch("/api/drawer/transfer", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ fromChatId, toChatId: chatId }),
+      })
+        .then(() => useFableStore.getState().bumpExtraction())
+        .catch((e) => console.warn("[memory transfer]", e));
+    }
+  };
+
+  const handleStartChat = async (characterId: string) => {
+    // Each chat is a fresh start by default. If earlier chats hold memories of
+    // this character, let the user choose to carry one forward explicitly.
+    try {
+      const res = await fetch(`/api/drawer/transfer?characterId=${encodeURIComponent(characterId)}`);
+      const data = (await res.json()) as { sources?: MemorySource[] };
+      const sources = (data.sources ?? []).filter((s) => s.facts > 0);
+      if (sources.length > 0) {
+        setMemoryChooser({ characterId, sources: sources.slice(0, 4) });
+        return;
+      }
+    } catch { /* offline or route error — just start fresh */ }
+    beginChat(characterId);
   };
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -239,6 +280,51 @@ export function CharactersView() {
           personaId={personaEditor.id}
           onClose={() => setPersonaEditor({ open: false, id: null })}
         />
+
+        {/* Fresh start vs continue-with-memories */}
+        <Dialog open={!!memoryChooser} onOpenChange={(o) => { if (!o) setMemoryChooser(null); }}>
+          <DialogContent className="max-w-md" aria-describedby={undefined}>
+            <div className="border-b border-[var(--border)] px-5 py-4">
+              <DialogTitle>Start a new story?</DialogTitle>
+            </div>
+            <div className="space-y-3 px-5 py-4">
+              <p className="text-xs text-[var(--muted-fg)]">
+                Each chat is its own story — the character starts with no memory of other
+                chats. You can carry memories over from a previous story if you want to
+                continue where you left off.
+              </p>
+
+              <button
+                onClick={() => memoryChooser && beginChat(memoryChooser.characterId)}
+                className="w-full flex items-center gap-3 rounded-xl border border-[var(--border)] p-3 text-left hover:border-[var(--purple)] hover:bg-[var(--purple-light)] transition-colors"
+              >
+                <Sparkles className="h-4 w-4 text-[var(--purple-fg)] flex-shrink-0" />
+                <span>
+                  <span className="block text-sm font-medium text-[var(--foreground)]">Fresh start</span>
+                  <span className="block text-xs text-[var(--muted-fg)]">A blank slate — nothing remembered</span>
+                </span>
+              </button>
+
+              {memoryChooser?.sources.map((s) => (
+                <button
+                  key={s.chatId}
+                  onClick={() => beginChat(memoryChooser.characterId, s.chatId)}
+                  className="w-full flex items-center gap-3 rounded-xl border border-[var(--border)] p-3 text-left hover:border-[var(--purple)] hover:bg-[var(--purple-light)] transition-colors"
+                >
+                  <History className="h-4 w-4 text-[var(--muted-fg)] flex-shrink-0" />
+                  <span>
+                    <span className="block text-sm font-medium text-[var(--foreground)]">
+                      Continue from “{s.chatName ?? s.chatId}”
+                    </span>
+                    <span className="block text-xs text-[var(--muted-fg)]">
+                      Carries over {s.facts} remembered fact{s.facts !== 1 ? "s" : ""} and the relationship
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

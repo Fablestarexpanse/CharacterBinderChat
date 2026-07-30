@@ -111,22 +111,25 @@ export function MemoryTab() {
           ))}
         </div>
 
-        {/* Sub-views */}
-        {kgTab === "facts" && (
+        {/* Sub-views — all scoped to this chat's memory */}
+        {kgTab === "facts" && chat && (
           <FactsView
+            chatId={chat.id}
             characterId={character.id}
             extractionVersion={extractionVersion}
             isExtracting={isExtracting}
           />
         )}
-        {kgTab === "relationships" && (
+        {kgTab === "relationships" && chat && (
           <RelationshipsView
+            chatId={chat.id}
             characterId={character.id}
             extractionVersion={extractionVersion}
           />
         )}
-        {kgTab === "entities" && (
+        {kgTab === "entities" && chat && (
           <EntitiesView
+            chatId={chat.id}
             extractionVersion={extractionVersion}
           />
         )}

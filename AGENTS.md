@@ -27,6 +27,10 @@ Two memory layers, both per-character:
 
 **Stat scales differ between drawers.** Drawer 2 stats are **−100..100** (0 = neutral). Core Memory's `relationship_with_user` is **0..100** (50 = neutral). `syncStatsToCore` converts between them. Any new stat bar must know which scale it is on — `((v + 100) / 200) * 100` for Drawer 2, `clamp(v, 0, 100)` for Drawer 1.
 
+**Memory is scoped to a CHAT, not a character.** Every Drawer 1/2 table carries `chat_id`, and every store method takes it as the first parameter. Starting a new chat with the same character is a fresh start; carrying memories forward is an explicit `/api/drawer/transfer`, never implicit. Deleting a chat purges its memory (via `purgeOrphanedChatMemory` on state sync). Schema v1 was character-global; `FableStore._migrateIfNeeded` upgrades old databases.
+
+**Stat deltas are not linear.** `deltaStat` applies headroom scaling toward extremes and ×1.5 loss aversion on negative trust/affection/connection changes, and the Drawer 1 rewrite blends mood with the prior (0.6/0.4) instead of replacing it. These exist because the 200-exchange soak showed linear deltas pin every stat at +100 by exchange ~40, which locks the character's emotional range. Don't "simplify" them back to raw addition.
+
 **Stat direction is `character -> player`.** `relationship_stats` rows are directed: observer is the character, target is `player`. That matches what `relationship_with_user` means and what the prompt injects. Querying `player -> character` reads an empty set — that bug shipped once already.
 
 **Entity ids from the model are untrusted.** Extraction will mint `ronan` next to an existing `char-ronan` however the prompt is worded. `EntityResolver` in the extract route folds incoming ids onto existing entities by normalized name before anything is written; never bypass it when adding a new write path. The response's `remapped` field shows what got folded — a growing list means prompt anchoring is losing.

@@ -60,13 +60,14 @@ export function SummaryTab() {
   const [result, setResult] = useState<{ key: string; summary: CharacterSummaryData | null; error: string | null } | null>(null);
 
   const characterId = character?.id;
-  const fetchKey    = `${characterId}:${extractionVersion}:${refreshTick}`;
+  const chatId      = chat?.id;
+  const fetchKey    = `${chatId}:${characterId}:${extractionVersion}:${refreshTick}`;
 
   useEffect(() => {
-    if (!characterId) return;
+    if (!characterId || !chatId) return;
     let cancelled = false;
-    const key = `${characterId}:${extractionVersion}:${refreshTick}`;
-    fetch(`/api/drawer/summary/${encodeURIComponent(characterId)}`)
+    const key = `${chatId}:${characterId}:${extractionVersion}:${refreshTick}`;
+    fetch(`/api/drawer/summary/${encodeURIComponent(characterId)}?chat=${encodeURIComponent(chatId)}`)
       .then((r) => r.json())
       .then((data: CharacterSummaryData & { error?: string }) => {
         if (data.error) throw new Error(data.error);
@@ -76,7 +77,7 @@ export function SummaryTab() {
         if (!cancelled) setResult({ key, summary: null, error: err.message });
       });
     return () => { cancelled = true; };
-  }, [characterId, extractionVersion, refreshTick]);
+  }, [characterId, chatId, extractionVersion, refreshTick]);
 
   const loading = !!characterId && result?.key !== fetchKey;
   const summary = result?.summary ?? null;
@@ -225,7 +226,8 @@ export function SummaryTab() {
         size="sm"
         className="w-full text-xs"
         onClick={() => {
-          fetch("/api/drawer/entities")
+          if (!chatId) return;
+          fetch(`/api/drawer/entities?chat=${encodeURIComponent(chatId)}`)
             .then((r) => r.json())
             .then((d) => {
               const blob = new Blob([JSON.stringify(d, null, 2)], { type: "application/json" });

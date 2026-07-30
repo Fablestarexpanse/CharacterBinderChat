@@ -36,6 +36,7 @@ const EVAL_DB = path.join(HERE, ".eval-db", "long-chat.db");
 const OUT_DIR = path.join(HERE, "results");
 
 const CHARACTER_ID = "arc-sable";
+const CHAT_ID = "chat-arc-sable";
 const CHARACTER_NAME = "Sable";
 const PERSONA_NAME = "Kira";
 
@@ -205,7 +206,7 @@ const API = `http://127.0.0.1:${PORT}`;
 async function fetchMemory(context = "") {
   const ctx = context ? `&context=${encodeURIComponent(context.slice(0, 600))}` : "";
   return fetch(
-    `${API}/api/chat/core-memory?characterId=${encodeURIComponent(CHARACTER_ID)}&name=${encodeURIComponent(CHARACTER_NAME)}${ctx}`,
+    `${API}/api/chat/core-memory?chatId=chat-arc-sable&characterId=${encodeURIComponent(CHARACTER_ID)}&name=${encodeURIComponent(CHARACTER_NAME)}${ctx}`,
     { cache: "no-store" }
   ).then((r) => r.json()).catch(() => ({}));
 }
@@ -333,7 +334,7 @@ async function main() {
       // ── Memory writes (exactly what the app does after a reply) ────────────
       const body = {
         messages: history.slice(-16),
-        characterId: CHARACTER_ID, characterName: CHARACTER_NAME, personaName: PERSONA_NAME,
+        chatId: CHAT_ID, characterId: CHARACTER_ID, characterName: CHARACTER_NAME, personaName: PERSONA_NAME,
         providerType: "openrouter", providerBaseUrl: "https://openrouter.ai/api",
         modelId: MODEL, apiKey,
       };

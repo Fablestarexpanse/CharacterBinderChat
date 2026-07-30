@@ -10,20 +10,21 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
+  const chatId        = searchParams.get("chatId");
   const characterId   = searchParams.get("characterId");
   const characterName = searchParams.get("name") ?? characterId ?? "Unknown";
   // Recent conversation text, used to rank non-durable facts by relevance.
   // Optional: without it, retrieval falls back to confidence/recency order.
   const context       = searchParams.get("context") ?? "";
 
-  if (!characterId) {
-    return Response.json({ error: "characterId is required" }, { status: 400 });
+  if (!chatId || !characterId) {
+    return Response.json({ error: "chatId and characterId are required" }, { status: 400 });
   }
 
   try {
-    const cm         = ensureCoreMemory(characterId, characterName);
+    const cm         = ensureCoreMemory(chatId, characterId, characterName);
     const store      = getStore();
-    const knownFacts = store.retrieveFactsForPrompt(characterId, 20, context);
+    const knownFacts = store.retrieveFactsForPrompt(chatId, characterId, 20, context);
     return Response.json({ ok: true, coreMemory: cm.data, version: cm.version, updatedAt: cm.updatedAt, knownFacts });
   } catch (err) {
     console.error("[core-memory GET]", err);
@@ -120,15 +121,15 @@ function sanitizePatch(raw: Record<string, unknown>): Partial<CoreMemory> | stri
 
 export async function PATCH(req: NextRequest) {
   try {
-    const body = await req.json() as { characterId?: string } & Record<string, unknown>;
-    const { characterId, ...rawPatch } = body;
+    const body = await req.json() as { chatId?: string; characterId?: string } & Record<string, unknown>;
+    const { chatId, characterId, ...rawPatch } = body;
 
-    if (!characterId || typeof characterId !== "string") {
-      return Response.json({ error: "characterId is required" }, { status: 400 });
+    if (!chatId || typeof chatId !== "string" || !characterId || typeof characterId !== "string") {
+      return Response.json({ error: "chatId and characterId are required" }, { status: 400 });
     }
 
     // Ensure the record exists before patching
-    const existing = getCoreMemory(characterId);
+    const existing = getCoreMemory(chatId, characterId);
     if (!existing) {
       return Response.json({ error: "Core memory not found — call GET first to initialise" }, { status: 404 });
     }
@@ -138,7 +139,7 @@ export async function PATCH(req: NextRequest) {
       return Response.json({ error: patch }, { status: 400 });
     }
 
-    const updated = patchCoreMemory(characterId, patch);
+    const updated = patchCoreMemory(chatId, characterId, patch);
     return Response.json({ ok: true, coreMemory: updated?.data, version: updated?.version });
   } catch (err) {
     console.error("[core-memory PATCH]", err);

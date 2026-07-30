@@ -26,10 +26,11 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 interface Props {
+  chatId:            string;
   extractionVersion: number;
 }
 
-export function EntitiesView({ extractionVersion }: Props) {
+export function EntitiesView({ chatId, extractionVersion }: Props) {
   // Result keyed by what was fetched; `loading` is derived so the effect
   // never calls setState synchronously (react-hooks/set-state-in-effect).
   // `refreshTick` triggers a refetch after a merge.
@@ -42,12 +43,12 @@ export function EntitiesView({ extractionVersion }: Props) {
   >({});
   const [mergeError, setMergeError] = useState<string | null>(null);
 
-  const fetchKey = `${extractionVersion}:${refreshTick}`;
+  const fetchKey = `${chatId}:${extractionVersion}:${refreshTick}`;
 
   useEffect(() => {
     let cancelled = false;
-    const key = `${extractionVersion}:${refreshTick}`;
-    fetch("/api/drawer/entities/overview")
+    const key = `${chatId}:${extractionVersion}:${refreshTick}`;
+    fetch(`/api/drawer/entities/overview?chat=${encodeURIComponent(chatId)}`)
       .then((r) => r.json())
       .then((d: OverviewResponse) => {
         if (d.error) throw new Error(d.error);
@@ -57,7 +58,7 @@ export function EntitiesView({ extractionVersion }: Props) {
         if (!cancelled) setResult({ key, data: null, error: e.message });
       });
     return () => { cancelled = true; };
-  }, [extractionVersion, refreshTick]);
+  }, [chatId, extractionVersion, refreshTick]);
 
   const loading = result?.key !== fetchKey;
   const data    = result?.data ?? null;
@@ -80,7 +81,7 @@ export function EntitiesView({ extractionVersion }: Props) {
       const res = await fetch("/api/drawer/entities/merge", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ fromId: ms.fromId, toId: ms.toId }),
+        body:    JSON.stringify({ chatId, fromId: ms.fromId, toId: ms.toId }),
       });
       const result = await res.json() as { ok?: boolean; error?: string };
       if (!result.ok) throw new Error(result.error ?? "Merge failed");

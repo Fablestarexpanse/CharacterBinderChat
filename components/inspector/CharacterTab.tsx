@@ -78,10 +78,11 @@ export function CharacterTab() {
   const characterId = character?.id;
 
   useEffect(() => {
-    if (!characterId) return;
+    if (!characterId || !activeChatId) return;
+    const chatParam = `chat=${encodeURIComponent(activeChatId)}`;
 
     // Fetch summary (which includes relationships + stats)
-    fetch(`/api/drawer/summary/${encodeURIComponent(characterId)}`)
+    fetch(`/api/drawer/summary/${encodeURIComponent(characterId)}?${chatParam}`)
       .then((r) => r.json())
       .then((data: { relationships?: RelationshipGroup[] }) => {
         setRelationships(data.relationships ?? []);
@@ -89,11 +90,11 @@ export function CharacterTab() {
       .catch(() => {/* silently ignore */});
 
     // character -> player: how this character feels about the user
-    fetch(`/api/drawer/stats?observer=${encodeURIComponent(characterId)}&target=player`)
+    fetch(`/api/drawer/stats?${chatParam}&observer=${encodeURIComponent(characterId)}&target=player`)
       .then((r) => r.json())
       .then((data: { stats?: StatRow[] }) => setStats(data.stats ?? []))
       .catch(() => {/* silently ignore */});
-  }, [characterId, extractionVersion]);
+  }, [characterId, activeChatId, extractionVersion]);
 
   if (!character) {
     return (

@@ -17,6 +17,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as {
+      chatId:           string;
       characterId:      string;
       characterName:    string;
       personaName?:     string;
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
     };
 
     const {
-      characterId, characterName, personaName,
+      chatId, characterId, characterName, personaName,
       providerType, providerBaseUrl, modelId, apiKey,
     } = body;
 
@@ -39,17 +40,18 @@ export async function POST(req: NextRequest) {
     const recentMessages = body.recentMessages ?? body.messages;
 
     const validProviders = new Set(["ollama", "lmstudio", "openrouter"]);
-    if (!characterId || !recentMessages?.length || !providerBaseUrl || !modelId || !validProviders.has(providerType)) {
+    if (!chatId || !characterId || !recentMessages?.length || !providerBaseUrl || !modelId || !validProviders.has(providerType)) {
       return Response.json(
-        { error: "characterId, recentMessages, providerBaseUrl and modelId are required" },
+        { error: "chatId, characterId, recentMessages, providerBaseUrl and modelId are required" },
         { status: 400 }
       );
     }
 
     // Ensure core memory exists before trying to rewrite it
-    ensureCoreMemory(characterId, characterName ?? characterId);
+    ensureCoreMemory(chatId, characterId, characterName ?? characterId);
 
     const result = await rewriteCoreMemory({
+      chatId,
       characterId,
       characterName: characterName ?? characterId,
       personaName,

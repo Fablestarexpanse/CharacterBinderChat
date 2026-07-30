@@ -60,7 +60,16 @@ export async function PUT(req: NextRequest) {
     }
 
     store.replaceAppState(characters, chats, personas);
-    return Response.json({ ok: true, characters: characters.length, chats: chats.length, personas: personas.length });
+    // Deleting a chat must also delete its memory — orphaned drawer rows would
+    // otherwise linger forever and resurface in "continue with memories" lists.
+    const purged = store.purgeOrphanedChatMemory();
+    return Response.json({
+      ok: true,
+      characters: characters.length,
+      chats: chats.length,
+      personas: personas.length,
+      ...(purged.length > 0 ? { purgedChatMemory: purged } : {}),
+    });
   } catch (err) {
     console.error("[state PUT]", err);
     return Response.json({ error: String(err) }, { status: 500 });

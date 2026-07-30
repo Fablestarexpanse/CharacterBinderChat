@@ -115,7 +115,7 @@ function queryApi(db) {
       return Object.fromEntries(rows.map((r) => [r.stat_name, r.value]));
     },
     coreMemory: (characterId) => {
-      const row = db.prepare("SELECT * FROM core_memory WHERE character_id = ?").get(characterId);
+      const row = db.prepare("SELECT * FROM core_memory WHERE character_id = ?").get(characterId); // chat_id implicit: one chat per scenario DB
       return row ? { ...row, data: JSON.parse(row.data) } : null;
     },
     /** Entities whose normalized names collide — the duplicate-drift signal */
@@ -138,6 +138,7 @@ async function runBatches(scenario, batches, model, cfg, metrics) {
   for (const messages of batches) {
     const body = {
       messages,
+      chatId:          `chat-${scenario.characterId}`,
       characterId:     scenario.characterId,
       characterName:   scenario.characterName,
       personaName:     scenario.personaName,
@@ -192,6 +193,7 @@ async function runScenario(scenario, model, cfg, db) {
       const res = await fetch(`http://127.0.0.1:${PORT}/api/chat/core-memory/refresh`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          chatId: `chat-${scenario.characterId}`,
           characterId: scenario.characterId, characterName: scenario.characterName,
           personaName: scenario.personaName, recentMessages: last,
           providerType: cfg.providerType, providerBaseUrl: cfg.baseUrl,

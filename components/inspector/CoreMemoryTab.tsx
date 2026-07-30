@@ -108,16 +108,17 @@ export function CoreMemoryTab() {
 
   const characterId   = character?.id;
   const characterName = character?.name;
-  const fetchKey      = `${characterId}:${extractionVersion}:${refreshTick}`;
+  const chatId        = chat?.id;
+  const fetchKey      = `${chatId}:${characterId}:${extractionVersion}:${refreshTick}`;
 
   useEffect(() => {
-    if (!characterId || !characterName) return;
+    if (!chatId || !characterId || !characterName) return;
     let cancelled = false;
-    const key = `${characterId}:${extractionVersion}:${refreshTick}`;
+    const key = `${chatId}:${characterId}:${extractionVersion}:${refreshTick}`;
     (async () => {
       try {
         const res  = await fetch(
-          `/api/chat/core-memory?characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}`
+          `/api/chat/core-memory?chatId=${encodeURIComponent(chatId)}&characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}`
         );
         const data = await res.json() as {
           ok: boolean; coreMemory: CoreMemory; version: number; updatedAt: number;
@@ -136,7 +137,7 @@ export function CoreMemoryTab() {
       }
     })();
     return () => { cancelled = true; };
-  }, [characterId, characterName, extractionVersion, refreshTick]);
+  }, [chatId, characterId, characterName, extractionVersion, refreshTick]);
 
   const loading = !!characterId && result?.key !== fetchKey;
   const cm      = result?.cm ?? null;
@@ -163,6 +164,7 @@ export function CoreMemoryTab() {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({
+          chatId:          chat.id,
           characterId:     character.id,
           characterName:   character.name,
           recentMessages:  chat.messages.slice(-16).map((m) => ({ role: m.role, content: m.content })),

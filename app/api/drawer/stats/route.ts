@@ -9,13 +9,14 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const params   = req.nextUrl.searchParams;
+    const chatId   = params.get("chat");
     const observer = params.get("observer");
     const target   = params.get("target");
-    if (!observer || !target) {
-      return Response.json({ error: "observer and target params required" }, { status: 400 });
+    if (!chatId || !observer || !target) {
+      return Response.json({ error: "chat, observer and target params required" }, { status: 400 });
     }
     const store = getStore();
-    const statsMap = store.queryStats(observer, target);
+    const statsMap = store.queryStats(chatId, observer, target);
 
     // Return all five axes (null value for axes not yet set)
     const stats = STAT_NAMES.map((name) => ({
@@ -41,11 +42,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { observer, target, stat } = body as {
-      observer: string; target: string; stat: StatName;
+    const { chatId, observer, target, stat } = body as {
+      chatId: string; observer: string; target: string; stat: StatName;
     };
-    if (!observer || !target || !stat) {
-      return Response.json({ error: "observer, target and stat required" }, { status: 400 });
+    if (!chatId || !observer || !target || !stat) {
+      return Response.json({ error: "chatId, observer, target and stat required" }, { status: 400 });
     }
     // Validate here rather than letting the CHECK constraint turn a typo
     // into an opaque SQL 500
@@ -56,13 +57,13 @@ export async function POST(req: NextRequest) {
       );
     }
     const store = getStore();
-    store.ensureEntity(observer, "character", observer);
-    store.ensureEntity(target,   "character", target);
+    store.ensureEntity(chatId, observer, "character", observer);
+    store.ensureEntity(chatId, target,   "character", target);
     let updated;
     if (typeof body.delta === "number") {
-      updated = store.deltaStat(observer, target, stat, body.delta);
+      updated = store.deltaStat(chatId, observer, target, stat, body.delta);
     } else if (typeof body.value === "number") {
-      updated = store.setStat(observer, target, stat, body.value);
+      updated = store.setStat(chatId, observer, target, stat, body.value);
     } else {
       return Response.json({ error: "Either value or delta is required" }, { status: 400 });
     }

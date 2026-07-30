@@ -110,7 +110,74 @@ export class FableStore {
     this.db = new Database(dbPath);
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
+    this._migrateIfNeeded();
     this._initSchema();
+  }
+
+  // ── Migration: character-global memory → chat-scoped memory ───────────────
+  // Schema v1 keyed memory by character only, so every chat with a character
+  // shared one pool of facts and one core memory. v2 scopes everything by
+  // chat_id: each chat is its own story. Legacy rows are assigned to the first
+  // existing chat that belongs to the character owning the legacy core memory
+  // (in practice: the demo chat they came from), else to 'legacy'.
+  private _migrateIfNeeded(): void {
+    const cols = this.db.prepare("PRAGMA table_info(entities)").all() as Array<{ name: string }>;
+    if (cols.length === 0) return;                    // fresh DB — nothing to migrate
+    if (cols.some((c) => c.name === "chat_id")) return; // already v2
+
+    let target = "legacy";
+    try {
+      const cm = this.db.prepare("SELECT character_id FROM core_memory LIMIT 1").get() as
+        { character_id: string } | undefined;
+      if (cm) {
+        const chats = this.db.prepare("SELECT id, data FROM app_chats ORDER BY seq").all() as
+          Array<{ id: string; data: string }>;
+        for (const c of chats) {
+          try {
+            if ((JSON.parse(c.data) as { characterId?: string }).characterId === cm.character_id) {
+              target = c.id;
+              break;
+            }
+          } catch { /* skip unparseable row */ }
+        }
+      }
+    } catch { /* no core_memory table or app_chats — keep 'legacy' */ }
+
+    console.log(`[FableStore] migrating memory schema v1 → v2 (chat-scoped); legacy rows → chat '${target}'`);
+
+    this.db.pragma("foreign_keys = OFF");
+    const migrate = this.db.transaction(() => {
+      const OLD = ["entities", "facts", "relationship_stats", "memory_cards", "commitments", "core_memory"];
+      for (const t of OLD) {
+        this.db.exec(`ALTER TABLE ${t} RENAME TO ${t}_v1`);
+      }
+      this._initSchema(); // creates the v2 tables
+
+      this.db.exec(`INSERT INTO entities (chat_id, id, type, name, description, created_at)
+        SELECT '${target}', id, type, name, description, created_at FROM entities_v1`);
+      // Fact ids preserved so superseded_by links stay valid
+      this.db.exec(`INSERT INTO facts (id, chat_id, subject_id, predicate, object_id, object_literal,
+          t_valid_start, t_valid_end, t_ingested, confidence, known_to, superseded_by)
+        SELECT id, '${target}', subject_id, predicate, object_id, object_literal,
+          t_valid_start, t_valid_end, t_ingested, confidence, known_to, superseded_by FROM facts_v1`);
+      this.db.exec(`INSERT INTO relationship_stats (chat_id, observer_id, target_id, stat_name, value, decay_rate, last_updated)
+        SELECT '${target}', observer_id, target_id, stat_name, value, decay_rate, last_updated FROM relationship_stats_v1`);
+      this.db.exec(`INSERT INTO memory_cards (chat_id, title, content, tags, entity_ids, created_at, updated_at)
+        SELECT '${target}', title, content, tags, entity_ids, created_at, updated_at FROM memory_cards_v1`);
+      this.db.exec(`INSERT INTO commitments (chat_id, promisor_id, promisee_id, description, status, created_at, resolved_at)
+        SELECT '${target}', promisor_id, promisee_id, description, status, created_at, resolved_at FROM commitments_v1`);
+      this.db.exec(`INSERT INTO core_memory (chat_id, character_id, data, version, updated_at)
+        SELECT '${target}', character_id, data, version, updated_at FROM core_memory_v1`);
+
+      for (const t of OLD) {
+        this.db.exec(`DROP TABLE ${t}_v1`);
+      }
+    });
+    try {
+      migrate();
+    } finally {
+      this.db.pragma("foreign_keys = ON");
+    }
   }
 
   private _initSchema(): void {
@@ -147,48 +214,50 @@ export class FableStore {
   }
 
   // ── Entities ──────────────────────────────────────────────────────────────
+  // All memory operations are scoped by chatId: each chat is its own story.
 
-  insertEntity(entity: Omit<DbEntity, "createdAt"> & { createdAt?: number }): void {
+  insertEntity(chatId: string, entity: Omit<DbEntity, "createdAt"> & { createdAt?: number }): void {
     const createdAt = entity.createdAt ?? now();
     this.db
       .prepare(
-        `INSERT OR REPLACE INTO entities (id, type, name, description, created_at)
-         VALUES (?, ?, ?, ?, ?)`
+        `INSERT OR REPLACE INTO entities (chat_id, id, type, name, description, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
       )
-      .run(entity.id, entity.type, entity.name, entity.description ?? "", createdAt);
+      .run(chatId, entity.id, entity.type, entity.name, entity.description ?? "", createdAt);
   }
 
   /** Upsert — safe to call even if entity already exists */
   ensureEntity(
+    chatId: string,
     id: string,
     type: EntityType,
     name: string,
     description = ""
   ): DbEntity {
-    const existing = this.getEntity(id);
+    const existing = this.getEntity(chatId, id);
     if (existing) return existing;
     const e: DbEntity = { id, type, name, description, createdAt: now() };
-    this.insertEntity(e);
+    this.insertEntity(chatId, e);
     return e;
   }
 
-  getEntity(id: string): DbEntity | null {
+  getEntity(chatId: string, id: string): DbEntity | null {
     const row = this.db
-      .prepare("SELECT * FROM entities WHERE id = ?")
-      .get(id);
+      .prepare("SELECT * FROM entities WHERE chat_id = ? AND id = ?")
+      .get(chatId, id);
     return row ? rowToEntity(row) : null;
   }
 
-  listEntities(type?: EntityType): DbEntity[] {
+  listEntities(chatId: string, type?: EntityType): DbEntity[] {
     const rows = type
-      ? this.db.prepare("SELECT * FROM entities WHERE type = ? ORDER BY name").all(type)
-      : this.db.prepare("SELECT * FROM entities ORDER BY type, name").all();
+      ? this.db.prepare("SELECT * FROM entities WHERE chat_id = ? AND type = ? ORDER BY name").all(chatId, type)
+      : this.db.prepare("SELECT * FROM entities WHERE chat_id = ? ORDER BY type, name").all(chatId);
     return rows.map(rowToEntity);
   }
 
   // ── Facts ─────────────────────────────────────────────────────────────────
 
-  insertFact(fact: {
+  insertFact(chatId: string, fact: {
     subjectId:     string;
     predicate:     string;
     objectId?:     string | null;
@@ -200,12 +269,13 @@ export class FableStore {
     const t = now();
     const stmt = this.db.prepare(
       `INSERT INTO facts
-         (subject_id, predicate, object_id, object_literal,
+         (chat_id, subject_id, predicate, object_id, object_literal,
           t_valid_start, t_valid_end, t_ingested,
           confidence, known_to, superseded_by)
-       VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL)`
+       VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL)`
     );
     const info = stmt.run(
+      chatId,
       fact.subjectId,
       fact.predicate,
       fact.objectId ?? null,
@@ -223,39 +293,40 @@ export class FableStore {
    * Uses temporal-only filter — superseded facts are already excluded because
    * supersede_fact() sets t_valid_end, which the temporal query handles.
    */
-  queryFacts(subjectId: string, asOfTime?: number): DbFact[] {
+  queryFacts(chatId: string, subjectId: string, asOfTime?: number): DbFact[] {
     const t = asOfTime ?? now();
     const rows = this.db
       .prepare(
         `SELECT * FROM facts
-         WHERE subject_id = ?
+         WHERE chat_id = ? AND subject_id = ?
            AND t_valid_start <= ?
            AND (t_valid_end IS NULL OR t_valid_end > ?)
          ORDER BY t_valid_start`
       )
-      .all(subjectId, t, t);
+      .all(chatId, subjectId, t, t);
     return rows.map(rowToFact);
   }
 
-  /** Every currently-valid fact, regardless of subject */
-  queryAllLiveFacts(asOfTime?: number): DbFact[] {
+  /** Every currently-valid fact in the chat, regardless of subject */
+  queryAllLiveFacts(chatId: string, asOfTime?: number): DbFact[] {
     const t = asOfTime ?? now();
     return this.db
       .prepare(
         `SELECT * FROM facts
-         WHERE t_valid_start <= ?
+         WHERE chat_id = ?
+           AND t_valid_start <= ?
            AND (t_valid_end IS NULL OR t_valid_end > ?)
            AND superseded_by IS NULL
          ORDER BY t_valid_start`
       )
-      .all(t, t)
+      .all(chatId, t, t)
       .map(rowToFact);
   }
 
-  queryFactsIncludingSuperseded(subjectId: string): DbFact[] {
+  queryFactsIncludingSuperseded(chatId: string, subjectId: string): DbFact[] {
     const rows = this.db
-      .prepare("SELECT * FROM facts WHERE subject_id = ? ORDER BY t_valid_start")
-      .all(subjectId);
+      .prepare("SELECT * FROM facts WHERE chat_id = ? AND subject_id = ? ORDER BY t_valid_start")
+      .all(chatId, subjectId);
     return rows.map(rowToFact);
   }
 
@@ -267,30 +338,31 @@ export class FableStore {
   }
 
   /** Facts where this entity appears as the *object* */
-  queryFactsAboutAsObject(entityId: string, asOfTime?: number): DbFact[] {
+  queryFactsAboutAsObject(chatId: string, entityId: string, asOfTime?: number): DbFact[] {
     const t = asOfTime ?? now();
     const rows = this.db
       .prepare(
         `SELECT * FROM facts
-         WHERE object_id = ?
+         WHERE chat_id = ? AND object_id = ?
            AND t_valid_start <= ?
            AND (t_valid_end IS NULL OR t_valid_end > ?)
          ORDER BY t_valid_start`
       )
-      .all(entityId, t, t);
+      .all(chatId, entityId, t, t);
     return rows.map(rowToFact);
   }
 
-  findContradictions(): Array<[DbFact, DbFact]> {
+  findContradictions(chatId: string): Array<[DbFact, DbFact]> {
     const t = now();
     const rows = this.db
       .prepare(
         `SELECT * FROM facts
-         WHERE t_valid_start <= ?
+         WHERE chat_id = ?
+           AND t_valid_start <= ?
            AND (t_valid_end IS NULL OR t_valid_end > ?)
          ORDER BY subject_id, predicate, t_valid_start`
       )
-      .all(t, t)
+      .all(chatId, t, t)
       .map(rowToFact);
 
     const pairs: Array<[DbFact, DbFact]> = [];
@@ -310,6 +382,7 @@ export class FableStore {
   // ── Relationship Stats ────────────────────────────────────────────────────
 
   setStat(
+    chatId:     string,
     observerId: string,
     targetId:   string,
     statName:   StatName,
@@ -319,49 +392,76 @@ export class FableStore {
     const t = now();
     this.db
       .prepare(
-        `INSERT INTO relationship_stats (observer_id, target_id, stat_name, value, decay_rate, last_updated)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(observer_id, target_id, stat_name)
+        `INSERT INTO relationship_stats (chat_id, observer_id, target_id, stat_name, value, decay_rate, last_updated)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(chat_id, observer_id, target_id, stat_name)
          DO UPDATE SET value = excluded.value, last_updated = excluded.last_updated`
       )
-      .run(observerId, targetId, statName, value, decayRate, t);
+      .run(chatId, observerId, targetId, statName, value, decayRate, t);
 
-    return this.getStat(observerId, targetId, statName)!;
+    return this.getStat(chatId, observerId, targetId, statName)!;
   }
 
+  /**
+   * Apply a relative change with emotional dynamics:
+   *
+   * - Headroom scaling — movement TOWARD an extreme is scaled by the room
+   *   left (1 − |v|/100), so 0→60 is easy and 90→100 takes something
+   *   extraordinary. Movement back toward neutral applies in full, so a
+   *   betrayal at trust 100 still bites. Without this, stats ratchet to ±100
+   *   within ~40 pleasant exchanges and lock the character's emotional range
+   *   (measured in the 200-exchange soak — see docs/long-run-memory-report.md).
+   * - Loss aversion — negative changes to affection/trust/connection are
+   *   ×1.5: trust builds slowly and shatters quickly, which is also what
+   *   makes repair arcs earn their length.
+   */
   deltaStat(
+    chatId:     string,
     observerId: string,
     targetId:   string,
     statName:   StatName,
     delta:      number
   ): DbRelationshipStat {
-    const existing = this.getStat(observerId, targetId, statName);
+    const existing = this.getStat(chatId, observerId, targetId, statName);
     const current  = existing?.value ?? 0;
-    return this.setStat(observerId, targetId, statName, Math.max(-100, Math.min(100, current + delta)));
+
+    let effective = delta;
+    if (delta < 0 && (statName === "affection" || statName === "trust" || statName === "connection")) {
+      effective *= 1.5;
+    }
+    const towardExtreme = Math.sign(effective) === Math.sign(current) || current === 0;
+    if (towardExtreme) {
+      effective *= 1 - Math.abs(current) / 100;
+    }
+
+    return this.setStat(chatId, observerId, targetId, statName,
+      Math.max(-100, Math.min(100, current + effective)));
   }
 
   getStat(
+    chatId:     string,
     observerId: string,
     targetId:   string,
     statName:   StatName
   ): DbRelationshipStat | null {
     const row = this.db
       .prepare(
-        "SELECT * FROM relationship_stats WHERE observer_id = ? AND target_id = ? AND stat_name = ?"
+        "SELECT * FROM relationship_stats WHERE chat_id = ? AND observer_id = ? AND target_id = ? AND stat_name = ?"
       )
-      .get(observerId, targetId, statName);
+      .get(chatId, observerId, targetId, statName);
     return row ? rowToStat(row) : null;
   }
 
   queryStats(
+    chatId:     string,
     observerId: string,
     targetId:   string
   ): Partial<Record<StatName, DbRelationshipStat>> {
     const rows = this.db
       .prepare(
-        "SELECT * FROM relationship_stats WHERE observer_id = ? AND target_id = ?"
+        "SELECT * FROM relationship_stats WHERE chat_id = ? AND observer_id = ? AND target_id = ?"
       )
-      .all(observerId, targetId);
+      .all(chatId, observerId, targetId);
     const result: Partial<Record<StatName, DbRelationshipStat>> = {};
     for (const row of rows) {
       const s = rowToStat(row);
@@ -370,13 +470,13 @@ export class FableStore {
     return result;
   }
 
-  /** Return all unique (observer, target) pairs that have any stats */
-  allStatPairs(): Array<{ observerId: string; targetId: string }> {
+  /** Return all unique (observer, target) pairs that have any stats in a chat */
+  allStatPairs(chatId: string): Array<{ observerId: string; targetId: string }> {
     const rows = this.db
       .prepare(
-        "SELECT DISTINCT observer_id, target_id FROM relationship_stats"
+        "SELECT DISTINCT observer_id, target_id FROM relationship_stats WHERE chat_id = ?"
       )
-      .all() as Array<{ observer_id: string; target_id: string }>;
+      .all(chatId) as Array<{ observer_id: string; target_id: string }>;
     return rows.map((r) => ({ observerId: r.observer_id, targetId: r.target_id }));
   }
 
@@ -428,14 +528,15 @@ export class FableStore {
 
   // ── Memory Cards ──────────────────────────────────────────────────────────
 
-  insertMemoryCard(card: Omit<DbMemoryCard, "id" | "createdAt" | "updatedAt">): number {
+  insertMemoryCard(chatId: string, card: Omit<DbMemoryCard, "id" | "createdAt" | "updatedAt">): number {
     const t = now();
     const info = this.db
       .prepare(
-        `INSERT INTO memory_cards (title, content, tags, entity_ids, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO memory_cards (chat_id, title, content, tags, entity_ids, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
+        chatId,
         card.title,
         card.content,
         JSON.stringify(card.tags ?? []),
@@ -445,10 +546,10 @@ export class FableStore {
     return info.lastInsertRowid as number;
   }
 
-  listMemoryCards(entityId?: string): DbMemoryCard[] {
+  listMemoryCards(chatId: string, entityId?: string): DbMemoryCard[] {
     const rows = this.db
-      .prepare("SELECT * FROM memory_cards ORDER BY created_at DESC")
-      .all()
+      .prepare("SELECT * FROM memory_cards WHERE chat_id = ? ORDER BY created_at DESC")
+      .all(chatId)
       .map(rowToMemoryCard);
     if (!entityId) return rows;
     return rows.filter((c) => c.entityIds.includes(entityId));
@@ -457,6 +558,7 @@ export class FableStore {
   // ── Commitments ───────────────────────────────────────────────────────────
 
   insertCommitment(
+    chatId:      string,
     promisorId:  string,
     description: string,
     promiseeId?: string
@@ -464,35 +566,35 @@ export class FableStore {
     const t = now();
     const info = this.db
       .prepare(
-        `INSERT INTO commitments (promisor_id, promisee_id, description, status, created_at, resolved_at)
-         VALUES (?, ?, ?, 'active', ?, NULL)`
+        `INSERT INTO commitments (chat_id, promisor_id, promisee_id, description, status, created_at, resolved_at)
+         VALUES (?, ?, ?, ?, 'active', ?, NULL)`
       )
-      .run(promisorId, promiseeId ?? null, description, t);
+      .run(chatId, promisorId, promiseeId ?? null, description, t);
     return info.lastInsertRowid as number;
   }
 
-  listCommitments(entityId: string, status?: CommitmentStatus): DbCommitment[] {
+  listCommitments(chatId: string, entityId: string, status?: CommitmentStatus): DbCommitment[] {
     const rows = this.db
       .prepare(
-        "SELECT * FROM commitments WHERE promisor_id = ? ORDER BY created_at DESC"
+        "SELECT * FROM commitments WHERE chat_id = ? AND promisor_id = ? ORDER BY created_at DESC"
       )
-      .all(entityId)
+      .all(chatId, entityId)
       .map(rowToCommitment);
     return status ? rows.filter((c) => c.status === status) : rows;
   }
 
   // ── Character Summary ─────────────────────────────────────────────────────
 
-  characterSummary(entityId: string): CharacterSummaryData {
-    const entity = this.getEntity(entityId);
-    const facts  = this.queryFacts(entityId);
+  characterSummary(chatId: string, entityId: string): CharacterSummaryData {
+    const entity = this.getEntity(chatId, entityId);
+    const facts  = this.queryFacts(chatId, entityId);
 
     // Collect all unique targets this entity has stats with
     const statRows = this.db
       .prepare(
-        "SELECT * FROM relationship_stats WHERE observer_id = ? ORDER BY target_id, stat_name"
+        "SELECT * FROM relationship_stats WHERE chat_id = ? AND observer_id = ? ORDER BY target_id, stat_name"
       )
-      .all(entityId)
+      .all(chatId, entityId)
       .map(rowToStat);
 
     const targetMap = new Map<
@@ -509,7 +611,7 @@ export class FableStore {
     }
 
     const relationships = Array.from(targetMap.entries()).map(([targetId, data]) => {
-      const targetEntity = this.getEntity(targetId);
+      const targetEntity = this.getEntity(chatId, targetId);
       return {
         targetId,
         targetName: targetEntity?.name ?? targetId,
@@ -517,13 +619,13 @@ export class FableStore {
       };
     });
 
-    const commitments = this.listCommitments(entityId, "active");
+    const commitments = this.listCommitments(chatId, entityId, "active");
 
     return {
       entity,
       relationships,
       facts: facts.map((f) => {
-        const objectEntity = f.objectId ? this.getEntity(f.objectId) : null;
+        const objectEntity = f.objectId ? this.getEntity(chatId, f.objectId) : null;
         const objectDisplay = objectEntity
           ? objectEntity.name + (f.objectLiteral ? ` / "${f.objectLiteral}"` : "")
           : f.objectLiteral
@@ -549,57 +651,57 @@ export class FableStore {
    * Any stat rows that would violate the UNIQUE constraint after the repoint
    * are dropped (toId's existing value wins).
    */
-  mergeEntity(fromId: string, toId: string): void {
+  mergeEntity(chatId: string, fromId: string, toId: string): void {
     const doMerge = this.db.transaction(() => {
       // ── Facts: repoint subject and object references ──────────────────────
-      this.db.prepare("UPDATE facts SET subject_id = ? WHERE subject_id = ?").run(toId, fromId);
-      this.db.prepare("UPDATE facts SET object_id  = ? WHERE object_id  = ?").run(toId, fromId);
+      this.db.prepare("UPDATE facts SET subject_id = ? WHERE chat_id = ? AND subject_id = ?").run(toId, chatId, fromId);
+      this.db.prepare("UPDATE facts SET object_id  = ? WHERE chat_id = ? AND object_id  = ?").run(toId, chatId, fromId);
 
       // ── Relationship stats (observer side) ────────────────────────────────
       // Delete fromId rows that would collide with an existing toId row
       const obsConflicts = this.db.prepare(`
         SELECT rs1.id FROM relationship_stats rs1
-        WHERE rs1.observer_id = ?
+        WHERE rs1.chat_id = ? AND rs1.observer_id = ?
           AND EXISTS (
             SELECT 1 FROM relationship_stats rs2
-            WHERE rs2.observer_id = ? AND rs2.target_id = rs1.target_id AND rs2.stat_name = rs1.stat_name
+            WHERE rs2.chat_id = rs1.chat_id AND rs2.observer_id = ? AND rs2.target_id = rs1.target_id AND rs2.stat_name = rs1.stat_name
           )
-      `).all(fromId, toId) as { id: number }[];
+      `).all(chatId, fromId, toId) as { id: number }[];
       for (const row of obsConflicts) {
         this.db.prepare("DELETE FROM relationship_stats WHERE id = ?").run(row.id);
       }
-      this.db.prepare("UPDATE relationship_stats SET observer_id = ? WHERE observer_id = ?").run(toId, fromId);
+      this.db.prepare("UPDATE relationship_stats SET observer_id = ? WHERE chat_id = ? AND observer_id = ?").run(toId, chatId, fromId);
 
       // ── Relationship stats (target side) ──────────────────────────────────
       const tgtConflicts = this.db.prepare(`
         SELECT rs1.id FROM relationship_stats rs1
-        WHERE rs1.target_id = ?
+        WHERE rs1.chat_id = ? AND rs1.target_id = ?
           AND EXISTS (
             SELECT 1 FROM relationship_stats rs2
-            WHERE rs2.target_id = ? AND rs2.observer_id = rs1.observer_id AND rs2.stat_name = rs1.stat_name
+            WHERE rs2.chat_id = rs1.chat_id AND rs2.target_id = ? AND rs2.observer_id = rs1.observer_id AND rs2.stat_name = rs1.stat_name
           )
-      `).all(fromId, toId) as { id: number }[];
+      `).all(chatId, fromId, toId) as { id: number }[];
       for (const row of tgtConflicts) {
         this.db.prepare("DELETE FROM relationship_stats WHERE id = ?").run(row.id);
       }
-      this.db.prepare("UPDATE relationship_stats SET target_id = ? WHERE target_id = ?").run(toId, fromId);
+      this.db.prepare("UPDATE relationship_stats SET target_id = ? WHERE chat_id = ? AND target_id = ?").run(toId, chatId, fromId);
 
       // ── Commitments ───────────────────────────────────────────────────────
-      this.db.prepare("UPDATE commitments SET promisor_id = ? WHERE promisor_id = ?").run(toId, fromId);
-      this.db.prepare("UPDATE commitments SET promisee_id = ? WHERE promisee_id = ?").run(toId, fromId);
+      this.db.prepare("UPDATE commitments SET promisor_id = ? WHERE chat_id = ? AND promisor_id = ?").run(toId, chatId, fromId);
+      this.db.prepare("UPDATE commitments SET promisee_id = ? WHERE chat_id = ? AND promisee_id = ?").run(toId, chatId, fromId);
 
       // ── Remove the now-orphaned entity ────────────────────────────────────
-      this.db.prepare("DELETE FROM entities WHERE id = ?").run(fromId);
+      this.db.prepare("DELETE FROM entities WHERE chat_id = ? AND id = ?").run(chatId, fromId);
     });
     doMerge();
   }
 
   // ── Core Memory (Drawer 1) ────────────────────────────────────────────────
 
-  getCoreMemory(characterId: string): DbCoreMemory | null {
+  getCoreMemory(chatId: string, characterId: string): DbCoreMemory | null {
     const row = this.db
-      .prepare("SELECT * FROM core_memory WHERE character_id = ?")
-      .get(characterId) as { character_id: string; data: string; version: number; updated_at: number } | undefined;
+      .prepare("SELECT * FROM core_memory WHERE chat_id = ? AND character_id = ?")
+      .get(chatId, characterId) as { character_id: string; data: string; version: number; updated_at: number } | undefined;
     if (!row) return null;
     return {
       characterId: row.character_id,
@@ -609,31 +711,31 @@ export class FableStore {
     };
   }
 
-  setCoreMemory(cm: CoreMemory): void {
+  setCoreMemory(chatId: string, cm: CoreMemory): void {
     const t = now();
     this.db
       .prepare(
-        `INSERT INTO core_memory (character_id, data, version, updated_at)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(character_id)
+        `INSERT INTO core_memory (chat_id, character_id, data, version, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(chat_id, character_id)
          DO UPDATE SET data = excluded.data, version = excluded.version, updated_at = excluded.updated_at`
       )
-      .run(cm.characterId, JSON.stringify({ ...cm, updatedAt: new Date(t * 1000).toISOString() }), cm.version ?? 1, t);
+      .run(chatId, cm.characterId, JSON.stringify({ ...cm, updatedAt: new Date(t * 1000).toISOString() }), cm.version ?? 1, t);
   }
 
   /** Partial update — merges top-level keys only (not nested objects) */
-  patchCoreMemory(characterId: string, patch: Partial<CoreMemory>): DbCoreMemory | null {
-    const existing = this.getCoreMemory(characterId);
+  patchCoreMemory(chatId: string, characterId: string, patch: Partial<CoreMemory>): DbCoreMemory | null {
+    const existing = this.getCoreMemory(chatId, characterId);
     if (!existing) return null;
     const merged: CoreMemory = { ...existing.data, ...patch, characterId };
     merged.version = (existing.version ?? 0) + 1;
-    this.setCoreMemory(merged);
-    return this.getCoreMemory(characterId);
+    this.setCoreMemory(chatId, merged);
+    return this.getCoreMemory(chatId, characterId);
   }
 
   /** Returns existing core memory or creates a default one */
-  ensureCoreMemory(characterId: string, characterName: string): DbCoreMemory {
-    const existing = this.getCoreMemory(characterId);
+  ensureCoreMemory(chatId: string, characterId: string, characterName: string): DbCoreMemory {
+    const existing = this.getCoreMemory(chatId, characterId);
     if (existing) return existing;
 
     const defaults: CoreMemory = {
@@ -650,8 +752,8 @@ export class FableStore {
       internal_thoughts:       [],
       narrative_summary:       "The story is just beginning.",
     };
-    this.setCoreMemory(defaults);
-    return this.getCoreMemory(characterId)!;
+    this.setCoreMemory(chatId, defaults);
+    return this.getCoreMemory(chatId, characterId)!;
   }
 
   // ── App State (characters / chats / messages persistence) ─────────────────
@@ -721,7 +823,7 @@ export class FableStore {
 
   // ── Export ────────────────────────────────────────────────────────────────
 
-  exportJson(): {
+  exportJson(chatId: string): {
     entities:    DbEntity[];
     facts:       DbFact[];
     stats:       DbRelationshipStat[];
@@ -729,20 +831,179 @@ export class FableStore {
     commitments: DbCommitment[];
   } {
     return {
-      entities:    this.listEntities(),
-      facts:       this.db.prepare("SELECT * FROM facts ORDER BY id").all().map(rowToFact),
-      stats:       this.db.prepare("SELECT * FROM relationship_stats ORDER BY id").all().map(rowToStat),
-      memoryCards: this.listMemoryCards(),
-      commitments: this.db.prepare("SELECT * FROM commitments ORDER BY id").all().map(rowToCommitment),
+      entities:    this.listEntities(chatId),
+      facts:       this.db.prepare("SELECT * FROM facts WHERE chat_id = ? ORDER BY id").all(chatId).map(rowToFact),
+      stats:       this.db.prepare("SELECT * FROM relationship_stats WHERE chat_id = ? ORDER BY id").all(chatId).map(rowToStat),
+      memoryCards: this.listMemoryCards(chatId),
+      commitments: this.db.prepare("SELECT * FROM commitments WHERE chat_id = ? ORDER BY id").all(chatId).map(rowToCommitment),
     };
+  }
+
+  // ── Memory lifecycle ──────────────────────────────────────────────────────
+
+  /** Remove every memory row belonging to a chat */
+  purgeChatMemory(chatId: string): void {
+    const tx = this.db.transaction(() => {
+      for (const t of ["facts", "relationship_stats", "commitments", "memory_cards", "core_memory", "entities"]) {
+        this.db.prepare(`DELETE FROM ${t} WHERE chat_id = ?`).run(chatId);
+      }
+    });
+    tx();
+  }
+
+  /**
+   * Purge memory for chats that no longer exist in app_chats — deleting a chat
+   * in the UI otherwise leaves its drawer rows orphaned forever. 'legacy'
+   * (the pre-migration scope) is exempt so migrated data is never silently
+   * destroyed.
+   */
+  purgeOrphanedChatMemory(): string[] {
+    const known = new Set(
+      (this.db.prepare("SELECT id FROM app_chats").all() as Array<{ id: string }>).map((r) => r.id)
+    );
+    const referenced = new Set<string>();
+    for (const t of ["facts", "relationship_stats", "commitments", "memory_cards", "core_memory", "entities"]) {
+      for (const r of this.db.prepare(`SELECT DISTINCT chat_id FROM ${t}`).all() as Array<{ chat_id: string }>) {
+        referenced.add(r.chat_id);
+      }
+    }
+    const orphans = [...referenced].filter((c) => !known.has(c) && c !== "legacy");
+    for (const c of orphans) this.purgeChatMemory(c);
+    return orphans;
+  }
+
+  // ── Memory transfer ───────────────────────────────────────────────────────
+
+  /**
+   * Chats that hold memories involving a character — candidates for
+   * "continue with memories" when starting a new chat with them.
+   */
+  listMemorySources(characterId: string): Array<{
+    chatId: string; chatName: string | null; facts: number; updatedAt: number;
+  }> {
+    const rows = this.db.prepare(`
+      SELECT cm.chat_id AS chat_id,
+             cm.updated_at AS updated_at,
+             (SELECT COUNT(*) FROM facts f
+               WHERE f.chat_id = cm.chat_id AND f.superseded_by IS NULL) AS facts
+      FROM core_memory cm
+      WHERE cm.character_id = ?
+      ORDER BY cm.updated_at DESC
+    `).all(characterId) as Array<{ chat_id: string; updated_at: number; facts: number }>;
+
+    const nameOf = this.db.prepare("SELECT data FROM app_chats WHERE id = ?");
+    return rows.map((r) => {
+      let chatName: string | null = null;
+      const chat = nameOf.get(r.chat_id) as { data: string } | undefined;
+      if (chat) {
+        try { chatName = (JSON.parse(chat.data) as { name?: string }).name ?? null; } catch { /* ignore */ }
+      }
+      return { chatId: r.chat_id, chatName, facts: r.facts, updatedAt: r.updated_at };
+    });
+  }
+
+  /**
+   * Copy one chat's entire memory into another chat. Used for the explicit
+   * "continue with memories" option when starting a new chat — memory NEVER
+   * carries over implicitly. Existing rows in the target chat are preserved;
+   * colliding entities/stats keep the target's version.
+   * Fact supersession links are remapped onto the copied ids.
+   */
+  transferMemory(fromChatId: string, toChatId: string): { entities: number; facts: number; stats: number } {
+    let entities = 0, facts = 0, stats = 0;
+    const tx = this.db.transaction(() => {
+      // Entities — keep target's on collision
+      for (const e of this.listEntities(fromChatId)) {
+        if (!this.getEntity(toChatId, e.id)) {
+          this.insertEntity(toChatId, e);
+          entities++;
+        }
+      }
+
+      // Facts — copy all (incl. superseded, preserving history), remap ids
+      const srcFacts = this.db
+        .prepare("SELECT * FROM facts WHERE chat_id = ? ORDER BY id")
+        .all(fromChatId)
+        .map(rowToFact);
+      const idMap = new Map<number, number>();
+      const ins = this.db.prepare(
+        `INSERT INTO facts (chat_id, subject_id, predicate, object_id, object_literal,
+           t_valid_start, t_valid_end, t_ingested, confidence, known_to, superseded_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
+      );
+      for (const f of srcFacts) {
+        const info = ins.run(
+          toChatId, f.subjectId, f.predicate, f.objectId, f.objectLiteral,
+          f.tValidStart, f.tValidEnd, f.tIngested, f.confidence, JSON.stringify(f.knownTo)
+        );
+        idMap.set(f.id, info.lastInsertRowid as number);
+        facts++;
+      }
+      const setSup = this.db.prepare("UPDATE facts SET superseded_by = ? WHERE id = ?");
+      for (const f of srcFacts) {
+        if (f.supersededBy !== null && idMap.has(f.supersededBy)) {
+          setSup.run(idMap.get(f.supersededBy)!, idMap.get(f.id)!);
+        }
+      }
+
+      // Stats — keep target's on collision
+      const srcStats = this.db
+        .prepare("SELECT * FROM relationship_stats WHERE chat_id = ?")
+        .all(fromChatId)
+        .map(rowToStat);
+      const insStat = this.db.prepare(
+        `INSERT OR IGNORE INTO relationship_stats
+           (chat_id, observer_id, target_id, stat_name, value, decay_rate, last_updated)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const s of srcStats) {
+        const r = insStat.run(toChatId, s.observerId, s.targetId, s.statName, s.value, s.decayRate, s.lastUpdated);
+        if (r.changes > 0) stats++;
+      }
+
+      // Commitments and memory cards — straight copies
+      const srcCommit = this.db.prepare("SELECT * FROM commitments WHERE chat_id = ?").all(fromChatId).map(rowToCommitment);
+      const insCommit = this.db.prepare(
+        `INSERT INTO commitments (chat_id, promisor_id, promisee_id, description, status, created_at, resolved_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const c of srcCommit) {
+        insCommit.run(toChatId, c.promisorId, c.promiseeId, c.description, c.status, c.createdAt, c.resolvedAt);
+      }
+      const srcCards = this.db.prepare("SELECT * FROM memory_cards WHERE chat_id = ?").all(fromChatId).map(rowToMemoryCard);
+      const insCard = this.db.prepare(
+        `INSERT INTO memory_cards (chat_id, title, content, tags, entity_ids, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const c of srcCards) {
+        insCard.run(toChatId, c.title, c.content, JSON.stringify(c.tags), JSON.stringify(c.entityIds), c.createdAt, c.updatedAt);
+      }
+
+      // Core memory — only if the target has none yet
+      const rows = this.db
+        .prepare("SELECT * FROM core_memory WHERE chat_id = ?")
+        .all(fromChatId) as Array<{ character_id: string; data: string; version: number; updated_at: number }>;
+      for (const row of rows) {
+        const exists = this.db
+          .prepare("SELECT 1 FROM core_memory WHERE chat_id = ? AND character_id = ?")
+          .get(toChatId, row.character_id);
+        if (!exists) {
+          this.db
+            .prepare("INSERT INTO core_memory (chat_id, character_id, data, version, updated_at) VALUES (?, ?, ?, ?, ?)")
+            .run(toChatId, row.character_id, row.data, row.version, row.updated_at);
+        }
+      }
+    });
+    tx();
+    return { entities, facts, stats };
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /** Resolve a fact's object to a display string */
-  factObjectDisplay(fact: DbFact): string {
+  factObjectDisplay(chatId: string, fact: DbFact): string {
     if (fact.objectId) {
-      const e = this.getEntity(fact.objectId);
+      const e = this.getEntity(chatId, fact.objectId);
       if (e) return e.name + (fact.objectLiteral ? ` / "${fact.objectLiteral}"` : "");
       return fact.objectId;
     }
@@ -773,12 +1034,13 @@ export class FableStore {
    * and ordering falls back to durable-then-confidence-then-recency.
    */
   retrieveFactsForPrompt(
+    chatId: string,
     characterId: string,
     limit = 20,
     context = "",
     playerId = "player"
   ): string[] {
-    const all = this.queryAllLiveFacts();
+    const all = this.queryAllLiveFacts(chatId);
 
     // Relevance: overlap between the fact's words and the recent conversation
     const contextWords = new Set(
@@ -833,8 +1095,8 @@ export class FableStore {
       const ids          = Array.from(entityIds);
       const placeholders = ids.map(() => "?").join(",");
       const fetched = this.db
-        .prepare(`SELECT * FROM entities WHERE id IN (${placeholders})`)
-        .all(...ids) as Array<{ id: string }>;
+        .prepare(`SELECT * FROM entities WHERE chat_id = ? AND id IN (${placeholders})`)
+        .all(chatId, ...ids) as Array<{ id: string }>;
       for (const row of fetched) entityMap.set(row.id, rowToEntity(row));
     }
 
@@ -854,21 +1116,21 @@ export class FableStore {
   }
 
   /** All stat entries for an entity as observer (all targets) */
-  allStatsFor(observerId: string): DbRelationshipStat[] {
+  allStatsFor(chatId: string, observerId: string): DbRelationshipStat[] {
     return this.db
-      .prepare("SELECT * FROM relationship_stats WHERE observer_id = ? ORDER BY target_id")
-      .all(observerId)
+      .prepare("SELECT * FROM relationship_stats WHERE chat_id = ? AND observer_id = ? ORDER BY target_id")
+      .all(chatId, observerId)
       .map(rowToStat);
   }
 
   /** Get stat names that are actually set for a pair */
-  presentStatNames(observerId: string, targetId: string): StatName[] {
+  presentStatNames(chatId: string, observerId: string, targetId: string): StatName[] {
     return (
       this.db
         .prepare(
-          "SELECT stat_name FROM relationship_stats WHERE observer_id = ? AND target_id = ?"
+          "SELECT stat_name FROM relationship_stats WHERE chat_id = ? AND observer_id = ? AND target_id = ?"
         )
-        .all(observerId, targetId) as Array<{ stat_name: string }>
+        .all(chatId, observerId, targetId) as Array<{ stat_name: string }>
     ).map((r) => r.stat_name as StatName);
   }
 }

@@ -28,22 +28,23 @@ const STAT_COLORS: Record<string, string> = {
 };
 
 interface Props {
+  chatId:            string;
   characterId:       string;
   extractionVersion: number;
 }
 
-export function RelationshipsView({ characterId, extractionVersion }: Props) {
+export function RelationshipsView({ chatId, characterId, extractionVersion }: Props) {
   // Single result object keyed by what was fetched; `loading` is derived so
   // the effect never calls setState synchronously (react-hooks/set-state-in-effect).
   const [result, setResult] = useState<{ key: string; stats: StatRow[]; error: string | null } | null>(null);
 
-  const fetchKey = `${characterId}:${extractionVersion}`;
+  const fetchKey = `${chatId}:${characterId}:${extractionVersion}`;
 
   useEffect(() => {
     let cancelled = false;
-    const key = `${characterId}:${extractionVersion}`;
+    const key = `${chatId}:${characterId}:${extractionVersion}`;
     // character → player: how this character feels about the user
-    fetch(`/api/drawer/stats?observer=${encodeURIComponent(characterId)}&target=player`)
+    fetch(`/api/drawer/stats?chat=${encodeURIComponent(chatId)}&observer=${encodeURIComponent(characterId)}&target=player`)
       .then((r) => r.json())
       .then((data: { stats?: StatRow[]; error?: string }) => {
         if (data.error) throw new Error(data.error);
@@ -53,7 +54,7 @@ export function RelationshipsView({ characterId, extractionVersion }: Props) {
         if (!cancelled) setResult({ key, stats: [], error: e.message });
       });
     return () => { cancelled = true; };
-  }, [characterId, extractionVersion]);
+  }, [chatId, characterId, extractionVersion]);
 
   const loading = result?.key !== fetchKey;
   const stats   = result?.stats ?? [];

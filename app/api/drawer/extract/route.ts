@@ -82,7 +82,12 @@ gives — the new fact supersedes the old one.)
 Rules:
 - Only include entities actually mentioned or clearly implied
 - Facts should be concrete statements: X knows Y, X lives_at Y, X distrusts Y
-- stat_changes reflect emotional/relational shifts; delta range -30 to +30 per exchange
+- stat_changes are for MEANINGFUL emotional shifts only. Most exchanges warrant
+  NO stat change — ordinary pleasant conversation, small talk, and routine
+  cooperation are all "stat_changes": []. Reserve deltas for moments that would
+  genuinely move how someone feels: a confession, a sacrifice, a betrayal, a
+  rescue, a gift, a wound. Magnitude: ±3-8 for notable moments, ±10-20 for major
+  ones, beyond that only for story-defining events.
 - stat_changes track how ${characterName} feels, so use observer
   "${characterId || "the character's id"}" and target "${userId}". Only use the
   reverse direction for a stat that is explicitly about the other person's feelings.
@@ -169,6 +174,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       messages,
+      chatId,
       characterId,
       characterName,
       personaName,
@@ -178,6 +184,7 @@ export async function POST(req: NextRequest) {
       apiKey,
     } = body as {
       messages:        Array<{ role: string; content: string }>;
+      chatId:          string;
       characterId:     string;
       characterName:   string;
       personaName?:    string;
@@ -187,9 +194,9 @@ export async function POST(req: NextRequest) {
       apiKey?:         string;
     };
 
-    if (!messages?.length || !characterId || !providerBaseUrl || !modelId) {
+    if (!messages?.length || !chatId || !characterId || !providerBaseUrl || !modelId) {
       return Response.json(
-        { error: "messages, characterId, providerBaseUrl and modelId are required" },
+        { error: "messages, chatId, characterId, providerBaseUrl and modelId are required" },
         { status: 400 }
       );
     }
@@ -200,18 +207,18 @@ export async function POST(req: NextRequest) {
 
     // Keep the "player" entity named after the active persona so the graph
     // and the conversation labels agree on who the user is.
-    const player = store.getEntity("player");
+    const player = store.getEntity(chatId, "player");
     if (personaName && player && player.name !== personaName) {
-      store.insertEntity({ ...player, name: personaName });
+      store.insertEntity(chatId, { ...player, name: personaName });
     } else if (personaName && !player) {
-      store.ensureEntity("player", "character", personaName, "The user");
+      store.ensureEntity(chatId, "player", "character", personaName, "The user");
     }
 
     // The character must exist before the roster is built so the prompt can
     // anchor on its real id
-    store.ensureEntity(characterId, "character", characterName ?? characterId);
+    store.ensureEntity(chatId, characterId, "character", characterName ?? characterId);
 
-    const knownEntities = store.listEntities().map((e) => ({
+    const knownEntities = store.listEntities(chatId).map((e) => ({
       id: e.id, name: e.name, type: e.type,
     }));
     const prompt = buildExtractionPrompt(
@@ -262,7 +269,7 @@ export async function POST(req: NextRequest) {
       if (resolver.learn(e.id, e.name)) continue; // aliased to an existing entity
       const validTypes = ["character", "place", "object", "faction", "concept"];
       const type = validTypes.includes(e.type) ? (e.type as EntityType) : "character";
-      store.ensureEntity(e.id, type, e.name, e.description ?? "");
+      store.ensureEntity(chatId, e.id, type, e.name, e.description ?? "");
       writtenEntities.push(e.id);
     }
 
@@ -285,11 +292,11 @@ export async function POST(req: NextRequest) {
         object:  resolver.resolve(raw.object),
       };
 
-      if (!store.getEntity(f.subject)) {
-        store.ensureEntity(f.subject, "character", f.subject);
+      if (!store.getEntity(chatId, f.subject)) {
+        store.ensureEntity(chatId, f.subject, "character", f.subject);
       }
 
-      const objectEntity  = store.getEntity(f.object);
+      const objectEntity  = store.getEntity(chatId, f.object);
       const incomingNorm  = normPredicate(f.predicate);
       // Compare by family so drift between lives_at / located_at /
       // current_location still supersedes instead of accumulating.
@@ -298,7 +305,7 @@ export async function POST(req: NextRequest) {
       const newObjectKey  = objectEntity ? f.object : f.object.toLowerCase().trim();
 
       // Single query for all existing live facts for this subject
-      const existingFacts = store.queryFacts(f.subject);
+      const existingFacts = store.queryFacts(chatId, f.subject);
 
       // Skip if an equivalent live fact already exists (dedup)
       const isDuplicate = existingFacts.some((ex) => {
@@ -317,7 +324,7 @@ export async function POST(req: NextRequest) {
           })
         : [];
 
-      const newFactId = store.insertFact({
+      const newFactId = store.insertFact(chatId, {
         subjectId:     f.subject,
         predicate:     incomingNorm,
         objectId:      objectEntity ? f.object : null,
@@ -345,9 +352,9 @@ export async function POST(req: NextRequest) {
         target:   resolver.resolve(rawSc.target),
       };
 
-      store.ensureEntity(sc.observer, "character", sc.observer);
-      store.ensureEntity(sc.target,   "character", sc.target);
-      store.deltaStat(sc.observer, sc.target, sc.stat as StatName, sc.delta);
+      store.ensureEntity(chatId, sc.observer, "character", sc.observer);
+      store.ensureEntity(chatId, sc.target,   "character", sc.target);
+      store.deltaStat(chatId, sc.observer, sc.target, sc.stat as StatName, sc.delta);
       writtenStats.push(`${sc.observer}->${sc.target}:${sc.stat}(${sc.delta > 0 ? "+" : ""}${sc.delta})`);
     }
 
@@ -355,8 +362,8 @@ export async function POST(req: NextRequest) {
     // Without this, relationship_with_user stays at its 50-neutral defaults
     // and buildSystemPrompt never emits the [Relationship with User] line.
     // Run unconditionally so pre-existing stat drift is backfilled too.
-    ensureCoreMemory(characterId, characterName ?? characterId);
-    syncStatsToCore(characterId);
+    ensureCoreMemory(chatId, characterId, characterName ?? characterId);
+    syncStatsToCore(chatId, characterId);
 
     return Response.json({
       ok:       true,

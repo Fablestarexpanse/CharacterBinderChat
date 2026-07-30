@@ -27,6 +27,7 @@ const EVAL_DB = path.join(HERE, ".eval-db", "longitudinal.db");
 const RESULTS_DIR = path.join(HERE, "results");
 
 const CHARACTER_ID = "long-sable";
+const CHAT_ID = "chat-long-sable";
 const CHARACTER_NAME = "Sable";
 const PERSONA_NAME = "Kira";
 
@@ -190,6 +191,7 @@ async function main() {
       const messages = STORY.slice(0, turn + 1).flat();
       const body = {
         messages: messages.slice(-16),
+        chatId: CHAT_ID,
         characterId: CHARACTER_ID,
         characterName: CHARACTER_NAME,
         personaName: PERSONA_NAME,
@@ -209,7 +211,7 @@ async function main() {
 
       // The prompt-facing view: exactly what the client injects
       const cm = await fetch(
-        `${`http://127.0.0.1:${PORT}`}/api/chat/core-memory?characterId=${encodeURIComponent(CHARACTER_ID)}&name=${encodeURIComponent(CHARACTER_NAME)}`,
+        `${`http://127.0.0.1:${PORT}`}/api/chat/core-memory?chatId=chat-long-sable&characterId=${encodeURIComponent(CHARACTER_ID)}&name=${encodeURIComponent(CHARACTER_NAME)}`,
         { cache: "no-store" }
       ).then((r) => r.json()).catch(() => ({}));
 
@@ -321,7 +323,7 @@ async function main() {
       console.log("RECALL PROBE — asking the character directly, with the real injected facts");
       console.log("─".repeat(78));
       const d = cmFacts(await fetch(
-        `http://127.0.0.1:${PORT}/api/chat/core-memory?characterId=${encodeURIComponent(CHARACTER_ID)}&name=${encodeURIComponent(CHARACTER_NAME)}`,
+        `http://127.0.0.1:${PORT}/api/chat/core-memory?chatId=chat-long-sable&characterId=${encodeURIComponent(CHARACTER_ID)}&name=${encodeURIComponent(CHARACTER_NAME)}`,
         { cache: "no-store" }
       ).then((r) => r.json()));
 

@@ -9,11 +9,11 @@ export const dynamic = "force-dynamic";
 // This is intentionally destructive and irreversible — caller must confirm before invoking.
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json() as { fromId?: string; toId?: string };
-    const { fromId, toId } = body;
+    const body = await req.json() as { chatId?: string; fromId?: string; toId?: string };
+    const { chatId, fromId, toId } = body;
 
-    if (!fromId || !toId) {
-      return Response.json({ error: "fromId and toId are required" }, { status: 400 });
+    if (!chatId || !fromId || !toId) {
+      return Response.json({ error: "chatId, fromId and toId are required" }, { status: 400 });
     }
     if (fromId === toId) {
       return Response.json({ error: "fromId and toId must be different" }, { status: 400 });
@@ -22,14 +22,14 @@ export async function POST(req: NextRequest) {
     const store = getStore();
 
     // Verify both entities exist before merging
-    if (!store.getEntity(fromId)) {
+    if (!store.getEntity(chatId, fromId)) {
       return Response.json({ error: `Entity not found: ${fromId}` }, { status: 404 });
     }
-    if (!store.getEntity(toId)) {
+    if (!store.getEntity(chatId, toId)) {
       return Response.json({ error: `Entity not found: ${toId}` }, { status: 404 });
     }
 
-    store.mergeEntity(fromId, toId);
+    store.mergeEntity(chatId, fromId, toId);
 
     return Response.json({ ok: true, merged: { from: fromId, into: toId } });
   } catch (err) {

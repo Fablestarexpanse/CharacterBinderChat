@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import type { DbEntity } from "@/lib/db/models";
 
@@ -68,11 +69,15 @@ function findDuplicateClusters(entities: DbEntity[]): string[][] {
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
-// GET /api/drawer/entities/overview
-export async function GET() {
+// GET /api/drawer/entities/overview?chat=<chatId>
+export async function GET(req: NextRequest) {
   try {
-    const store    = getStore();
-    const entities = store.listEntities();
+    const store  = getStore();
+    const chatId = req.nextUrl.searchParams.get("chat");
+    if (!chatId) {
+      return Response.json({ error: "chat param required" }, { status: 400 });
+    }
+    const entities = store.listEntities(chatId);
 
     // Fact count per entity (as subject) using live facts
     const enriched = entities.map((e) => ({
@@ -81,7 +86,7 @@ export async function GET() {
       name:        e.name,
       description: e.description,
       createdAt:   e.createdAt,
-      factCount:   store.queryFacts(e.id).length,
+      factCount:   store.queryFacts(chatId, e.id).length,
     }));
 
     const possibleDuplicates = findDuplicateClusters(entities);

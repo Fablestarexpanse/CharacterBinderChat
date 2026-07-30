@@ -48,7 +48,9 @@ Based on the conversation above, update the Core Memory Block. Return ONLY valid
 
 Rules:
 - Only change persona if something significant happened that would alter the character's sense of self
-- Mood should reflect the emotional arc of the recent conversation
+- Mood should reflect the emotional arc of the recent conversation. Values near
+  the extremes (±1.0 valence, 1.0 arousal) represent once-in-a-story peaks —
+  ordinary good or bad scenes belong in the middle of the range.
 - Internal thoughts are unspoken — feelings, suspicions, desires the character wouldn't say aloud
 - Narrative summary accumulates; include prior events AND what just happened
 - Return ONLY the JSON. No explanation.`;
@@ -67,6 +69,7 @@ interface RewriteResult {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export interface RewriteOptions {
+  chatId:          string;
   characterId:     string;
   characterName:   string;
   personaName?:    string;
@@ -83,7 +86,7 @@ export async function rewriteCoreMemory(opts: RewriteOptions): Promise<{
   error?:  string;
 }> {
   const store   = getStore();
-  const current = store.getCoreMemory(opts.characterId);
+  const current = store.getCoreMemory(opts.chatId, opts.characterId);
   if (!current) {
     return { ok: false, changed: false, error: "No core memory found for character" };
   }
@@ -111,14 +114,22 @@ export async function rewriteCoreMemory(opts: RewriteOptions): Promise<{
     return { ok: false, changed: false, error: "LLM returned unparseable JSON" };
   }
 
-  // Clamp mood values
+  // Mood homeostasis: blend the LLM's reading with the prior instead of
+  // replacing it wholesale. Wholesale replacement pinned valence at ±1.0 under
+  // sustained tone and produced 0.99 → 0.00 → 1.00 whiplash at scene changes
+  // (measured in the 200-exchange soak). The blend gives mood inertia in both
+  // directions while still letting sustained scenes move it.
+  const blend = (llm: number | undefined, prior: number, lo: number, hi: number) =>
+    Math.max(lo, Math.min(hi, llm === undefined || !Number.isFinite(llm)
+      ? prior
+      : 0.6 * llm + 0.4 * prior));
   const mood = {
-    valence:   Math.max(-1, Math.min(1, result.mood?.valence   ?? current.data.mood.valence)),
-    arousal:   Math.max(0,  Math.min(1, result.mood?.arousal   ?? current.data.mood.arousal)),
-    dominance: Math.max(0,  Math.min(1, result.mood?.dominance ?? current.data.mood.dominance)),
+    valence:   blend(result.mood?.valence,   current.data.mood.valence,   -1, 1),
+    arousal:   blend(result.mood?.arousal,   current.data.mood.arousal,    0, 1),
+    dominance: blend(result.mood?.dominance, current.data.mood.dominance,  0, 1),
   };
 
-  store.patchCoreMemory(opts.characterId, {
+  store.patchCoreMemory(opts.chatId, opts.characterId, {
     persona:           result.persona ?? current.data.persona,
     mood,
     internal_thoughts: result.internal_thoughts ?? current.data.internal_thoughts,

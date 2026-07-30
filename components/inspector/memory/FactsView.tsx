@@ -16,23 +16,24 @@ interface EnrichedFact {
 }
 
 interface Props {
+  chatId:         string;
   characterId:    string;
   extractionVersion: number;
   isExtracting:   boolean;
 }
 
-export function FactsView({ characterId, extractionVersion, isExtracting }: Props) {
+export function FactsView({ chatId, characterId, extractionVersion, isExtracting }: Props) {
   const [showHistory, setShowHistory] = useState(false);
   // Result keyed by what was fetched; `loading` is derived so the effect
   // never calls setState synchronously (react-hooks/set-state-in-effect).
   const [result, setResult] = useState<{ key: string; facts: EnrichedFact[]; error: string | null } | null>(null);
 
-  const fetchKey = `${characterId}:${extractionVersion}:${showHistory ? 1 : 0}`;
+  const fetchKey = `${chatId}:${characterId}:${extractionVersion}:${showHistory ? 1 : 0}`;
 
   useEffect(() => {
     let cancelled = false;
-    const key = `${characterId}:${extractionVersion}:${showHistory ? 1 : 0}`;
-    const url = `/api/drawer/facts?subject=${encodeURIComponent(characterId)}${showHistory ? "&includeSuperseded=1" : ""}`;
+    const key = `${chatId}:${characterId}:${extractionVersion}:${showHistory ? 1 : 0}`;
+    const url = `/api/drawer/facts?chat=${encodeURIComponent(chatId)}&subject=${encodeURIComponent(characterId)}${showHistory ? "&includeSuperseded=1" : ""}`;
     fetch(url)
       .then((r) => r.json())
       .then((data: { facts?: EnrichedFact[]; error?: string }) => {
@@ -43,7 +44,7 @@ export function FactsView({ characterId, extractionVersion, isExtracting }: Prop
         if (!cancelled) setResult({ key, facts: [], error: e.message });
       });
     return () => { cancelled = true; };
-  }, [characterId, extractionVersion, showHistory]);
+  }, [chatId, characterId, extractionVersion, showHistory]);
 
   const loading = result?.key !== fetchKey;
   const facts   = result?.facts ?? [];

@@ -10,23 +10,24 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const params            = req.nextUrl.searchParams;
+    const chatId            = params.get("chat");
     const subject           = params.get("subject");
-    if (!subject) {
-      return Response.json({ error: "subject param required" }, { status: 400 });
+    if (!chatId || !subject) {
+      return Response.json({ error: "chat and subject params required" }, { status: 400 });
     }
     const asOf              = params.get("asOf") ? Number(params.get("asOf")) : undefined;
     const includeSuperseded = params.get("includeSuperseded") === "1";
     const store             = getStore();
 
     const facts = includeSuperseded
-      ? store.queryFactsIncludingSuperseded(subject)
-      : store.queryFacts(subject, asOf);
+      ? store.queryFactsIncludingSuperseded(chatId, subject)
+      : store.queryFacts(chatId, subject, asOf);
 
     // Enrich with object display and expose bi-temporal columns the inspector needs
     const enriched = facts.map((f) => ({
       id:            f.id,
       predicate:     f.predicate,
-      objectDisplay: store.factObjectDisplay(f),
+      objectDisplay: store.factObjectDisplay(chatId, f),
       confidence:    f.confidence,
       tValidStart:   f.tValidStart,
       tValidEnd:     f.tValidEnd,
@@ -47,7 +48,8 @@ export async function POST(req: NextRequest) {
     const body  = await req.json();
     const store = getStore();
 
-    const { subjectId, predicate, objectId, objectLiteral, confidence, knownTo } = body as {
+    const { chatId, subjectId, predicate, objectId, objectLiteral, confidence, knownTo } = body as {
+      chatId:        string;
       subjectId:     string;
       predicate:     string;
       objectId?:     string | null;
@@ -56,16 +58,16 @@ export async function POST(req: NextRequest) {
       knownTo?:      string[];
     };
 
-    if (!subjectId || !predicate) {
-      return Response.json({ error: "subjectId and predicate are required" }, { status: 400 });
+    if (!chatId || !subjectId || !predicate) {
+      return Response.json({ error: "chatId, subjectId and predicate are required" }, { status: 400 });
     }
     if (confidence !== undefined && (typeof confidence !== "number" || confidence < 0 || confidence > 1)) {
       return Response.json({ error: "confidence must be a number between 0 and 1" }, { status: 400 });
     }
     // The facts table has FK constraints on subject_id/object_id — surface a
     // clear 400 instead of an opaque SQL 500.
-    store.ensureEntity(subjectId, "character", subjectId);
-    if (objectId && !store.getEntity(objectId)) {
+    store.ensureEntity(chatId, subjectId, "character", subjectId);
+    if (objectId && !store.getEntity(chatId, objectId)) {
       return Response.json(
         { error: `objectId "${objectId}" does not exist — create the entity first or pass objectLiteral` },
         { status: 400 }
@@ -78,7 +80,7 @@ export async function POST(req: NextRequest) {
     const singleValued   = isSingleValued(predicate);
     const newObjectKey   = objectId ?? (objectLiteral ?? "").toLowerCase().trim();
 
-    const existingFacts = store.queryFacts(subjectId);
+    const existingFacts = store.queryFacts(chatId, subjectId);
 
     // Skip if an equivalent live fact already exists
     const isDuplicate = existingFacts.some((ex) => {
@@ -100,7 +102,7 @@ export async function POST(req: NextRequest) {
         })
       : [];
 
-    const factId = store.insertFact({
+    const factId = store.insertFact(chatId, {
       subjectId,
       predicate:     incomingNorm,
       objectId:      objectId      ?? null,

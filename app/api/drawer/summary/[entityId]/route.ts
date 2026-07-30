@@ -3,15 +3,19 @@ import { getStore } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/drawer/summary/<entityId>
+// GET /api/drawer/summary/<entityId>?chat=<chatId>
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ entityId: string }> }
 ) {
   try {
     const { entityId } = await params;
+    const chatId = req.nextUrl.searchParams.get("chat");
+    if (!chatId) {
+      return Response.json({ error: "chat param required" }, { status: 400 });
+    }
     const store   = getStore();
-    const summary = store.characterSummary(entityId);
+    const summary = store.characterSummary(chatId, entityId);
     return Response.json(summary);
   } catch (err) {
     return Response.json({ error: String(err) }, { status: 500 });
