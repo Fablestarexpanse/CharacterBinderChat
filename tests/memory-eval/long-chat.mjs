@@ -94,7 +94,10 @@ let MODEL = "";
 const usage = { inTok: 0, outTok: 0, calls: 0 };
 
 async function chat(messages, { temperature = 0.85, maxTokens = 400 } = {}) {
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // 6 attempts with exponential backoff (~1.5s → ~48s, ±jitter). Three quick
+  // retries proved too fragile: a brief provider blip killed soak #3 at turn
+  // 143 of 200, and a dead run costs far more than a minute of waiting.
+  for (let attempt = 0; attempt < 6; attempt++) {
     try {
       const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -109,8 +112,11 @@ async function chat(messages, { temperature = 0.85, maxTokens = 400 } = {}) {
         usage.outTok += data.usage?.completion_tokens ?? 0;
         return text.trim();
       }
-    } catch { /* retry */ }
-    await sleep(1500 * (attempt + 1));
+      if (data.error) console.log(`    [retry ${attempt + 1}] API error: ${JSON.stringify(data.error).slice(0, 120)}`);
+    } catch (e) {
+      console.log(`    [retry ${attempt + 1}] ${String(e).slice(0, 120)}`);
+    }
+    await sleep(1500 * 2 ** attempt * (0.75 + Math.random() * 0.5));
   }
   return null;
 }

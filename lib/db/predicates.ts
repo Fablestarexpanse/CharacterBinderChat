@@ -80,6 +80,10 @@ const KINSHIP_HINTS = [
 const FEAR_HINTS = ["fear", "afraid", "phobia", "dread"];
 const OBLIGATION_HINTS = [
   "promis", "owes", "owed", "swore", "vow", "oath", "commit", "debt", "deadline",
+  // Scheduled things the other person is expected to remember — soak #3
+  // stored "the Friday symposium" as has_event at importance 0.5, which
+  // neither the importance floor nor the kinship/fear hints caught.
+  "event", "appointment",
 ];
 const SELF_DEFINITION_HINTS = [
   "name", "alias", "title", "rank", "occupation", "job", "profession", "role",

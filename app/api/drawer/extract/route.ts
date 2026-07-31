@@ -433,10 +433,26 @@ export async function POST(req: NextRequest) {
       store.ensureEntity(chatId, promisor, "character", promisor);
       if (promisee) store.ensureEntity(chatId, promisee, "character", promisee);
 
-      // Dedup on near-identical description among active commitments
-      const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+      // Dedup among the promisor's active commitments. Exact-string matching
+      // let paraphrases pile up — soak #3 accumulated ~200 active rows with
+      // five variants of the same shirt promise — so compare content-word
+      // overlap (Jaccard) instead: rephrasings of one promise share most of
+      // their distinctive words.
+      const contentWords = (s: string) =>
+        new Set(
+          s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/)
+            .filter((w) => w.length > 3)
+        );
+      const incoming = contentWords(rawC.description);
+      const isDupCommitment = (existing: string): boolean => {
+        const ex = contentWords(existing);
+        if (incoming.size === 0 || ex.size === 0) return false;
+        let overlap = 0;
+        for (const w of incoming) if (ex.has(w)) overlap++;
+        return overlap / (incoming.size + ex.size - overlap) >= 0.5;
+      };
       const dup = store.allCommitments(chatId, "active")
-        .some((c) => norm(c.description) === norm(rawC.description));
+        .some((c) => c.promisorId === promisor && isDupCommitment(c.description));
       if (dup) continue;
 
       store.insertCommitment(chatId, promisor, rawC.description.trim(), promisee);
