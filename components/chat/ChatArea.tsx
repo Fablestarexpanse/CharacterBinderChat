@@ -13,9 +13,12 @@ export function ChatArea() {
 
   const chat = chats.find((c) => c.id === activeChatId);
 
+  // Follow the conversation: count alone missed streaming (length constant
+  // while content grows) and chat switches between equal-length chats.
+  const last = chat?.messages[chat.messages.length - 1];
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chat?.messages.length]);
+  }, [chat?.id, chat?.messages.length, last?.content.length]);
 
   if (!activeChatId || !chat) {
     return (

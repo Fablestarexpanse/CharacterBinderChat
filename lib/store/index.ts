@@ -8,7 +8,6 @@ import type {
   MemoryTrace,
   Lorebook,
   LoreEntry,
-  Memory,
   ImageJob,
   ImageGenerationSettings,
   ModelInfo,
@@ -148,33 +147,6 @@ const PLACEHOLDER_CHATS: Chat[] = [
   },
 ];
 
-const PLACEHOLDER_MEMORIES: Memory[] = [
-  {
-    id: "mem-1",
-    chatId: "chat-1",
-    content: "The player character is a courier working freelance jobs in the lower city.",
-    pinned: true,
-    type: "manual",
-    createdAt: seedTime(-3600000),
-  },
-  {
-    id: "mem-2",
-    chatId: "chat-1",
-    content: "Ronan distrusts corporate security forces, especially Kaspar Division.",
-    pinned: true,
-    type: "extracted",
-    createdAt: seedTime(-1800000),
-  },
-  {
-    id: "mem-3",
-    chatId: "chat-1",
-    content: "The safehouse is located in Sector 4, three levels underground.",
-    pinned: false,
-    type: "extracted",
-    createdAt: seedTime(-900000),
-  },
-];
-
 const PLACEHOLDER_LORE: Lorebook = {
   id: "lb-1",
   name: "Neon City Lore",
@@ -237,6 +209,8 @@ interface FableStore {
   updateMessageContent: (chatId: string, messageId: string, content: string) => void;
   /** Record which memory shaped a reply (provenance for the memory inspector) */
   setMessageMemoryTrace: (chatId: string, messageId: string, trace: MemoryTrace) => void;
+  /** Flag a message as a provider-failure notice (excluded from prompts) */
+  markMessageError: (chatId: string, messageId: string) => void;
   /** Update which model / provider a chat uses */
   setChatModel: (chatId: string, modelId: string, providerId: string) => void;
   /** Update the real token accounting shown by the header context meter */
@@ -257,9 +231,6 @@ interface FableStore {
   // Input
   inputValue: string;
   setInputValue: (v: string) => void;
-
-  // Memories
-  memories: Memory[];
 
   // Lorebooks
   lorebooks: Lorebook[];
@@ -403,10 +374,10 @@ export const useFableStore = create<FableStore>()(
           characters,
           chats,
           personas,
-          // Lorebooks joined the durable mirror later than the rest — an
-          // empty server list may just mean "never synced yet", so keep the
-          // local copy in that case and let the next save push it up.
-          lorebooks: lorebooks && lorebooks.length > 0 ? lorebooks : s.lorebooks,
+          // Server wins for lorebooks too: keeping the local copy when the
+          // server list was empty resurrected deliberately-deleted books
+          // (the localStorage seed re-pushed them after a cache clear).
+          lorebooks: lorebooks ?? s.lorebooks,
           activeChatId: chats.some((c) => c.id === s.activeChatId)
             ? s.activeChatId
             : chats[0]?.id ?? null,
@@ -450,12 +421,40 @@ export const useFableStore = create<FableStore>()(
 
       setMessageMemoryTrace: (chatId, messageId, trace) => {
         set((state) => ({
+          chats: state.chats.map((c) => {
+            if (c.id !== chatId) return c;
+            // Traces duplicate the injected memory strings per message; keep
+            // them only on the most recent assistant replies or long chats
+            // blow the localStorage quota and bloat every state sync.
+            const KEEP_TRACES = 20;
+            const assistantIds = c.messages
+              .filter((m) => m.role === "assistant" && (m.memoryTrace || m.id === messageId))
+              .map((m) => m.id);
+            const dropBefore = new Set(assistantIds.slice(0, Math.max(0, assistantIds.length - KEEP_TRACES)));
+            return {
+              ...c,
+              messages: c.messages.map((m) => {
+                if (m.id === messageId) return { ...m, memoryTrace: trace };
+                if (dropBefore.has(m.id) && m.memoryTrace) {
+                  const rest = { ...m };
+                  delete rest.memoryTrace;
+                  return rest;
+                }
+                return m;
+              }),
+            };
+          }),
+        }));
+      },
+
+      markMessageError: (chatId, messageId) => {
+        set((state) => ({
           chats: state.chats.map((c) =>
             c.id === chatId
               ? {
                   ...c,
                   messages: c.messages.map((m) =>
-                    m.id === messageId ? { ...m, memoryTrace: trace } : m
+                    m.id === messageId ? { ...m, error: true } : m
                   ),
                 }
               : c
@@ -533,7 +532,9 @@ export const useFableStore = create<FableStore>()(
         const trimmed = name.trim();
         if (!trimmed) return;
         set((state) => ({
-          chats: state.chats.map((c) => (c.id === chatId ? { ...c, name: trimmed } : c)),
+          chats: state.chats.map((c) =>
+            c.id === chatId ? { ...c, name: trimmed, updatedAt: new Date().toISOString() } : c
+          ),
         }));
       },
 
@@ -572,8 +573,6 @@ export const useFableStore = create<FableStore>()(
 
       inputValue: "",
       setInputValue: (v) => set({ inputValue: v }),
-
-      memories: PLACEHOLDER_MEMORIES,
 
       lorebooks: [PLACEHOLDER_LORE],
       addLorebook: (name) => {

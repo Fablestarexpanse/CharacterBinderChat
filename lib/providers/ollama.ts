@@ -1,6 +1,5 @@
 /**
  * Ollama provider adapter.
- * Wire real calls: replace mock returns with fetch() to this.baseUrl.
  * Ollama API docs: https://github.com/ollama/ollama/blob/main/docs/api.md
  */
 

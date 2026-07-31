@@ -11,6 +11,7 @@ import { CharacterEditorDialog } from "@/components/characters/CharacterEditorDi
 import { StateSync } from "@/components/StateSync";
 import { DropImport } from "@/components/DropImport";
 import { PlaceholderView } from "@/components/sections/PlaceholderView";
+import { useHydrated } from "@/lib/hooks/useHydrated";
 import {
   Group,
   Sliders,
@@ -22,8 +23,15 @@ import {
 
 export default function Home() {
   const { activeSection } = useFableStore();
+  // The persisted store rehydrates from localStorage before React's first
+  // client render, so any returning user's state differs from the SSR HTML
+  // (which only knows the seeds) — a guaranteed hydration mismatch. This is
+  // a local-first app; skip SSR content entirely and render post-mount.
+  const hydrated = useHydrated();
 
   const showInspector = activeSection === "chats";
+
+  if (!hydrated) return null;
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">

@@ -13,11 +13,11 @@ function stem(s: string): string {
 
 /**
  * Return clusters of entity IDs that are likely duplicates.
- * Two entities are considered candidates when:
- *   (a) their names are equal case-insensitively, OR
- *   (b) their normalized ID stems are equal (e.g. "ronan" ≈ "ronan_voss" if stemmed
- *       names match — the stem check catches ID variants of the same base word).
- * Clusters of size ≥ 2 are returned.
+ * Two entities are candidates when their stemmed names match or their
+ * stemmed ids match — i.e. case/separator variants of the same word
+ * ("Char-Ronan" ≈ "char_ronan"). Substring pairs like "ronan" vs
+ * "ronan_voss" are NOT caught here; those are the EntityResolver's job at
+ * write time, which matches by display name. Clusters of size ≥ 2 return.
  */
 function findDuplicateClusters(entities: DbEntity[]): string[][] {
   // Key: stem(name) — primary signal

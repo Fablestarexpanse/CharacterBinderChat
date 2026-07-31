@@ -213,7 +213,7 @@ async function main() {
 
       // The prompt-facing view: exactly what the client injects
       const cm = await fetch(
-        `${`http://127.0.0.1:${PORT}`}/api/chat/core-memory?chatId=chat-long-sable&characterId=${encodeURIComponent(CHARACTER_ID)}&name=${encodeURIComponent(CHARACTER_NAME)}`,
+        `${`http://127.0.0.1:${PORT}`}/api/chat/core-memory?chatId=${CHAT_ID}&characterId=${encodeURIComponent(CHARACTER_ID)}&name=${encodeURIComponent(CHARACTER_NAME)}`,
         { cache: "no-store" }
       ).then((r) => r.json()).catch(() => ({}));
 
@@ -325,7 +325,7 @@ async function main() {
       console.log("RECALL PROBE — asking the character directly, with the real injected facts");
       console.log("─".repeat(78));
       const d = cmFacts(await fetch(
-        `http://127.0.0.1:${PORT}/api/chat/core-memory?chatId=chat-long-sable&characterId=${encodeURIComponent(CHARACTER_ID)}&name=${encodeURIComponent(CHARACTER_NAME)}`,
+        `http://127.0.0.1:${PORT}/api/chat/core-memory?chatId=${CHAT_ID}&characterId=${encodeURIComponent(CHARACTER_ID)}&name=${encodeURIComponent(CHARACTER_NAME)}`,
         { cache: "no-store" }
       ).then((r) => r.json()));
 

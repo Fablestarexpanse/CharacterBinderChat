@@ -4,7 +4,7 @@ import { useFableStore } from "@/lib/store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { estimateTokens } from "@/lib/chat/promptBuilder";
-import { entryKeywords, LORE_TOKEN_BUDGET } from "@/lib/chat/lorebook";
+import { entryTriggered, LORE_TOKEN_BUDGET } from "@/lib/chat/lorebook";
 import { BookOpen, Zap, Pencil } from "lucide-react";
 
 export function LoreTab() {
@@ -16,11 +16,10 @@ export function LoreTab() {
   const allEnabled = lorebooks.flatMap((b) =>
     b.entries.filter((e) => e.enabled).map((e) => ({ ...e, bookName: b.name }))
   );
-  // Same trigger logic as generation: constant entries always inject,
-  // keyword entries fire when a keyword appears in recent turns.
-  const triggered = allEnabled.filter(
-    (e) => e.constant || entryKeywords(e).some((k) => k && recentText.includes(k))
-  );
+  // Literally the same trigger predicate generation uses — a reimplementation
+  // here once diverged (substring vs word-boundary) and showed entries as
+  // injected that generation skipped.
+  const triggered = allEnabled.filter((e) => entryTriggered(e, recentText));
   const triggeredTokens = triggered.reduce(
     (sum, e) => sum + estimateTokens(`${e.key.split(",")[0]?.trim()}: ${e.value.trim()}`),
     0

@@ -195,22 +195,36 @@ function buildSystemPrompt(cm, knownFacts, { withMemory = true, episodes = [], i
     `[User Persona]\nThe user is roleplaying as ${PERSONA_NAME}.\nAbout ${PERSONA_NAME}: ${PERSONA.description}\nAddress and refer to the user as ${PERSONA_NAME}, not "user".`,
   ];
   if (withMemory && cm) {
-    if (cm.persona && !cm.persona.startsWith(`${CHARACTER_NAME} is a character in this story`)) {
+    // Same default-detection as the real builder: exact match on the full
+    // default string, after trimming (startsWith dropped legitimately
+    // rewritten personas that happened to open with the phrase)
+    const personaTrim = (cm.persona ?? "").trim();
+    if (personaTrim && personaTrim !== `${CHARACTER_NAME} is a character in this story. Their personality and backstory will emerge through conversation.`) {
       s.push(`[Core Persona]\n${cm.persona}`);
     }
+    // Section order mirrors promptBuilder.formatCoreMemoryBlock exactly:
+    // Mood → Relationship → Between You → Story Time → Commitments →
+    // Internal Thoughts → Emotional Events → Story So Far
     const block = [`[Current Mood] ${describeVAD(cm.mood.valence, cm.mood.arousal, cm.mood.dominance)}`];
     const rel = cm.relationship_with_user ?? {};
     const parts = ["affection", "trust", "connection", "desire"]
       .filter((k) => rel[k] !== undefined && rel[k] !== 50)
       .map((k) => `${k} ${signedPct(rel[k])}`);
     if (parts.length) block.push(`[Relationship with User] ${parts.join(", ")}`);
-    if (cm.internal_thoughts?.length) {
-      block.push(`[Internal Thoughts]\n${cm.internal_thoughts.slice(0, 3).map((t) => `  - ${t}`).join("\n")}`);
-    }
+    // The rupture note — the soak measures rupture inertia, and its mirror
+    // omitting this section meant the character never saw its own wound
+    if (cm.relationship_note) block.push(`[Between You] ${cm.relationship_note}`);
     if (cm.story_time) block.push(`[Story Time] It is currently: ${cm.story_time}`);
     if (cm.active_commitments?.length) {
       block.push(`[Active Commitments]\n${cm.active_commitments.slice(0, 5).map((c) => `  - ${c}`).join("\n")}` +
         (cm.story_time ? `\n  If any commitment's moment is at hand or approaching, bring it up yourself, naturally.` : ""));
+    }
+    if (cm.internal_thoughts?.length) {
+      block.push(`[Internal Thoughts]\n${cm.internal_thoughts.slice(0, 3).map((t) => `  - ${t}`).join("\n")}`);
+    }
+    if (cm.recent_emotional_events?.length) {
+      block.push(`[Recent Emotional Events]\n${cm.recent_emotional_events.slice(0, 4)
+        .map((e) => `  ${e.impact === "positive" ? "+" : e.impact === "negative" ? "-" : "~"} ${e.description}`).join("\n")}`);
     }
     if (cm.narrative_summary && cm.narrative_summary !== "The story is just beginning.") {
       block.push(`[Story So Far] ${cm.narrative_summary}`);
@@ -329,6 +343,10 @@ async function main() {
       const body = {
         messages: history.slice(-16),
         chatId: CHAT_ID, characterId: CHARACTER_ID, characterName: CHARACTER_NAME, personaName: PERSONA_NAME,
+        // Persona-drift anchor for the Drawer 1 rewrite — the app always
+        // sends this; omitting it made the soak measure a configuration the
+        // app never runs.
+        characterAnchor: [CHARACTER.description, CHARACTER.personality].filter(Boolean).join(" "),
         providerType: "openrouter", providerBaseUrl: "https://openrouter.ai/api",
         modelId: MODEL, apiKey,
       };
@@ -338,10 +356,18 @@ async function main() {
       await fetch(`${API}/api/chat/core-memory/refresh`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       }).then((r) => r.json()).catch(() => null);
+      // App cadence: an episode every 8 exchanges AND a reflection at every
+      // 24 — two calls, not one (the old ternary skipped the episode at 24).
       if (turn % 8 === 0) {
         await fetch(`${API}/api/drawer/episode`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...body, mode: turn % 24 === 0 ? "reflect" : "episode" }),
+          body: JSON.stringify({ ...body, mode: "episode" }),
+        }).then((r) => r.json()).catch(() => null);
+      }
+      if (turn % 24 === 0) {
+        await fetch(`${API}/api/drawer/episode`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...body, mode: "reflect" }),
         }).then((r) => r.json()).catch(() => null);
       }
 
@@ -379,8 +405,12 @@ async function main() {
 
       // ── Probe: memory-only vs full-history ────────────────────────────────
       if (isProbe) {
+        // Memory-only means the WHOLE memory layer — episodes, insights and
+        // shared language included; facts alone understated it.
         const memOnly = await chat([
-          { role: "system", content: buildSystemPrompt(cm, knownFacts) },
+          { role: "system", content: buildSystemPrompt(cm, knownFacts, {
+            episodes: mem.episodes ?? [], insights: mem.insights ?? [], bits: mem.bits ?? [],
+          }) },
           { role: "user", content: PROBE_QUESTION },
         ], { temperature: 0.3, maxTokens: 320 });
         probes.push({
@@ -433,7 +463,7 @@ async function main() {
   console.log(`  extraction failures  ${timeline.filter((t) => !t.extractOk).length}`);
   console.log(`  id remaps            ${timeline.reduce((n, t) => n + t.remapped, 0)}`);
   console.log(`  tokens               ${usage.inTok} in / ${usage.outTok} out over ${usage.calls} calls`);
-  console.log(`  est. cost            $${cost.toFixed(3)}`);
+  console.log(`  est. cost            $${cost.toFixed(3)} (deepseek-chat rates — wrong for other models)`);
   console.log(`\n  transcript  ${path.relative(APP_ROOT, transcriptFile)}`);
   console.log(`  metrics     ${path.relative(APP_ROOT, resultsFile)}\n`);
 }

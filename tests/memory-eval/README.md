@@ -1,11 +1,12 @@
 # Memory eval harness
 
-Two complementary tests:
+Three complementary tests:
 
 | Script | Question it answers |
 |---|---|
 | `run.mjs` | Do the mechanics work on a single exchange? Supersession, entity identity, stat direction, grounding. Deterministic assertions, pass/fail. |
 | `longitudinal.mjs` | **Does a character actually still know things many exchanges later, without the player restating them?** Plants facts early, buries them under filler, and tracks whether they still reach the prompt. |
+| `long-chat.mjs` | **Does a relationship actually form over a 200-exchange story?** A player agent follows a scripted emotional arc (`--scenario <name>` loads `scenario-<name>.mjs`) through the real pipeline; probes compare full-history recall against memory-only recall, and metrics track the stat dynamics turn by turn. Costs real OpenRouter tokens (~$1.50 per 200-exchange DeepSeek run). |
 
 The longitudinal test exists because the first one can pass completely while
 memory is still useless. **Storage is not memory.** A fact can sit in SQLite

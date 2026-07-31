@@ -39,7 +39,11 @@ async function proxy(
       signal: AbortSignal.timeout(30_000),
       cache: "no-store",
     });
-    return new Response(res.body, {
+    // Buffer the body before responding: streaming it kept the timeout signal
+    // armed, which could abort a large /view image mid-transfer past the
+    // catch block. Local transfers finish well within the window.
+    const body = await res.arrayBuffer();
+    return new Response(body, {
       status: res.status,
       headers: {
         "Content-Type": res.headers.get("Content-Type") ?? "application/octet-stream",

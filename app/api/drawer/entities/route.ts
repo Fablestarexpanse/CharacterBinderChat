@@ -31,6 +31,12 @@ export async function POST(req: NextRequest) {
     if (!chatId || !id || !type || !name) {
       return Response.json({ error: "chatId, id, type and name are required" }, { status: 400 });
     }
+    // Whitelist type — an invalid value would hit the schema CHECK and
+    // surface as an opaque SQL 500
+    const validTypes = ["character", "place", "object", "faction", "concept"];
+    if (!validTypes.includes(type)) {
+      return Response.json({ error: `type must be one of: ${validTypes.join(", ")}` }, { status: 400 });
+    }
     const store = getStore();
     const entity = store.ensureEntity(chatId, id, type, name, description);
     return Response.json({ entity });

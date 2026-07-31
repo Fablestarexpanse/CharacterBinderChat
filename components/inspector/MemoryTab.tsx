@@ -1,8 +1,7 @@
 "use client";
 
 import { useFableStore } from "@/lib/store";
-import { Pin, Brain } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { FactsView }         from "./memory/FactsView";
@@ -17,24 +16,14 @@ const KG_TABS: { id: KGTab; label: string }[] = [
   { id: "entities",      label: "Entities" },
 ];
 
-interface PinnedMemory {
-  id:      string;
-  content: string;
-  type:    string;
-}
-
 export function MemoryTab() {
-  const { activeChatId, chats, characters, extractionVersion, isExtracting, memories, lastExtractionError } =
+  const { activeChatId, chats, characters, extractionVersion, isExtracting, lastExtractionError } =
     useFableStore();
 
   const chat      = chats.find((c) => c.id === activeChatId);
   const character = characters.find((c) => c.id === chat?.characterId);
 
   const [kgTab, setKgTab] = useState<KGTab>("facts");
-
-  const pinned: PinnedMemory[] = memories
-    .filter((m) => m.chatId === activeChatId && m.pinned)
-    .map((m) => ({ id: m.id, content: m.content, type: m.type }));
 
   if (!character) {
     return (
@@ -46,31 +35,6 @@ export function MemoryTab() {
 
   return (
     <div className="p-4 space-y-4">
-
-      {/* Pinned memories (legacy / manual) */}
-      {pinned.length > 0 && (
-        <div>
-          <div className="flex items-center gap-1.5 mb-2">
-            <Pin className="h-3 w-3 text-[var(--muted-fg)]" />
-            <span className="text-[10px] font-semibold text-[var(--muted-fg)] uppercase tracking-wider">
-              Pinned
-            </span>
-          </div>
-          <div className="space-y-2">
-            {pinned.map((m) => (
-              <div
-                key={m.id}
-                className="rounded-lg border border-[var(--border)] bg-[var(--purple-light)] p-2.5"
-              >
-                <p className="text-[11px] text-[var(--foreground)] leading-relaxed">{m.content}</p>
-                <div className="mt-1.5">
-                  <Badge variant="purple">{m.type}</Badge>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Knowledge graph section */}
       <div>

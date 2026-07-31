@@ -139,18 +139,6 @@ export class ComfyUIProvider {
     return this.proxied("view", { filename, subfolder, type });
   }
 
-  async uploadImage(file: File): Promise<string> {
-    const formData = new FormData();
-    formData.append("image", file);
-    const res = await fetch(this.proxied("upload/image"), {
-      method: "POST",
-      body: formData,
-    });
-    if (!res.ok) throw new Error(`ComfyUI upload error: ${res.status}`);
-    const data = await res.json();
-    return data.name as string;
-  }
-
   private collectImageUrls(
     outputs?: Record<string, { images?: Array<{ filename: string; subfolder: string; type: string }> }>
   ): string[] {
@@ -210,8 +198,9 @@ export function applySettingsToWorkflow(
   setPath(meta.stepsNode, settings.steps);
   setPath(meta.cfgNode, settings.cfg);
   setPath(meta.seedNode, seed);
-  setPath(meta.widthNode, settings.width);
-  setPath(meta.heightNode, settings.height);
+  // A cleared dimension input stores 0 — never inject a 0-px latent
+  setPath(meta.widthNode, settings.width >= 64 ? settings.width : 1024);
+  setPath(meta.heightNode, settings.height >= 64 ? settings.height : 1024);
 
   // class_type sweep for everything the mapping can't express
   const samplerCfg = SAMPLER_MAP[settings.sampler] ?? { sampler: settings.sampler };

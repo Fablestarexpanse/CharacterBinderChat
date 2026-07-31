@@ -171,7 +171,10 @@ export function CharacterEditorDialog() {
     <Dialog open={characterEditorOpen} onOpenChange={(open) => { if (!open) closeCharacterEditor(); }}>
       <DialogContent aria-describedby={undefined}>
         <EditorForm
-          key={characterEditorId ?? "new"}
+          // Draft identity must be part of the key: dropping card B while
+          // reviewing card A keeps the dialog open in create mode, and a bare
+          // "new" key silently ignored the fresh draft.
+          key={characterEditorId ?? `new-${characterEditorDraft?.name ?? ""}-${characterEditorDraft?.description?.length ?? 0}`}
           editing={editing}
           draft={characterEditorDraft}
         />

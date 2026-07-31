@@ -53,17 +53,28 @@ export async function PUT(req: NextRequest) {
 
     const store = getStore();
 
-    if (characters.length === 0 && chats.length === 0 && personas.length === 0 && lorebooks.length === 0) {
-      const existing = store.getAppState();
-      if (
-        existing.characters.length > 0 || existing.chats.length > 0 ||
-        existing.personas.length > 0 || existing.lorebooks.length > 0
-      ) {
-        return Response.json(
-          { error: "refusing to replace existing data with an empty state" },
-          { status: 409 }
-        );
-      }
+    // Wipe guard, per collection: a client bug that sends one empty array
+    // alongside valid ones would otherwise mass-delete that collection (and
+    // purgeOrphanedChatMemory would then destroy the chats' memory too).
+    // Deleting the last one-or-two items by hand is legitimate; going from
+    // 3+ straight to zero in a single sync is a bug signature.
+    const existing = store.getAppState();
+    const suspicious = (
+      [
+        ["chats", chats.length, existing.chats.length],
+        ["characters", characters.length, existing.characters.length],
+        ["personas", personas.length, existing.personas.length],
+        ["lorebooks", lorebooks.length, existing.lorebooks.length],
+      ] as Array<[string, number, number]>
+    ).find(([, incoming, current]) => incoming === 0 && current >= 3);
+    if (suspicious) {
+      return Response.json(
+        {
+          error: `refusing to wipe all ${suspicious[0]} (${suspicious[2]} exist) in one sync — ` +
+                 `if this deletion is intentional, remove the last items individually`,
+        },
+        { status: 409 }
+      );
     }
 
     store.replaceAppState(characters, chats, personas, lorebooks);

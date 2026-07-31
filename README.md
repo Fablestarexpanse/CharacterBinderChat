@@ -22,16 +22,18 @@ The result: characters that remember, grow, and stay consistent over hundreds of
 | Area | What's wired |
 |------|-------------|
 | **Chat** | Real streaming from Ollama, LM Studio, or OpenRouter. Stop mid-generation, regenerate, retry after a failure. |
-| **Characters** | Full CRUD — create, edit, delete. Import SillyTavern v1/v2 JSON cards. Optional first message opens the scene. |
+| **Characters** | Full CRUD — create, edit, delete. Import SillyTavern v1/v2 JSON cards or **CharacterBinder PNG cards** — drop a PNG anywhere in the window and it routes by embedded type (character, lorebook, persona, scenario). The card art becomes the avatar. |
 | **Personas** | Your identity in the roleplay. The active persona is injected into the prompt, labels your turns during extraction, and names the `player` entity in the graph. |
 | **Core Memory (Drawer 1)** | Per-character JSON document: mood (valence/arousal/dominance), 5-axis relationship stats, commitments, emotional events, internal thoughts, narrative summary. |
-| **Knowledge Graph (Drawer 2)** | Bi-temporal SQLite graph. Entities, facts with supersession, relationship stat axes (affection / trust / desire / connection / mood), commitments. Auto-extracted after each message. |
-| **Inspector Panel** | Right-side panel: Character · Core Mem · Memory · Summary · Lore · Image Studio. The Memory tab has Facts (with history), Relationships, and Entities (with duplicate detection + merge). |
+| **Knowledge Graph (Drawer 2)** | Bi-temporal SQLite graph. Entities, facts with supersession + semantic dedupe, relationship stat axes (affection / trust / desire / connection), commitments, episodic scene cards, reflections, shared-language "bits" (running jokes, nicknames), and a story clock. Auto-extracted after each message. Semantic retrieval via local Ollama embeddings, with a lexical fallback when Ollama is offline. |
+| **Emotional dynamics** | Stats move non-linearly: headroom scaling near extremes, loss aversion on trust/affection drops, mood blending, and post-rupture inertia — a betrayal opens a refractory window where warmth recovers slowly and the wound stays in the prompt. |
+| **Lorebooks** | Full editor: books, entries with comma-separated keywords, priorities, always-on (pinned) entries. Keyword-triggered injection as `[World Lore]` on every generation, with a token budget. |
+| **Inspector Panel** | Right-side panel: Character · Core Mem · Memory · Web (mind-map graph) · Summary · Lore · Image Studio. The Memory tab has Facts (with history), Relationships, and Entities (with duplicate detection + merge). Every reply has a 🧠 provenance view showing exactly which memory shaped it. |
 | **Model Selector** | Live model list from every connected provider, grouped by provider. Any model ID can be entered by hand — see [Choosing a model](#choosing-a-model). |
 | **Persistence** | Chats, characters, and personas live in SQLite and survive clearing browser storage. One-click JSON export. |
 | **Chat management** | Rename, delete, clear. Relative timestamps and last-message previews in the sidebar. |
 | **System Status** | Sidebar shows real-time connection status + loaded model per provider. |
-| **Image Generation** | `/image <prompt>` — **currently mocked.** The ComfyUI adapter is implemented but not yet wired to the UI (see [Status](#status)). |
+| **Image Generation** | `/image <prompt>` renders real images through your local ComfyUI — no launch flags needed, FableChat proxies the connection server-side. Workflow templates live in `workflows/*.json` (API format with a `_meta.fablechat` node mapping). Per-chat generation settings (temperature / top-p / max tokens) live behind the gear icon in the chat header. |
 
 <details>
 <summary><strong>More screenshots</strong></summary>
@@ -69,7 +71,7 @@ The result: characters that remember, grow, and stay consistent over hundreds of
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20.9+ (required by Next.js 16)
 - At least one LLM provider:
   - [Ollama](https://ollama.ai) (default: `http://127.0.0.1:11434`)
   - [LM Studio](https://lmstudio.ai) (default: `http://127.0.0.1:1234`)
@@ -196,14 +198,12 @@ Chats, characters, and personas are written to SQLite a moment after every chang
 
 ## Status
 
-Working end to end: chat + streaming, both memory drawers, characters, personas, persistence, chat management, the model selector, and the memory inspector.
+Working end to end: chat + streaming, both memory drawers (with embeddings, episodic memory, shared language, story clock, and reply provenance), characters, personas, PNG/JSON card import, lorebooks with keyword injection, real ComfyUI image generation, per-chat generation settings, persistence, chat management, the model selector, the memory inspector, and the story-web mind map.
 
 Not yet built:
 
-- **Image generation is mocked.** `lib/providers/comfyui.ts` implements `queuePrompt` / `getHistory` / `getImage`, but the UI still calls `createMockJob`. `/image` produces a placeholder card.
-- **Placeholder sections**: Groups, Lorebooks, Presets, Image Studio, Gallery, Workflows, Extensions are navigable but empty.
-- **Lorebook entries** display sample data and can't be edited yet; keyword injection isn't wired.
-- **Chat generation settings** (temperature, max tokens) are typed but hardcoded to 0.8 / 2048.
+- **Placeholder sections**: Groups, Presets, Gallery, Workflows, Extensions (and the full-screen Image Studio section — the inspector's Image Studio tab is the real one) are navigable but empty.
+- **Some image-studio controls are decorative**: the LoRA stack, ControlNet, refiner, aspect-ratio and character-reference controls don't reach the workflow yet — prompt, dimensions, steps, CFG, sampler, seed and batch do.
 - **The OpenRouter API key is stored in browser localStorage** and used directly from the client. Fine for a single-user local app; a server-side proxy would be better.
 
 ---
@@ -215,12 +215,13 @@ Not yet built:
 - [x] Durable chat storage + export
 - [x] Chat rename / delete / clear / regenerate
 - [x] Custom model IDs
-- [ ] Real ComfyUI image generation
-- [ ] Lorebook editor + keyword injection
+- [x] Real ComfyUI image generation
+- [x] Lorebook editor + keyword injection
+- [x] Per-chat generation settings
+- [x] PNG card import (CharacterBinder / SillyTavern)
 - [ ] Group chats (multiple characters)
 - [ ] GPU / VRAM monitoring
 - [ ] Export chat as story document
-- [ ] Per-chat generation settings
 - [ ] Mobile layout
 
 ---

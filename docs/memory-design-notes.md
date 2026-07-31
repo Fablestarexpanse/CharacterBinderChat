@@ -1,5 +1,13 @@
 # Memory design notes
 
+> **Historical snapshot (July 2026).** This document describes the system
+> BEFORE Phases A–C shipped. Much of what it lists as missing now exists:
+> episodic memory cards + reflections, the anti-confabulation instruction,
+> semantic retrieval via embeddings, wired commitments, persona anchoring,
+> identity-core fact pinning, shared language, and the story clock. See
+> `docs/long-run-*.md` for the current state. Kept for the problem framing
+> and sources.
+
 What people actually complain about in AI roleplay memory, which of those
 problems FableChat already addresses, and which it does not. Written to inform
 what to build next rather than to justify what exists.

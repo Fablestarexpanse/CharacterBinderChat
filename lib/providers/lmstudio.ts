@@ -1,7 +1,7 @@
 /**
  * LM Studio provider adapter.
- * LM Studio exposes an OpenAI-compatible endpoint on port 1234 by default.
- * Wire real streaming: the SSE format matches OpenAI exactly.
+ * LM Studio exposes an OpenAI-compatible endpoint on port 1234 by default;
+ * the SSE stream format matches OpenAI exactly.
  */
 
 import type { ChatProvider, ChatSettings, MessageRole, ModelInfo } from "@/lib/types";

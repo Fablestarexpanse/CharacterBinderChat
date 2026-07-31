@@ -33,7 +33,7 @@ export interface DbFact {
   predicate:     string;
   objectId:      string | null;  // references another entity
   objectLiteral: string | null;  // free-text value
-  tValidStart:   number;         // story-time start (Unix ms)
+  tValidStart:   number;         // story-time start (Unix SECONDS — matches now())
   tValidEnd:     number | null;  // story-time end (null = still valid)
   tIngested:     number;         // wall-clock when recorded
   confidence:    number;         // 0.0–1.0 — how sure the extractor is
@@ -159,19 +159,4 @@ export interface DbCoreMemory {
   updatedAt:   number; // Unix timestamp
 }
 
-export interface ExtractionInput {
-  messages:        Array<{ role: string; content: string }>;
-  characterId:     string;
-  characterName:   string;
-  providerType:    "ollama" | "lmstudio" | "openrouter";
-  providerBaseUrl: string;
-  modelId:         string;
-  apiKey?:         string;
-}
 
-export interface ExtractionResult {
-  entities:     DbEntity[];
-  facts:        DbFact[];
-  statChanges:  Array<{ observer: string; target: string; stat: StatName; delta: number }>;
-  newStats:     DbRelationshipStat[];
-}

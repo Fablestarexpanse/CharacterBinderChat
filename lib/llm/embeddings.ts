@@ -58,9 +58,12 @@ export async function embedText(text: string): Promise<Float32Array | null> {
 
 /** Dot product of two normalised vectors = cosine similarity. */
 export function cosine(a: Float32Array, b: Float32Array): number {
-  const n = Math.min(a.length, b.length);
+  // Dimension mismatch (e.g. the embed model changed under stored vectors)
+  // must read as "no similarity", not a silently-truncated dot product —
+  // wrong similarities feed the 0.92 fold threshold and retrieval ranking.
+  if (a.length !== b.length) return 0;
   let s = 0;
-  for (let i = 0; i < n; i++) s += a[i] * b[i];
+  for (let i = 0; i < a.length; i++) s += a[i] * b[i];
   return s;
 }
 

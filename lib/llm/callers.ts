@@ -15,7 +15,12 @@ export async function callOllama(
     signal:  AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) throw new Error(`Ollama HTTP ${res.status}`);
-  const data = (await res.json()) as { response: string };
+  const data = (await res.json()) as { response?: string; error?: string };
+  // Ollama can 200 with an error body (e.g. model failed to load) — surface
+  // it instead of returning undefined into JSON parsing.
+  if (typeof data.response !== "string") {
+    throw new Error(`Ollama returned no response${data.error ? `: ${data.error}` : ""}`);
+  }
   return data.response;
 }
 
@@ -39,8 +44,19 @@ export async function callOpenAICompat(
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
-  const data = (await res.json()) as { choices: Array<{ message: { content: string } }> };
-  return data.choices?.[0]?.message?.content ?? "{}";
+  const data = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+    error?:   { message?: string } | string;
+  };
+  const content = data.choices?.[0]?.message?.content;
+  // A 200 with no choices (LM Studio error bodies do this) must fail loudly:
+  // returning "{}" here made provider failures indistinguishable from a
+  // genuinely quiet turn.
+  if (typeof content !== "string") {
+    const detail = typeof data.error === "string" ? data.error : data.error?.message;
+    throw new Error(`LLM returned no completion${detail ? `: ${detail}` : ""}`);
+  }
+  return content;
 }
 
 /** Parse an LLM response that should be JSON, stripping markdown fences. */

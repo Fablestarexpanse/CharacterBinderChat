@@ -3,20 +3,6 @@
 // components (system prompt + core memory + chat history) are allocated.
 
 import { estimateTokens } from "./promptBuilder";
-import type { Message } from "@/lib/types";
-
-export interface TokenBudget {
-  /** Total context window size of the active model */
-  contextMax:      number;
-  /** Tokens used by system prompt + core memory block */
-  systemTokens:    number;
-  /** Tokens used by the current chat history window */
-  historyTokens:   number;
-  /** Tokens reserved for the model's response */
-  reservedOutput:  number;
-  /** Tokens remaining for Drawer 2 fact injection */
-  availableForRetrieval: number;
-}
 
 /** Approximate model context sizes by ID patterns */
 const MODEL_CONTEXT_MAP: Array<{ pattern: RegExp; tokens: number }> = [
@@ -77,26 +63,5 @@ export function fitHistoryToBudget<M extends { content: string }>(
     contextMax,
     usedTokens: systemTokens + historyTokens,
     dropped:    messages.length - kept.length,
-  };
-}
-
-export function calculateBudget(
-  systemPrompt:   string,
-  messages:       Message[],
-  modelId:        string,
-  reservedOutput  = 1_500
-): TokenBudget {
-  const contextMax     = estimateContextSize(modelId);
-  const systemTokens   = estimateTokens(systemPrompt);
-  const historyTokens  = messages.reduce((acc, m) => acc + estimateTokens(m.content) + 4, 0);
-  const used           = systemTokens + historyTokens + reservedOutput;
-  const availableForRetrieval = Math.max(0, contextMax - used);
-
-  return {
-    contextMax,
-    systemTokens,
-    historyTokens,
-    reservedOutput,
-    availableForRetrieval,
   };
 }

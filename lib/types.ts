@@ -37,6 +37,9 @@ export interface Message {
   tokens?: number;
   /** Memory injected into the prompt that produced this reply (assistant only) */
   memoryTrace?: MemoryTrace;
+  /** True when this is a provider-failure notice, not real dialogue — such
+   *  messages are excluded from prompts, extraction, and cadence counts */
+  error?: boolean;
 }
 
 /** What memory shaped a given assistant reply — for the "why did you say
@@ -84,15 +87,6 @@ export interface Lorebook {
   description?: string;
   entries: LoreEntry[];
   createdAt: string;
-}
-
-export interface Memory {
-  id: string;
-  chatId: string;
-  content: string;
-  pinned: boolean;
-  createdAt: string;
-  type: "extracted" | "manual" | "summary";
 }
 
 // ─── Image Generation ─────────────────────────────────────────────────────────

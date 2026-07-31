@@ -20,6 +20,16 @@ export function entryKeywords(entry: LoreEntry): string[] {
     .filter((k) => k.length > 0);
 }
 
+/**
+ * Whether an entry fires against (lowercased) recent conversation text —
+ * THE single source of truth, shared by generation and the inspector so the
+ * Lore tab never claims an entry is injected that generation would skip.
+ */
+export function entryTriggered(entry: LoreEntry, haystackLower: string): boolean {
+  if (!entry.enabled || !entry.value.trim()) return false;
+  return entry.constant || entryKeywords(entry).some((k) => keywordMatches(k, haystackLower));
+}
+
 function keywordMatches(keyword: string, haystack: string): boolean {
   // Word-boundary match when the keyword is plain word characters, so "art"
   // doesn't fire on "particle". Falls back to substring for keys with
@@ -46,11 +56,7 @@ export function matchLoreEntries(
   const matched: LoreEntry[] = [];
   for (const book of lorebooks) {
     for (const entry of book.entries) {
-      if (!entry.enabled || !entry.value.trim()) continue;
-      // Constant entries (scenarios, standing context) always inject
-      if (entry.constant || entryKeywords(entry).some((k) => keywordMatches(k, haystack))) {
-        matched.push(entry);
-      }
+      if (entryTriggered(entry, haystack)) matched.push(entry);
     }
   }
 

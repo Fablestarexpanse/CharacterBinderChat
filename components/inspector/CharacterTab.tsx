@@ -80,20 +80,27 @@ export function CharacterTab() {
   useEffect(() => {
     if (!characterId || !activeChatId) return;
     const chatParam = `chat=${encodeURIComponent(activeChatId)}`;
+    // Cancelled guard: without it, rapid chat switching let the older chat's
+    // slower response resolve last and display the wrong chat's stats.
+    let cancelled = false;
 
     // Fetch summary (which includes relationships + stats)
     fetch(`/api/drawer/summary/${encodeURIComponent(characterId)}?${chatParam}`)
       .then((r) => r.json())
       .then((data: { relationships?: RelationshipGroup[] }) => {
-        setRelationships(data.relationships ?? []);
+        if (!cancelled) setRelationships(data.relationships ?? []);
       })
       .catch(() => {/* silently ignore */});
 
     // character -> player: how this character feels about the user
     fetch(`/api/drawer/stats?${chatParam}&observer=${encodeURIComponent(characterId)}&target=player`)
       .then((r) => r.json())
-      .then((data: { stats?: StatRow[] }) => setStats(data.stats ?? []))
+      .then((data: { stats?: StatRow[] }) => {
+        if (!cancelled) setStats(data.stats ?? []);
+      })
       .catch(() => {/* silently ignore */});
+
+    return () => { cancelled = true; };
   }, [characterId, activeChatId, extractionVersion]);
 
   if (!character) {

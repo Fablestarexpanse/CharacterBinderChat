@@ -254,11 +254,21 @@ function ImageCard({ message }: { message: Message }) {
                     {job.error ?? "Generation failed"}
                   </div>
                 </div>
+              ) : !job ? (
+                // Jobs live in localStorage; the message is durable. After a
+                // cache clear the job is gone — show a terminal state, not a
+                // spinner that never resolves.
+                <div className="flex flex-col items-center gap-2 px-4 text-center">
+                  <ImageIcon className="h-6 w-6 text-[var(--muted-fg)]" />
+                  <div className="text-xs text-[var(--muted-fg)]">
+                    Image no longer available — its job data was cleared with the browser cache.
+                  </div>
+                </div>
               ) : (
                 <div className="flex flex-col items-center gap-2">
                   <div className="h-8 w-8 rounded-full border-2 border-[var(--purple)] border-t-transparent animate-spin" />
                   <div className="text-xs text-[var(--muted-fg)]">
-                    {job?.status === "generating" ? "Generating…" : "Queued…"}
+                    {job.status === "generating" ? "Generating…" : "Queued…"}
                   </div>
                 </div>
               )}

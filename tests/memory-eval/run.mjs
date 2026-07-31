@@ -62,10 +62,24 @@ function readEnvLocal() {
 // ─── Server lifecycle ─────────────────────────────────────────────────────────
 
 async function startServer() {
+  // Stale-server guard (same as long-chat.mjs): a survivor on the port holds
+  // the DB file open on Windows, and swallowing the rmSync failure once let a
+  // run silently continue the previous run's database.
+  try {
+    const r = await fetch(`http://127.0.0.1:${PORT}/api/state`);
+    if (r.ok) throw new Error(`port ${PORT} is already serving — kill the stale eval server first`);
+  } catch (e) {
+    if (String(e).includes("already serving")) throw e; // connection refused = good
+  }
+
   fs.mkdirSync(path.dirname(EVAL_DB), { recursive: true });
-  // Fresh file per run so a stale schema can't mask a failure
+  // Fresh file per run so a stale schema can't mask a failure. NOT wrapped in
+  // try/catch: a locked file means a live server still owns it.
   for (const suffix of ["", "-wal", "-shm"]) {
-    try { fs.rmSync(EVAL_DB + suffix, { force: true }); } catch { /* ignore */ }
+    fs.rmSync(EVAL_DB + suffix, { force: true });
+  }
+  if (fs.existsSync(EVAL_DB)) {
+    throw new Error(`could not delete ${EVAL_DB} — a stale server still holds it open`);
   }
 
   console.log(`  starting eval server on :${PORT} (db: ${path.relative(APP_ROOT, EVAL_DB)})`);

@@ -29,9 +29,9 @@ export function ChatInput() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // ── Lazy stat decay ────────────────────────────────────────────────────────
-  // On the first render of this component (i.e. first session), compute how
-  // many days have passed since the last session and apply Ebbinghaus decay
-  // once. Completely in-process — no scheduler, no cron.
+  // On the first render of this component (i.e. first session), apply
+  // Ebbinghaus decay once. The server computes decay per-row from each stat's
+  // own last_updated timestamp; this just decides whether a new session began.
   useEffect(() => {
     const LAST_SESSION_KEY = "fablechat:lastSessionAt";
     const now = Date.now();
@@ -39,14 +39,10 @@ export function ChatInput() {
     localStorage.setItem(LAST_SESSION_KEY, String(now));
 
     if (!lastStr) return; // first ever session — nothing to decay yet
-    const daysElapsed = (now - Number(lastStr)) / (1000 * 60 * 60 * 24);
-    if (daysElapsed < 0.01) return; // same session, skip
+    if (now - Number(lastStr) < 15 * 60 * 1000) return; // same sitting, skip
 
-    fetch("/api/drawer/stats/decay", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ days: daysElapsed }),
-    }).catch((e) => console.warn("[decay]", e));
+    fetch("/api/drawer/stats/decay", { method: "POST" })
+      .catch((e) => console.warn("[decay]", e));
   }, []);
 
   // ── Send handler ──────────────────────────────────────────────────────────

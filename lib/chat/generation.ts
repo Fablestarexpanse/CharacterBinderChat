@@ -97,85 +97,99 @@ export async function generateAssistantReply(chatId: string): Promise<void> {
       chatId,
       role:    "assistant",
       content: "⚠️ No provider available. Check Settings — make sure your provider is running and any required API key is set.",
+      error:   true,
     });
     return;
   }
 
-  // ── Fetch Core Memory (Drawer 1) + Drawer 2 known facts ──────────────────
-  // The last few turns act as the relevance signal for fact retrieval
-  const recentText = chat.messages.slice(-3).map((m) => m.content).join(" ");
-  const { coreMemory, knownFacts, episodes, insights, bits } = character
-    ? await fetchCoreMemory(chatId, character.id, character.name, recentText)
-    : { coreMemory: null, knownFacts: [], episodes: [], insights: [], bits: [] };
-
-  // ── Build message history within the model's token budget ────────────────
-  const persona = store.personas.find((p) => p.id === store.activePersonaId) ?? null;
-  // Lorebook entries fire on keywords in the recent turns — a wider window
-  // than fact retrieval so lore doesn't flicker out one exchange after its
-  // subject was raised.
-  const loreScanText = chat.messages.slice(-6).map((m) => m.content).join("\n");
-  const lore = matchLoreEntries(store.lorebooks, loreScanText);
-  const systemPrompt = buildSystemPrompt(character, coreMemory, knownFacts, persona, episodes, insights, lore, bits);
-  const fullHistory: Array<{ role: MessageRole; content: string }> = chat.messages
-    .filter((m) => m.content.trim().length > 0 && !m.imageJobId)
-    .map((m) => ({ role: m.role as MessageRole, content: m.content }));
-  const fit = fitHistoryToBudget(systemPrompt, fullHistory, modelId);
-  if (fit.dropped > 0) {
-    console.info(`[chat] context window: dropped ${fit.dropped} oldest message(s) to fit`);
-  }
-  store.setChatContext(chatId, fit.usedTokens, fit.contextMax);
-  const history: Array<{ role: MessageRole; content: string }> = [
-    { role: "system", content: systemPrompt },
-    ...fit.messages,
-  ];
-
-  // ── Create placeholder assistant message + stream into it ─────────────────
+  // Claim the generation slot BEFORE the awaits below — checking the guard at
+  // entry but setting it after fetchCoreMemory left a window where a second
+  // trigger (Enter + Regenerate) started two concurrent streams.
   store.setIsGenerating(true);
-  const assistantMsgId = store.addMessage(chatId, {
-    chatId,
-    role:        "assistant",
-    content:     "",
-    characterId: character?.id,
-  });
-  // Provenance: record exactly which memory was injected into this reply's
-  // prompt, so the message can answer "why did you say that?"
-  store.setMessageMemoryTrace(chatId, assistantMsgId, {
-    facts: knownFacts, episodes, insights, bits, lore,
-    storyTime: coreMemory?.story_time ?? null,
-  });
-
-  const controller = new AbortController();
-  abortController = controller;
+  let assistantMsgId: string | null = null;
   let accumulated = "";
   let failed = false;
 
   try {
-    for await (const token of provider.streamChat(history, modelId, chat.settings, controller.signal)) {
-      accumulated += token;
-      store.updateMessageContent(chatId, assistantMsgId, accumulated);
+    // ── Fetch Core Memory (Drawer 1) + Drawer 2 known facts ────────────────
+    // The last few turns act as the relevance signal for fact retrieval
+    const recentText = chat.messages.slice(-3).map((m) => m.content).join(" ");
+    const { coreMemory, knownFacts, episodes, insights, bits } = character
+      ? await fetchCoreMemory(chatId, character.id, character.name, recentText)
+      : { coreMemory: null, knownFacts: [], episodes: [], insights: [], bits: [] };
+
+    // ── Build message history within the model's token budget ──────────────
+    const persona = store.personas.find((p) => p.id === store.activePersonaId) ?? null;
+    // Lorebook entries fire on keywords in the recent turns — a wider window
+    // than fact retrieval so lore doesn't flicker out one exchange after its
+    // subject was raised.
+    const loreScanText = chat.messages.slice(-6).map((m) => m.content).join("\n");
+    const lore = matchLoreEntries(store.lorebooks, loreScanText);
+    const systemPrompt = buildSystemPrompt(character, coreMemory, knownFacts, persona, episodes, insights, lore, bits);
+    // Failure notices (m.error) are UI artifacts, not dialogue — sending them
+    // back to the model taught it to roleplay error messages.
+    const fullHistory: Array<{ role: MessageRole; content: string }> = chat.messages
+      .filter((m) => m.content.trim().length > 0 && !m.imageJobId && !m.error)
+      .map((m) => ({ role: m.role as MessageRole, content: m.content }));
+    const fit = fitHistoryToBudget(systemPrompt, fullHistory, modelId);
+    if (fit.dropped > 0) {
+      console.info(`[chat] context window: dropped ${fit.dropped} oldest message(s) to fit`);
     }
-  } catch (err) {
-    // User pressed Stop — keep whatever was generated, no error message
-    const aborted = err instanceof Error && err.name === "AbortError";
-    if (!aborted) {
-      failed = true;
-      const detail = err instanceof Error ? err.message : String(err);
-      store.updateMessageContent(
-        chatId,
-        assistantMsgId,
-        `⚠️ **Response failed** — ${detail}\n\nMake sure **${providerId}** is running and the model \`${modelId}\` is available.`
-      );
+    store.setChatContext(chatId, fit.usedTokens, fit.contextMax);
+    const history: Array<{ role: MessageRole; content: string }> = [
+      { role: "system", content: systemPrompt },
+      ...fit.messages,
+    ];
+
+    // ── Create placeholder assistant message + stream into it ───────────────
+    assistantMsgId = store.addMessage(chatId, {
+      chatId,
+      role:        "assistant",
+      content:     "",
+      characterId: character?.id,
+    });
+    // Provenance: record exactly which memory was injected into this reply's
+    // prompt, so the message can answer "why did you say that?"
+    store.setMessageMemoryTrace(chatId, assistantMsgId, {
+      facts: knownFacts, episodes, insights, bits, lore,
+      storyTime: coreMemory?.story_time ?? null,
+    });
+
+    const controller = new AbortController();
+    abortController = controller;
+
+    try {
+      for await (const token of provider.streamChat(history, modelId, chat.settings, controller.signal)) {
+        accumulated += token;
+        store.updateMessageContent(chatId, assistantMsgId, accumulated);
+      }
+    } catch (err) {
+      // User pressed Stop — keep whatever was generated, no error message
+      const aborted = err instanceof Error && err.name === "AbortError";
+      if (!aborted) {
+        failed = true;
+        const detail = err instanceof Error ? err.message : String(err);
+        store.updateMessageContent(
+          chatId,
+          assistantMsgId,
+          `⚠️ **Response failed** — ${detail}\n\nMake sure **${providerId}** is running and the model \`${modelId}\` is available.`
+        );
+        store.markMessageError(chatId, assistantMsgId);
+      }
+    }
+
+    if (!failed && accumulated.trim()) {
+      // Include the finished reply in the context meter
+      store.setChatContext(chatId, fit.usedTokens + estimateTokens(accumulated) + 4, fit.contextMax);
+      // Extraction runs after the full (or stopped-partial) response
+      triggerExtraction(chatId);
+    } else if (!failed && assistantMsgId) {
+      // Stop pressed before the first token — drop the empty bubble
+      store.removeMessage(chatId, assistantMsgId);
     }
   } finally {
     abortController = null;
     store.setIsGenerating(false);
-  }
-
-  if (!failed && accumulated.trim()) {
-    // Include the finished reply in the context meter
-    store.setChatContext(chatId, fit.usedTokens + estimateTokens(accumulated) + 4, fit.contextMax);
-    // Extraction runs after the full (or stopped-partial) response
-    triggerExtraction(chatId);
   }
 }
 
@@ -225,7 +239,10 @@ function triggerExtraction(chatId: string): void {
 
   setIsExtracting(true);
 
-  const recentMessages = chat.messages.slice(-16).map((m) => ({ role: m.role, content: m.content }));
+  const recentMessages = chat.messages
+    .filter((m) => !m.error && !m.imageJobId)
+    .slice(-16)
+    .map((m) => ({ role: m.role, content: m.content }));
 
   const extractionBody = {
     messages:        recentMessages,
@@ -265,7 +282,7 @@ function triggerExtraction(chatId: string): void {
 
   // Episodic cadence: a scene card every ~8 exchanges, a reflection every ~24.
   // Derived from message count so it needs no separate bookkeeping.
-  const exchanges = Math.floor(chat.messages.filter((m) => m.role === "assistant").length);
+  const exchanges = chat.messages.filter((m) => m.role === "assistant" && !m.error && !m.imageJobId).length;
   const calls: Array<Promise<string | null>> = [
     post("/api/drawer/extract",           "extraction"),
     post("/api/chat/core-memory/refresh", "core memory"),

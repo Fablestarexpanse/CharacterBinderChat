@@ -129,12 +129,3 @@ export function isIdentityCoreFact(predicate: string): boolean {
   return IDENTITY_CORE_HINTS.some((hint) => p.includes(hint));
 }
 
-/**
- * Canonical single-valued predicates, for prompts and docs.
- * Derived so it can't drift out of sync with the family table.
- */
-export const SINGLE_VALUED_PREDICATES = new Set(
-  Object.entries(PREDICATE_FAMILIES)
-    .filter(([, family]) => SINGLE_VALUED_FAMILIES.has(family))
-    .map(([predicate]) => predicate)
-);

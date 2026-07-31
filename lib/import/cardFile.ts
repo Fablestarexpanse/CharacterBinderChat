@@ -41,7 +41,13 @@ function readPngText(bytes: Uint8Array): Map<string, string> {
   const dec = new TextDecoder();
   let offset = 8;
   while (offset + 8 <= bytes.length) {
-    const length = (bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3];
+    // Unsigned read: signed shifts turn a length byte >= 0x80 negative, which
+    // walked `offset` backwards and hung the tab in an infinite loop on a
+    // corrupt or crafted PNG.
+    const length =
+      ((bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3]) >>> 0;
+    // A declared length past the end of the file is malformed — stop parsing
+    if (length > bytes.length - offset - 8) break;
     const type = String.fromCharCode(bytes[offset + 4], bytes[offset + 5], bytes[offset + 6], bytes[offset + 7]);
     const data = bytes.slice(offset + 8, offset + 8 + length);
     offset += 12 + length; // len + type + data + crc
@@ -106,11 +112,8 @@ export function decodePngPayload(bytes: Uint8Array): { key: string; json: unknow
 type Obj = Record<string, unknown>;
 const str = (o: Obj, k: string) => (typeof o[k] === "string" ? (o[k] as string) : undefined);
 
-/**
- * SillyTavern v1/v2 card (or CharacterBinder character) → Character draft.
- * Exported for the JSON import path in CharactersView too.
- */
-export function parseCharacterCard(json: unknown): Partial<Character> | null {
+/** SillyTavern v1/v2 card (or CharacterBinder character) → Character draft. */
+function parseCharacterCard(json: unknown): Partial<Character> | null {
   if (!json || typeof json !== "object") return null;
   const obj = json as Obj;
   const data =

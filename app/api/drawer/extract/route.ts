@@ -284,6 +284,14 @@ export async function POST(req: NextRequest) {
     // empty-object fallback here would make a model that can't emit JSON look
     // identical to a quiet conversation, and nothing would ever reach the DB.
     const extracted = parseLLMJson<RawExtraction | null>(rawText, null);
+    // parseLLMJson happily returns arrays/numbers for a model that emitted
+    // valid-but-wrong JSON — those must fail loudly, not read as a quiet turn.
+    if (extracted && (typeof extracted !== "object" || Array.isArray(extracted))) {
+      return Response.json(
+        { ok: false, error: "model returned non-object JSON — nothing extracted", rawModel: rawText.slice(0, 200) },
+        { status: 502 }
+      );
+    }
     if (!extracted) {
       console.warn("[drawer/extract] unparseable LLM output:", rawText.slice(0, 300));
       return Response.json(
@@ -368,13 +376,17 @@ export async function POST(req: NextRequest) {
           })
         : [];
 
+      // Clamp model-supplied numbers: an out-of-range confidence would trip
+      // the schema CHECK mid-pipeline and leave a half-written turn.
+      const clamp01 = (v: unknown, dflt: number) =>
+        typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : dflt;
       const newFactId = store.insertFact(chatId, {
         subjectId:     f.subject,
         predicate:     incomingNorm,
         objectId:      objectEntity ? f.object : null,
         objectLiteral: objectEntity ? null : f.object,
-        confidence:    f.confidence ?? 0.85,
-        importance:    typeof f.importance === "number" ? f.importance : 0.5,
+        confidence:    clamp01(f.confidence, 0.85),
+        importance:    clamp01(f.importance, 0.5),
       });
       writtenFacts.push(newFactId);
 
@@ -391,7 +403,10 @@ export async function POST(req: NextRequest) {
     const validStats = ["affection", "trust", "desire", "connection"];
     for (const rawSc of extracted.stat_changes ?? []) {
       if (!rawSc.observer || !rawSc.target || !validStats.includes(rawSc.stat)) continue;
-      if (typeof rawSc.delta !== "number") continue;
+      if (typeof rawSc.delta !== "number" || !Number.isFinite(rawSc.delta)) continue;
+      // The prompt asks for ±3-20; a model emitting 10000 must not rail a
+      // stat past every carefully tuned dynamic in one write.
+      rawSc.delta = Math.max(-30, Math.min(30, rawSc.delta));
 
       const sc = {
         ...rawSc,
@@ -425,13 +440,17 @@ export async function POST(req: NextRequest) {
           // Semantic dedupe: a restatement of an existing fact ("trusts Kael
           // deeply" next to "has deep trust in Kael") passes the exact-key
           // check above but adds no information — it only steals a prompt
-          // slot. Fold it into the older fact instead of keeping both.
+          // slot. The NEW fact survives and the old one is superseded by it:
+          // if the "restatement" was actually a reversal that cleared the
+          // similarity bar, newest-wins is the correct outcome, and the
+          // timeline reads forward either way.
           const f = byId.get(id);
           if (f) {
-            const dupOf = store.findSimilarLiveFact(chatId, f.subjectId, vec, newIds);
-            if (dupOf !== null) {
-              store.supersedeFact(id, dupOf);
-              foldedFacts.push(id);
+            const dup = store.findSimilarLiveFact(chatId, f.subjectId, f.predicate, vec, newIds);
+            if (dup !== null) {
+              store.supersedeFact(dup.id, id);
+              store.raiseFactImportance(id, dup.importance);
+              foldedFacts.push(dup.id);
             }
           }
         });
@@ -525,8 +544,8 @@ export async function POST(req: NextRequest) {
     return Response.json({
       ok:          true,
       entities:    writtenEntities,
-      facts:       writtenFacts.filter((id) => !foldedFacts.includes(id)),
-      // Restatements folded into an existing fact by embedding similarity
+      facts:       writtenFacts,
+      // Older facts superseded because a new fact restated them
       folded:      foldedFacts.length,
       stats:       writtenStats,
       commitments: writtenCommitments,

@@ -1,7 +1,7 @@
 // ─── Prompt Builder ────────────────────────────────────────────────────────────
-// Assembles the system prompt from character definition + Core Memory Block.
-// The enriched prompt replaces the simple `buildSystemPrompt(character)` used
-// in ChatInput.tsx for bare character-only chats.
+// Assembles the system prompt from character definition + Core Memory Block +
+// retrieved facts/episodes/lore/shared language. Owned by generation.ts;
+// mirrored by hand in tests/memory-eval/long-chat.mjs — keep the two in step.
 
 import type { Character, Persona } from "@/lib/types";
 import type { CoreMemory } from "@/lib/db/models";

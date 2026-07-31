@@ -160,7 +160,7 @@ export function CoreMemoryTab() {
       : providerSettings.ollama.baseUrl;
 
     try {
-      await fetch("/api/chat/core-memory/refresh", {
+      const res = await fetch("/api/chat/core-memory/refresh", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({
@@ -174,7 +174,14 @@ export function CoreMemoryTab() {
           apiKey:          providerType === "openrouter" ? providerSettings.openrouter.apiKey : undefined,
         }),
       });
-      setRefreshTick((t) => t + 1); // re-fetch the rewritten memory
+      // HTTP errors don't throw — an unchecked 500 here used to spin, silently
+      // re-fetch the unchanged memory, and report nothing.
+      const data = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+      if (!res.ok || data?.ok === false) {
+        setRefreshError(data?.error ?? `refresh failed (HTTP ${res.status})`);
+      } else {
+        setRefreshTick((t) => t + 1); // re-fetch the rewritten memory
+      }
     } catch (e) {
       setRefreshError(String(e));
     } finally {

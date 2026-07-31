@@ -4,7 +4,7 @@
 // All operations are scoped by chatId — each chat is its own story.
 
 import { getStore } from "@/lib/db";
-import type { CoreMemory, DbCoreMemory, EmotionalEvent } from "@/lib/db/models";
+import type { CoreMemory, DbCoreMemory } from "@/lib/db/models";
 
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
@@ -21,10 +21,6 @@ export function ensureCoreMemory(
 }
 
 // ─── Write ────────────────────────────────────────────────────────────────────
-
-export function setCoreMemory(chatId: string, cm: CoreMemory): void {
-  getStore().setCoreMemory(chatId, cm);
-}
 
 export function patchCoreMemory(
   chatId:      string,
@@ -78,35 +74,13 @@ export function syncCommitmentsToCore(chatId: string, characterId: string, perso
   const active = store.allCommitments(chatId, "active");
   const mine   = active.filter((c) => c.promisorId === characterId);
   const theirs = active.filter((c) => c.promisorId !== characterId);
+  // Third-party promisors render by display name, not raw entity id
+  const label = (id: string): string =>
+    id === "player" ? personaLabel : store.getEntity(chatId, id)?.name ?? id;
   const lines = [
     ...mine.map((c) => `You promised: ${c.description}`),
-    ...theirs.map((c) => `${c.promisorId === "player" ? personaLabel : c.promisorId} promised: ${c.description}`),
+    ...theirs.map((c) => `${label(c.promisorId)} promised: ${c.description}`),
   ].slice(0, 8);
 
   store.patchCoreMemory(chatId, characterId, { active_commitments: lines });
-}
-
-/** Push an emotional event; keep only the last 8 */
-export function addEmotionalEvent(
-  chatId:      string,
-  characterId: string,
-  event:       Omit<EmotionalEvent, "timestamp">
-): void {
-  const store    = getStore();
-  const existing = store.getCoreMemory(chatId, characterId);
-  if (!existing) return;
-
-  const events = [
-    { ...event, timestamp: new Date().toISOString() },
-    ...(existing.data.recent_emotional_events ?? []),
-  ].slice(0, 8);
-
-  store.patchCoreMemory(chatId, characterId, { recent_emotional_events: events });
-}
-
-/** Replace internal thoughts (keep last 5) */
-export function setInternalThoughts(chatId: string, characterId: string, thoughts: string[]): void {
-  getStore().patchCoreMemory(chatId, characterId, {
-    internal_thoughts: thoughts.slice(0, 5),
-  });
 }

@@ -15,7 +15,11 @@ export async function GET(req: NextRequest) {
     if (!chatId || !subject) {
       return Response.json({ error: "chat and subject params required" }, { status: 400 });
     }
-    const asOf              = params.get("asOf") ? Number(params.get("asOf")) : undefined;
+    const asOfRaw           = params.get("asOf");
+    const asOf              = asOfRaw ? Number(asOfRaw) : undefined;
+    if (asOf !== undefined && !Number.isFinite(asOf)) {
+      return Response.json({ error: "asOf must be a unix timestamp" }, { status: 400 });
+    }
     const includeSuperseded = params.get("includeSuperseded") === "1";
     const store             = getStore();
 
@@ -40,7 +44,7 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/drawer/facts
-// Body: { subjectId, predicate, objectId?, objectLiteral?, confidence?, knownTo? }
+// Body: { subjectId, predicate, objectId?, objectLiteral?, confidence?, importance? }
 // Applies the same dedup + supersession logic as the extract route so the
 // single-valued predicate invariant is enforced regardless of call path.
 export async function POST(req: NextRequest) {
@@ -48,21 +52,30 @@ export async function POST(req: NextRequest) {
     const body  = await req.json();
     const store = getStore();
 
-    const { chatId, subjectId, predicate, objectId, objectLiteral, confidence, knownTo } = body as {
+    const { chatId, subjectId, predicate, objectId, objectLiteral, confidence, importance } = body as {
       chatId:        string;
       subjectId:     string;
       predicate:     string;
       objectId?:     string | null;
       objectLiteral?:string | null;
       confidence?:   number;
-      knownTo?:      string[];
+      importance?:   number;
     };
 
     if (!chatId || !subjectId || !predicate) {
       return Response.json({ error: "chatId, subjectId and predicate are required" }, { status: 400 });
     }
-    if (confidence !== undefined && (typeof confidence !== "number" || confidence < 0 || confidence > 1)) {
+    // NaN passes < and > checks — require a finite number in range
+    const bad01 = (v: unknown) =>
+      v !== undefined && (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > 1);
+    if (bad01(confidence)) {
       return Response.json({ error: "confidence must be a number between 0 and 1" }, { status: 400 });
+    }
+    if (bad01(importance)) {
+      return Response.json({ error: "importance must be a number between 0 and 1" }, { status: 400 });
+    }
+    if (objectLiteral !== undefined && objectLiteral !== null && typeof objectLiteral !== "string") {
+      return Response.json({ error: "objectLiteral must be a string" }, { status: 400 });
     }
     // The facts table has FK constraints on subject_id/object_id — surface a
     // clear 400 instead of an opaque SQL 500.
@@ -89,7 +102,13 @@ export async function POST(req: NextRequest) {
       return exKey === newObjectKey;
     });
     if (isDuplicate) {
-      const existing = existingFacts.find((ex) => predicateFamily(ex.predicate) === incomingFamily);
+      // Match on family AND object key — family alone returned the id of a
+      // sibling fact for multi-valued predicates ("knows kael" for "knows elen")
+      const existing = existingFacts.find((ex) => {
+        if (predicateFamily(ex.predicate) !== incomingFamily) return false;
+        const exKey = ex.objectId ?? (ex.objectLiteral ?? "").toLowerCase().trim();
+        return exKey === newObjectKey;
+      });
       return Response.json({ factId: existing?.id ?? null, duplicate: true });
     }
 
@@ -102,13 +121,15 @@ export async function POST(req: NextRequest) {
         })
       : [];
 
+    // Hand-entered facts default to HIGH importance: the user bothered to
+    // type it, so it must not rank below incidental extractor output.
     const factId = store.insertFact(chatId, {
       subjectId,
       predicate:     incomingNorm,
       objectId:      objectId      ?? null,
       objectLiteral: objectLiteral ?? null,
       confidence:    confidence    ?? 1.0,
-      knownTo:       knownTo       ?? [],
+      importance:    importance    ?? 0.8,
     });
 
     for (const old of toSupersede) {

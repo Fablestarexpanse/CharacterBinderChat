@@ -6,7 +6,7 @@ import Database, { type Database as DB } from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 import { CREATE_TABLES_SQL } from "./schema";
-import { isDurableFact, isIdentityCoreFact } from "./predicates";
+import { isDurableFact, isIdentityCoreFact, predicateFamily } from "./predicates";
 import { bufferToVec, cosine } from "@/lib/llm/embeddings";
 import type {
   DbEntity,
@@ -21,7 +21,7 @@ import type {
   CommitmentStatus,
   CharacterSummaryData,
 } from "./models";
-import { DEFAULT_DECAY_RATES, STAT_NAMES } from "./models";
+import { DEFAULT_DECAY_RATES } from "./models";
 
 function now(): number {
   return Math.floor(Date.now() / 1000);
@@ -182,21 +182,23 @@ export class FableStore {
       }
       this._initSchema(); // creates the v2 tables
 
-      this.db.exec(`INSERT INTO entities (chat_id, id, type, name, description, created_at)
-        SELECT '${target}', id, type, name, description, created_at FROM entities_v1`);
+      // Parameterized: this runs exactly once on irreplaceable legacy data,
+      // and a quote in the chat id must not break the migration mid-transaction.
+      this.db.prepare(`INSERT INTO entities (chat_id, id, type, name, description, created_at)
+        SELECT ?, id, type, name, description, created_at FROM entities_v1`).run(target);
       // Fact ids preserved so superseded_by links stay valid
-      this.db.exec(`INSERT INTO facts (id, chat_id, subject_id, predicate, object_id, object_literal,
+      this.db.prepare(`INSERT INTO facts (id, chat_id, subject_id, predicate, object_id, object_literal,
           t_valid_start, t_valid_end, t_ingested, confidence, known_to, superseded_by)
-        SELECT id, '${target}', subject_id, predicate, object_id, object_literal,
-          t_valid_start, t_valid_end, t_ingested, confidence, known_to, superseded_by FROM facts_v1`);
-      this.db.exec(`INSERT INTO relationship_stats (chat_id, observer_id, target_id, stat_name, value, decay_rate, last_updated)
-        SELECT '${target}', observer_id, target_id, stat_name, value, decay_rate, last_updated FROM relationship_stats_v1`);
-      this.db.exec(`INSERT INTO memory_cards (chat_id, title, content, tags, entity_ids, created_at, updated_at)
-        SELECT '${target}', title, content, tags, entity_ids, created_at, updated_at FROM memory_cards_v1`);
-      this.db.exec(`INSERT INTO commitments (chat_id, promisor_id, promisee_id, description, status, created_at, resolved_at)
-        SELECT '${target}', promisor_id, promisee_id, description, status, created_at, resolved_at FROM commitments_v1`);
-      this.db.exec(`INSERT INTO core_memory (chat_id, character_id, data, version, updated_at)
-        SELECT '${target}', character_id, data, version, updated_at FROM core_memory_v1`);
+        SELECT id, ?, subject_id, predicate, object_id, object_literal,
+          t_valid_start, t_valid_end, t_ingested, confidence, known_to, superseded_by FROM facts_v1`).run(target);
+      this.db.prepare(`INSERT INTO relationship_stats (chat_id, observer_id, target_id, stat_name, value, decay_rate, last_updated)
+        SELECT ?, observer_id, target_id, stat_name, value, decay_rate, last_updated FROM relationship_stats_v1`).run(target);
+      this.db.prepare(`INSERT INTO memory_cards (chat_id, title, content, tags, entity_ids, created_at, updated_at)
+        SELECT ?, title, content, tags, entity_ids, created_at, updated_at FROM memory_cards_v1`).run(target);
+      this.db.prepare(`INSERT INTO commitments (chat_id, promisor_id, promisee_id, description, status, created_at, resolved_at)
+        SELECT ?, promisor_id, promisee_id, description, status, created_at, resolved_at FROM commitments_v1`).run(target);
+      this.db.prepare(`INSERT INTO core_memory (chat_id, character_id, data, version, updated_at)
+        SELECT ?, character_id, data, version, updated_at FROM core_memory_v1`).run(target);
 
       for (const t of OLD) {
         this.db.exec(`DROP TABLE ${t}_v1`);
@@ -378,23 +380,37 @@ export class FableStore {
 
   /**
    * Among a subject's OLDER live facts (excluding the given ids), find one
-   * semantically near-identical to `vec`. Used at write time to fold
-   * restatements — "trusts Kael deeply" arriving next to "has deep trust in
-   * Kael" — so redundant facts stop stealing prompt-window slots.
+   * semantically near-identical to `vec` — a restatement. Same-family facts
+   * fold at `threshold`; cross-family only at near-identity (0.97), because
+   * negation pairs ("trusts" vs "distrusts") embed close enough to clear a
+   * looser bar and folding those would erase a genuine reversal.
    */
   findSimilarLiveFact(
     chatId:     string,
     subjectId:  string,
+    predicate:  string,
     vec:        Float32Array,
     excludeIds: Set<number>,
     threshold = 0.92
-  ): number | null {
+  ): DbFact | null {
+    const family = predicateFamily(predicate);
     for (const f of this.queryFacts(chatId, subjectId)) {
       if (excludeIds.has(f.id)) continue;
       const other = this.factEmbedding(f.id);
-      if (other && cosine(vec, other) >= threshold) return f.id;
+      if (!other) continue;
+      const sim = cosine(vec, other);
+      const bar = predicateFamily(f.predicate) === family ? threshold : 0.97;
+      if (sim >= bar) return f;
     }
     return null;
+  }
+
+  /** Raise (never lower) a fact's importance — used when a restatement folds
+   *  into it so the survivor keeps the highest score either version earned. */
+  raiseFactImportance(factId: number, importance: number): void {
+    this.db
+      .prepare("UPDATE facts SET importance = MAX(importance, ?) WHERE id = ?")
+      .run(Math.max(0, Math.min(1, importance)), factId);
   }
 
   supersedeFact(oldId: number, newId: number, atTime?: number): void {
@@ -404,47 +420,6 @@ export class FableStore {
       .run(t, newId, oldId);
   }
 
-  /** Facts where this entity appears as the *object* */
-  queryFactsAboutAsObject(chatId: string, entityId: string, asOfTime?: number): DbFact[] {
-    const t = asOfTime ?? now();
-    const rows = this.db
-      .prepare(
-        `SELECT * FROM facts
-         WHERE chat_id = ? AND object_id = ?
-           AND t_valid_start <= ?
-           AND (t_valid_end IS NULL OR t_valid_end > ?)
-         ORDER BY t_valid_start`
-      )
-      .all(chatId, entityId, t, t);
-    return rows.map(rowToFact);
-  }
-
-  findContradictions(chatId: string): Array<[DbFact, DbFact]> {
-    const t = now();
-    const rows = this.db
-      .prepare(
-        `SELECT * FROM facts
-         WHERE chat_id = ?
-           AND t_valid_start <= ?
-           AND (t_valid_end IS NULL OR t_valid_end > ?)
-         ORDER BY subject_id, predicate, t_valid_start`
-      )
-      .all(chatId, t, t)
-      .map(rowToFact);
-
-    const pairs: Array<[DbFact, DbFact]> = [];
-    for (let i = 0; i < rows.length; i++) {
-      for (let j = i + 1; j < rows.length; j++) {
-        const a = rows[i], b = rows[j];
-        if (a.subjectId === b.subjectId && a.predicate === b.predicate) {
-          const aObj = a.objectId ?? a.objectLiteral;
-          const bObj = b.objectId ?? b.objectLiteral;
-          if (aObj !== bObj) pairs.push([a, b]);
-        }
-      }
-    }
-    return pairs;
-  }
 
   // ── Relationship Stats ────────────────────────────────────────────────────
 
@@ -576,16 +551,6 @@ export class FableStore {
     return result;
   }
 
-  /** Return all unique (observer, target) pairs that have any stats in a chat */
-  allStatPairs(chatId: string): Array<{ observerId: string; targetId: string }> {
-    const rows = this.db
-      .prepare(
-        "SELECT DISTINCT observer_id, target_id FROM relationship_stats WHERE chat_id = ?"
-      )
-      .all(chatId) as Array<{ observer_id: string; target_id: string }>;
-    return rows.map((r) => ({ observerId: r.observer_id, targetId: r.target_id }));
-  }
-
   /**
    * Apply Ebbinghaus decay to all stats using each row's own last_updated
    * timestamp, so recently-updated stats decay less than stale ones.
@@ -666,15 +631,33 @@ export class FableStore {
    * a pair actually keeps using rise to the top of the injected list.
    */
   upsertBondCard(chatId: string, kind: string, text: string): { id: number; reinforced: boolean } {
-    const words = (s: string) =>
-      new Set(s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length > 3));
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+    const words = (s: string) => new Set(norm(s).split(" ").filter((w) => w.length > 3));
     const incoming = words(text);
-    for (const card of this.listBondCards(chatId, 1000)) {
-      const ex = words(card.content);
-      if (incoming.size === 0 || ex.size === 0) continue;
-      let overlap = 0;
-      for (const w of incoming) if (ex.has(w)) overlap++;
-      if (overlap / (incoming.size + ex.size - overlap) >= 0.5) {
+    const incomingNorm = norm(text);
+
+    // Lightweight query — no embedding BLOBs, bond cards only. Scanning
+    // listMemoryCards here pulled every episode's ~3KB vector per bit.
+    const existing = this.db
+      .prepare(`SELECT id, title, content FROM memory_cards WHERE chat_id = ? AND tags LIKE '%"bond"%'`)
+      .all(chatId) as Array<{ id: number; title: string; content: string }>;
+
+    for (const card of existing) {
+      if (card.title !== kind) continue; // a "joke" never folds into a "ritual"
+      let dup = false;
+      if (incoming.size === 0) {
+        // Short texts ("Pip") have no content words — compare whole strings,
+        // else every re-mention of a short nickname inserts a fresh card
+        dup = norm(card.content) === incomingNorm;
+      } else {
+        const ex = words(card.content);
+        if (ex.size > 0) {
+          let overlap = 0;
+          for (const w of incoming) if (ex.has(w)) overlap++;
+          dup = overlap / (incoming.size + ex.size - overlap) >= 0.5;
+        }
+      }
+      if (dup) {
         this.db
           .prepare("UPDATE memory_cards SET importance = MIN(1.0, importance + 0.1), updated_at = ? WHERE id = ?")
           .run(now(), card.id);
@@ -1036,24 +1019,6 @@ export class FableStore {
     tx();
   }
 
-  // ── Export ────────────────────────────────────────────────────────────────
-
-  exportJson(chatId: string): {
-    entities:    DbEntity[];
-    facts:       DbFact[];
-    stats:       DbRelationshipStat[];
-    memoryCards: DbMemoryCard[];
-    commitments: DbCommitment[];
-  } {
-    return {
-      entities:    this.listEntities(chatId),
-      facts:       this.db.prepare("SELECT * FROM facts WHERE chat_id = ? ORDER BY id").all(chatId).map(rowToFact),
-      stats:       this.db.prepare("SELECT * FROM relationship_stats WHERE chat_id = ? ORDER BY id").all(chatId).map(rowToStat),
-      memoryCards: this.listMemoryCards(chatId),
-      commitments: this.db.prepare("SELECT * FROM commitments WHERE chat_id = ? ORDER BY id").all(chatId).map(rowToCommitment),
-    };
-  }
-
   // ── Memory lifecycle ──────────────────────────────────────────────────────
 
   /** Remove every memory row belonging to a chat */
@@ -1141,15 +1106,20 @@ export class FableStore {
         .all(fromChatId)
         .map(rowToFact);
       const idMap = new Map<number, number>();
+      // importance and embedding must ride along: dropping them reset every
+      // transferred fact to 0.5 (losing its retrieval rank) and silently
+      // downgraded transferred chats to lexical-only retrieval forever.
       const ins = this.db.prepare(
         `INSERT INTO facts (chat_id, subject_id, predicate, object_id, object_literal,
-           t_valid_start, t_valid_end, t_ingested, confidence, known_to, superseded_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
+           t_valid_start, t_valid_end, t_ingested, confidence, importance, embedding, known_to, superseded_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
       );
+      const srcEmbedding = this.db.prepare("SELECT embedding FROM facts WHERE id = ?");
       for (const f of srcFacts) {
+        const emb = (srcEmbedding.get(f.id) as { embedding: Buffer | null } | undefined)?.embedding ?? null;
         const info = ins.run(
           toChatId, f.subjectId, f.predicate, f.objectId, f.objectLiteral,
-          f.tValidStart, f.tValidEnd, f.tIngested, f.confidence, JSON.stringify(f.knownTo)
+          f.tValidStart, f.tValidEnd, f.tIngested, f.confidence, f.importance, emb, JSON.stringify(f.knownTo)
         );
         idMap.set(f.id, info.lastInsertRowid as number);
         facts++;
@@ -1187,11 +1157,13 @@ export class FableStore {
       }
       const srcCards = this.db.prepare("SELECT * FROM memory_cards WHERE chat_id = ?").all(fromChatId).map(rowToMemoryCard);
       const insCard = this.db.prepare(
-        `INSERT INTO memory_cards (chat_id, title, content, tags, entity_ids, importance, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO memory_cards (chat_id, title, content, tags, entity_ids, importance, embedding, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
+      const srcCardEmb = this.db.prepare("SELECT embedding FROM memory_cards WHERE id = ?");
       for (const c of srcCards) {
-        insCard.run(toChatId, c.title, c.content, JSON.stringify(c.tags), JSON.stringify(c.entityIds), c.importance, c.createdAt, c.updatedAt);
+        const emb = (srcCardEmb.get(c.id) as { embedding: Buffer | null } | undefined)?.embedding ?? null;
+        insCard.run(toChatId, c.title, c.content, JSON.stringify(c.tags), JSON.stringify(c.entityIds), c.importance, emb, c.createdAt, c.updatedAt);
       }
 
       // Core memory — only if the target has none yet
@@ -1359,25 +1331,4 @@ export class FableStore {
     });
   }
 
-  /** All stat entries for an entity as observer (all targets) */
-  allStatsFor(chatId: string, observerId: string): DbRelationshipStat[] {
-    return this.db
-      .prepare("SELECT * FROM relationship_stats WHERE chat_id = ? AND observer_id = ? ORDER BY target_id")
-      .all(chatId, observerId)
-      .map(rowToStat);
-  }
-
-  /** Get stat names that are actually set for a pair */
-  presentStatNames(chatId: string, observerId: string, targetId: string): StatName[] {
-    return (
-      this.db
-        .prepare(
-          "SELECT stat_name FROM relationship_stats WHERE chat_id = ? AND observer_id = ? AND target_id = ?"
-        )
-        .all(chatId, observerId, targetId) as Array<{ stat_name: string }>
-    ).map((r) => r.stat_name as StatName);
-  }
 }
-
-// Export stat names for convenience
-export { STAT_NAMES };

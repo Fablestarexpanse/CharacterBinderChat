@@ -43,9 +43,11 @@ export function Sidebar() {
   const { activeSection, setActiveSection, chats, characters, activeChatId, createChat } =
     useFableStore();
 
+  // All chats, newest first. This list is the only way to open a chat, so it
+  // must never be capped — a slice(0, 8) here once made older chats
+  // permanently unreachable. The container scrolls.
   const recentChats = [...chats]
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-    .slice(0, 8);
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
   return (
     <aside className="flex flex-col h-full w-[220px] flex-shrink-0 border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)]">
