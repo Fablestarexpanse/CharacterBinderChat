@@ -218,6 +218,13 @@ interface FableStore {
   /** Merge per-chat generation settings (temperature, maxTokens, topP…) */
   updateChatSettings: (chatId: string, settings: Partial<ChatSettings>) => void;
   createChat: (characterId?: string) => string;
+  /** Group chat with 2+ characters; returns null if fewer than 2 resolve */
+  createGroupChat: (characterIds: string[]) => string | null;
+  /** Toggle a group member in/out of the scene (absent = silent + unwitnessing) */
+  toggleMemberPresence: (chatId: string, characterId: string) => void;
+  /** Which group member the inspector panel is examining */
+  inspectorMemberId: string | null;
+  setInspectorMemberId: (id: string | null) => void;
   deleteChat: (chatId: string) => void;
   renameChat: (chatId: string, name: string) => void;
   /** Wipe messages (re-seeds the character's greeting if they have one) */
@@ -515,6 +522,58 @@ export const useFableStore = create<FableStore>()(
         };
         set((state) => ({ chats: [newChat, ...state.chats], activeChatId: id }));
         return id;
+      },
+
+      createGroupChat: (characterIds) => {
+        const id = `chat-${Date.now()}`;
+        const members = characterIds
+          .map((cid) => get().characters.find((c) => c.id === cid))
+          .filter((c): c is Character => !!c);
+        if (members.length < 2) return null;
+
+        // Open with the first member's greeting if they have one — the rest
+        // join the scene through conversation.
+        const messages: Message[] = [];
+        if (members[0].firstMessage?.trim()) {
+          messages.push({
+            id:          `msg-${Date.now()}-first`,
+            chatId:      id,
+            role:        "assistant",
+            content:     members[0].firstMessage,
+            characterId: members[0].id,
+            timestamp:   new Date().toISOString(),
+          });
+        }
+
+        const newChat: Chat = {
+          id,
+          name: members.map((c) => c.name).join(" & "),
+          characterId: members[0].id,
+          memberIds:   members.map((c) => c.id),
+          absentIds:   [],
+          messages,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          contextUsed: 0,
+          contextMax: 8192,
+        };
+        set((state) => ({ chats: [newChat, ...state.chats], activeChatId: id }));
+        return id;
+      },
+
+      inspectorMemberId: null,
+      setInspectorMemberId: (id) => set({ inspectorMemberId: id }),
+
+      toggleMemberPresence: (chatId, characterId) => {
+        set((state) => ({
+          chats: state.chats.map((c) => {
+            if (c.id !== chatId || !c.memberIds?.includes(characterId)) return c;
+            const absent = new Set(c.absentIds ?? []);
+            if (absent.has(characterId)) absent.delete(characterId);
+            else if (absent.size < c.memberIds.length - 1) absent.add(characterId); // never empty the scene
+            return { ...c, absentIds: [...absent] };
+          }),
+        }));
       },
 
       deleteChat: (chatId) => {

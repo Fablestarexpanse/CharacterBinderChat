@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useFableStore } from "@/lib/store";
+import { useInspectedCharacter } from "@/lib/hooks/useInspectedCharacter";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -68,9 +69,8 @@ function StatBar({ name, value }: { name: string; value: number }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CharacterTab() {
-  const { activeChatId, chats, characters, extractionVersion, openCharacterEditor, setActiveSection } = useFableStore();
-  const chat      = chats.find((c) => c.id === activeChatId);
-  const character = characters.find((c) => c.id === chat?.characterId);
+  const { activeChatId, extractionVersion, openCharacterEditor, setActiveSection } = useFableStore();
+  const { character } = useInspectedCharacter();
 
   const [relationships, setRelationships] = useState<RelationshipGroup[]>([]);
   const [stats, setStats]                 = useState<StatRow[]>([]);

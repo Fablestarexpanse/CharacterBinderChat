@@ -1228,7 +1228,13 @@ export class FableStore {
     playerId = "player",
     queryEmbedding: Float32Array | null = null
   ): string[] {
-    const all = this.queryAllLiveFacts(chatId);
+    // Witness filter: known_to = [] means public (every 1:1 fact); a
+    // non-empty list restricts the fact to characters who were present when
+    // it was established. A group member who was out of the scene must not
+    // "remember" what happened without them.
+    const all = this.queryAllLiveFacts(chatId).filter(
+      (f) => f.knownTo.length === 0 || f.knownTo.includes(characterId)
+    );
 
     // Relevance: cosine similarity against the current exchange when both
     // sides have embeddings (semantic — "the crossing" matches "afraid of deep

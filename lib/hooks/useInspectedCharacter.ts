@@ -1,0 +1,26 @@
+"use client";
+
+// ─── Inspected character resolution ──────────────────────────────────────────
+// The inspector tabs all need "which character am I looking at". For 1:1
+// chats that's the chat's character; for group chats it's the member picked
+// in the inspector's member selector (defaulting to the first member).
+// Centralised so every tab resolves identically.
+
+import { useFableStore } from "@/lib/store";
+import type { Character, Chat } from "@/lib/types";
+
+export function useInspectedCharacter(): {
+  chat:      Chat | undefined;
+  character: Character | undefined;
+  isGroup:   boolean;
+} {
+  const { activeChatId, chats, characters, inspectorMemberId } = useFableStore();
+  const chat = chats.find((c) => c.id === activeChatId);
+  const isGroup = (chat?.memberIds?.length ?? 0) >= 2;
+  const charId = isGroup
+    ? (inspectorMemberId && chat!.memberIds!.includes(inspectorMemberId)
+        ? inspectorMemberId
+        : chat!.memberIds![0])
+    : chat?.characterId;
+  return { chat, character: characters.find((c) => c.id === charId), isGroup };
+}

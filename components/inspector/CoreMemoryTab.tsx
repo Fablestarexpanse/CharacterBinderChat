@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useFableStore } from "@/lib/store";
+import { useInspectedCharacter } from "@/lib/hooks/useInspectedCharacter";
 import { Brain, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CoreMemory } from "@/lib/db/models";
@@ -84,11 +85,8 @@ function Section({
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CoreMemoryTab() {
-  const { activeChatId, chats, characters, extractionVersion, providerSettings } =
-    useFableStore();
-
-  const chat      = chats.find((c) => c.id === activeChatId);
-  const character = characters.find((c) => c.id === chat?.characterId);
+  const { extractionVersion, providerSettings } = useFableStore();
+  const { chat, character } = useInspectedCharacter();
 
   // Result keyed by what was fetched; `loading` is derived so the effect
   // never calls setState synchronously. relAge is computed at fetch time

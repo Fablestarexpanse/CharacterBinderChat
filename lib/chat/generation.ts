@@ -11,7 +11,7 @@ import { OpenRouterProvider } from "@/lib/providers/openrouter";
 import { buildSystemPrompt, estimateTokens } from "./promptBuilder";
 import { matchLoreEntries } from "./lorebook";
 import { fitHistoryToBudget } from "./tokenBudget";
-import type { ChatProvider, MessageRole, ProviderSettings } from "@/lib/types";
+import type { Chat, Character, ChatProvider, MessageRole, ProviderSettings } from "@/lib/types";
 import type { CoreMemory } from "@/lib/db/models";
 
 let abortController: AbortController | null = null;
@@ -79,15 +79,58 @@ async function fetchCoreMemory(
   }
 }
 
+// ─── Group helpers ────────────────────────────────────────────────────────────
+
+/** Present (non-absent) member ids of a group chat, [] for 1:1. */
+export function presentMemberIds(chat: Chat): string[] {
+  if (!chat.memberIds || chat.memberIds.length < 2) return [];
+  const absent = new Set(chat.absentIds ?? []);
+  return chat.memberIds.filter((id) => !absent.has(id));
+}
+
+/**
+ * Who speaks next in a group when the user didn't choose: a present member
+ * named in the last user message wins; otherwise round-robin from whoever
+ * spoke last.
+ */
+function pickSpeaker(chat: Chat, characters: Character[]): string {
+  const present = presentMemberIds(chat);
+  const lastUser = [...chat.messages].reverse().find((m) => m.role === "user" && !m.error);
+  if (lastUser) {
+    const text = lastUser.content.toLowerCase();
+    // Earliest mention wins: "Fen, before Ronan gets back…" addresses Fen,
+    // even though Ronan is also named (and joined the group first).
+    let named: string | undefined;
+    let best = Infinity;
+    for (const id of present) {
+      const name = characters.find((c) => c.id === id)?.name.toLowerCase();
+      if (!name) continue;
+      const at = text.indexOf(name);
+      if (at !== -1 && at < best) { best = at; named = id; }
+    }
+    if (named) return named;
+  }
+  const lastSpeaker = [...chat.messages].reverse()
+    .find((m) => m.role === "assistant" && m.characterId && present.includes(m.characterId))?.characterId;
+  const idx = lastSpeaker ? present.indexOf(lastSpeaker) : -1;
+  return present[(idx + 1) % present.length];
+}
+
 // ─── Generate a reply to the chat's current history ──────────────────────────
 
-export async function generateAssistantReply(chatId: string): Promise<void> {
+export async function generateAssistantReply(chatId: string, speakerId?: string): Promise<void> {
   const store = useFableStore.getState();
   if (store.isGenerating) return;
 
   const chat = store.chats.find((c) => c.id === chatId);
   if (!chat) return;
-  const character  = store.characters.find((c) => c.id === chat.characterId);
+  const present = presentMemberIds(chat);
+  const isGroup = present.length >= 2;
+  // Group: explicit speaker (if present in scene) > auto pick. 1:1: the character.
+  const speakerCharId = isGroup
+    ? (speakerId && present.includes(speakerId) ? speakerId : pickSpeaker(chat, store.characters))
+    : chat.characterId;
+  const character  = store.characters.find((c) => c.id === speakerCharId);
   const providerId = chat.providerId ?? "ollama";
   const modelId    = chat.modelId    ?? "llama3.2:latest";
   const provider   = instantiateProvider(providerId, store.providerSettings);
@@ -125,12 +168,44 @@ export async function generateAssistantReply(chatId: string): Promise<void> {
     // subject was raised.
     const loreScanText = chat.messages.slice(-6).map((m) => m.content).join("\n");
     const lore = matchLoreEntries(store.lorebooks, loreScanText);
-    const systemPrompt = buildSystemPrompt(character, coreMemory, knownFacts, persona, episodes, insights, lore, bits);
+    let systemPrompt = buildSystemPrompt(character, coreMemory, knownFacts, persona, episodes, insights, lore, bits);
+
+    // ── Group scene block ───────────────────────────────────────────────────
+    // The speaker needs to know who else is in the room, and that other
+    // characters' lines in the history are not theirs to continue.
+    if (isGroup && character) {
+      const othersHere = present
+        .filter((id) => id !== character.id)
+        .map((id) => store.characters.find((c) => c.id === id))
+        .filter((c): c is Character => !!c);
+      const away = (chat.absentIds ?? [])
+        .map((id) => store.characters.find((c) => c.id === id)?.name)
+        .filter(Boolean);
+      systemPrompt +=
+        `\n\n[Scene]\nThis is a group scene. Also present:\n` +
+        othersHere.map((c) => `  - ${c.name}: ${c.description.slice(0, 160)}`).join("\n") +
+        (away.length ? `\nNot currently present (do not have them act): ${away.join(", ")}` : "") +
+        `\nOther characters' lines appear in the conversation prefixed with their name. ` +
+        `Speak and act ONLY as ${character.name} — never write dialogue or actions for anyone else.`;
+    }
+
     // Failure notices (m.error) are UI artifacts, not dialogue — sending them
     // back to the model taught it to roleplay error messages.
+    // In groups, only the speaker's own lines are assistant turns; everyone
+    // else (player and other characters) arrives as named user turns.
+    const speakerLabel = (m: { role: string; characterId?: string }) =>
+      m.role === "user"
+        ? persona?.name ?? "User"
+        : store.characters.find((c) => c.id === m.characterId)?.name ?? "Narrator";
     const fullHistory: Array<{ role: MessageRole; content: string }> = chat.messages
       .filter((m) => m.content.trim().length > 0 && !m.imageJobId && !m.error)
-      .map((m) => ({ role: m.role as MessageRole, content: m.content }));
+      .map((m) => {
+        if (!isGroup) return { role: m.role as MessageRole, content: m.content };
+        const own = m.role === "assistant" && m.characterId === character?.id;
+        return own
+          ? { role: "assistant" as MessageRole, content: m.content }
+          : { role: "user" as MessageRole, content: `${speakerLabel(m)}: ${m.content}` };
+      });
     const fit = fitHistoryToBudget(systemPrompt, fullHistory, modelId);
     if (fit.dropped > 0) {
       console.info(`[chat] context window: dropped ${fit.dropped} oldest message(s) to fit`);
@@ -181,8 +256,9 @@ export async function generateAssistantReply(chatId: string): Promise<void> {
     if (!failed && accumulated.trim()) {
       // Include the finished reply in the context meter
       store.setChatContext(chatId, fit.usedTokens + estimateTokens(accumulated) + 4, fit.contextMax);
-      // Extraction runs after the full (or stopped-partial) response
-      triggerExtraction(chatId);
+      // Extraction runs after the full (or stopped-partial) response,
+      // attributed to whoever just spoke
+      triggerExtraction(chatId, speakerCharId);
     } else if (!failed && assistantMsgId) {
       // Stop pressed before the first token — drop the empty bubble
       store.removeMessage(chatId, assistantMsgId);
@@ -205,15 +281,17 @@ export async function regenerateLastReply(chatId: string): Promise<void> {
   if (!chat || chat.messages.length === 0) return;
 
   const last = chat.messages[chat.messages.length - 1];
+  let speaker: string | undefined;
   if (last.role === "assistant" && !last.imageJobId) {
+    speaker = last.characterId; // groups: regenerate as the same speaker
     store.removeMessage(chatId, last.id);
   }
-  await generateAssistantReply(chatId);
+  await generateAssistantReply(chatId, speaker);
 }
 
 // ─── Knowledge extraction (Drawer 2 + Core Memory refresh) ───────────────────
 
-function triggerExtraction(chatId: string): void {
+function triggerExtraction(chatId: string, speakerId?: string): void {
   // Read current store state directly rather than a stale snapshot — the
   // assistant's completed reply is only present in the live store state.
   const {
@@ -222,9 +300,21 @@ function triggerExtraction(chatId: string): void {
   } = useFableStore.getState();
 
   const chat      = chats.find((c) => c.id === chatId);
-  const character = characters.find((c) => c.id === chat?.characterId);
+  const character = characters.find((c) => c.id === (speakerId ?? chat?.characterId));
   const persona   = personas.find((p) => p.id === activePersonaId) ?? null;
   if (!chat || !character) return;
+
+  // Witness list for group scenes: everyone present right now (+ player).
+  // 1:1 chats send no list, and their facts stay public.
+  const present = presentMemberIds(chat);
+  const participants = present.length >= 2
+    ? [
+        ...present.map((id) => ({
+          id, name: characters.find((c) => c.id === id)?.name ?? id,
+        })),
+        { id: "player", name: persona?.name ?? "User" },
+      ]
+    : undefined;
 
   const providerType =
     chat.providerId === "lmstudio"     ? "lmstudio"
@@ -239,10 +329,22 @@ function triggerExtraction(chatId: string): void {
 
   setIsExtracting(true);
 
+  // In groups every message carries its speaker's name so the extractor
+  // never attributes one character's line to another.
   const recentMessages = chat.messages
     .filter((m) => !m.error && !m.imageJobId)
     .slice(-16)
-    .map((m) => ({ role: m.role, content: m.content }));
+    .map((m) => ({
+      role: m.role,
+      content: m.content,
+      ...(participants
+        ? {
+            speaker: m.role === "user"
+              ? persona?.name ?? "User"
+              : characters.find((c) => c.id === m.characterId)?.name ?? character.name,
+          }
+        : {}),
+    }));
 
   const extractionBody = {
     messages:        recentMessages,
@@ -252,6 +354,7 @@ function triggerExtraction(chatId: string): void {
     personaName:     persona?.name,
     // Drift anchor for the persona rewrite
     characterAnchor: [character.description, character.personality].filter(Boolean).join(" "),
+    participants,
     providerType,
     providerBaseUrl: baseUrl,
     modelId,

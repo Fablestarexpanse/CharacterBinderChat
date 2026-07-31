@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useFableStore } from "@/lib/store";
+import { useInspectedCharacter } from "@/lib/hooks/useInspectedCharacter";
 import { Loader2, RefreshCw, User, MapPin, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CharacterSummaryData } from "@/lib/db/models";
@@ -49,9 +50,8 @@ function MiniStatBar({ name, value }: { name: string; value: number }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function SummaryTab() {
-  const { activeChatId, chats, characters, extractionVersion } = useFableStore();
-  const chat      = chats.find((c) => c.id === activeChatId);
-  const character = characters.find((c) => c.id === chat?.characterId);
+  const { extractionVersion } = useFableStore();
+  const { chat, character } = useInspectedCharacter();
 
   // Result keyed by what was fetched; `loading` is derived so the effect
   // never calls setState synchronously. `refreshTick` powers the manual

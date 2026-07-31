@@ -57,7 +57,13 @@ export interface MemoryTrace {
 export interface Chat {
   id: string;
   name: string;
+  /** 1:1 chats: the character. Group chats: the primary member (first). */
   characterId?: string;
+  /** Group chats only: all character members, in join order. Absent for 1:1. */
+  memberIds?: string[];
+  /** Group chats: members currently OUT of the scene. Absent members don't
+   *  speak and don't witness facts extracted while they're away. */
+  absentIds?: string[];
   modelId?: string;
   providerId?: string;
   messages: Message[];

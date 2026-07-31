@@ -7,13 +7,13 @@ import { InspectorPanel } from "@/components/inspector/InspectorPanel";
 import { SettingsView } from "@/components/sections/SettingsView";
 import { CharactersView } from "@/components/sections/CharactersView";
 import { LorebooksView } from "@/components/sections/LorebooksView";
+import { GroupsView } from "@/components/sections/GroupsView";
 import { CharacterEditorDialog } from "@/components/characters/CharacterEditorDialog";
 import { StateSync } from "@/components/StateSync";
 import { DropImport } from "@/components/DropImport";
 import { PlaceholderView } from "@/components/sections/PlaceholderView";
 import { useHydrated } from "@/lib/hooks/useHydrated";
 import {
-  Group,
   Sliders,
   ImageIcon,
   GalleryHorizontal,
@@ -41,13 +41,7 @@ export default function Home() {
         {activeSection === "chats" && <ChatArea />}
         {activeSection === "characters" && <CharactersView />}
         {activeSection === "settings" && <SettingsView />}
-        {activeSection === "groups" && (
-          <PlaceholderView
-            icon={Group}
-            title="Groups"
-            description="Multi-character chats with shared context and turn-taking."
-          />
-        )}
+        {activeSection === "groups" && <GroupsView />}
         {activeSection === "lorebooks" && <LorebooksView />}
         {activeSection === "presets" && (
           <PlaceholderView

@@ -24,6 +24,7 @@ The result: characters that remember, grow, and stay consistent over hundreds of
 | **Chat** | Real streaming from Ollama, LM Studio, or OpenRouter. Stop mid-generation, regenerate, retry after a failure. |
 | **Characters** | Full CRUD — create, edit, delete. Import SillyTavern v1/v2 JSON cards or **CharacterBinder PNG cards** — drop a PNG anywhere in the window and it routes by embedded type (character, lorebook, persona, scenario). The card art becomes the avatar. |
 | **Personas** | Your identity in the roleplay. The active persona is injected into the prompt, labels your turns during extraction, and names the `player` entity in the graph. |
+| **Groups + witness memory** | Multi-character scenes. Pick who replies (or auto by name-mention/round-robin), toggle who is present from the header — and each character only remembers what happened while they were in the scene. Talk about someone while they're away, and they genuinely don't know. Per-member memory inspector. |
 | **Core Memory (Drawer 1)** | Per-character JSON document: mood (valence/arousal/dominance), 5-axis relationship stats, commitments, emotional events, internal thoughts, narrative summary. |
 | **Knowledge Graph (Drawer 2)** | Bi-temporal SQLite graph. Entities, facts with supersession + semantic dedupe, relationship stat axes (affection / trust / desire / connection), commitments, episodic scene cards, reflections, shared-language "bits" (running jokes, nicknames), and a story clock. Auto-extracted after each message. Semantic retrieval via local Ollama embeddings, with a lexical fallback when Ollama is offline. |
 | **Emotional dynamics** | Stats move non-linearly: headroom scaling near extremes, loss aversion on trust/affection drops, mood blending, and post-rupture inertia — a betrayal opens a refractory window where warmth recovers slowly and the wound stays in the prompt. |
@@ -202,7 +203,7 @@ Working end to end: chat + streaming, both memory drawers (with embeddings, epis
 
 Not yet built:
 
-- **Placeholder sections**: Groups, Presets, Gallery, Workflows, Extensions (and the full-screen Image Studio section — the inspector's Image Studio tab is the real one) are navigable but empty.
+- **Placeholder sections**: Presets, Gallery, Workflows, Extensions (and the full-screen Image Studio section — the inspector's Image Studio tab is the real one) are navigable but empty.
 - **Some image-studio controls are decorative**: the LoRA stack, ControlNet, refiner, aspect-ratio and character-reference controls don't reach the workflow yet — prompt, dimensions, steps, CFG, sampler, seed and batch do.
 - **The OpenRouter API key is stored in browser localStorage** and used directly from the client. Fine for a single-user local app; a server-side proxy would be better.
 
@@ -219,7 +220,7 @@ Not yet built:
 - [x] Lorebook editor + keyword injection
 - [x] Per-chat generation settings
 - [x] PNG card import (CharacterBinder / SillyTavern)
-- [ ] Group chats (multiple characters)
+- [x] Group chats with witness-scoped memory
 - [ ] GPU / VRAM monitoring
 - [ ] Export chat as story document
 - [ ] Mobile layout

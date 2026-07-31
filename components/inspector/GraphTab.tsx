@@ -2,15 +2,15 @@
 
 import { useState } from "react";
 import { useFableStore } from "@/lib/store";
+import { useInspectedCharacter } from "@/lib/hooks/useInspectedCharacter";
 import { MemoryGraph } from "@/components/graph/MemoryGraph";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Maximize2, Network } from "lucide-react";
 
 export function GraphTab() {
-  const { activeChatId, chats, characters, extractionVersion } = useFableStore();
-  const chat      = chats.find((c) => c.id === activeChatId);
-  const character = characters.find((c) => c.id === chat?.characterId);
+  const { extractionVersion } = useFableStore();
+  const { chat, character } = useInspectedCharacter();
   const [expanded, setExpanded] = useState(false);
 
   if (!chat) {

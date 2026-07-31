@@ -1,6 +1,7 @@
 "use client";
 
 import { useFableStore } from "@/lib/store";
+import { useInspectedCharacter } from "@/lib/hooks/useInspectedCharacter";
 import { Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
@@ -17,11 +18,8 @@ const KG_TABS: { id: KGTab; label: string }[] = [
 ];
 
 export function MemoryTab() {
-  const { activeChatId, chats, characters, extractionVersion, isExtracting, lastExtractionError } =
-    useFableStore();
-
-  const chat      = chats.find((c) => c.id === activeChatId);
-  const character = characters.find((c) => c.id === chat?.characterId);
+  const { extractionVersion, isExtracting, lastExtractionError } = useFableStore();
+  const { chat, character } = useInspectedCharacter();
 
   const [kgTab, setKgTab] = useState<KGTab>("facts");
 

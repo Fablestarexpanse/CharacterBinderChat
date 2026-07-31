@@ -11,27 +11,31 @@ export const dynamic = "force-dynamic";
 // ─── Extraction Prompt ────────────────────────────────────────────────────────
 
 function buildExtractionPrompt(
-  messages:      Array<{ role: string; content: string }>,
+  messages:      Array<{ role: string; content: string; speaker?: string }>,
   characterName: string,
   knownEntities: Array<{ id: string; name: string; type: string }> = [],
   userLabel     = "User",
   characterId   = "",
-  userId        = "player"
+  userId        = "player",
+  participants: Array<{ id: string; name: string }> = []
 ): string {
+  // Group messages carry an explicit speaker label; 1:1 falls back to role
   const conversation = messages
     .slice(-12)
-    .map((m) => `${m.role === "user" ? userLabel : characterName}: ${m.content}`)
+    .map((m) => `${m.speaker ?? (m.role === "user" ? userLabel : characterName)}: ${m.content}`)
     .join("\n\n");
 
   // ── Identity anchor ───────────────────────────────────────────────────────
-  // The two participants already have ids in the database. Without stating
+  // The participants already have ids in the database. Without stating
   // them the model mints its own ("ronan" next to "char-ronan"), and every
   // fact about the protagonist lands on an entity nothing ever reads back.
-  const anchorBlock = `PARTICIPANT IDS — these two entities already exist. Use these exact ids as
+  const others = participants.filter((p) => p.id !== characterId && p.id !== userId);
+  const anchorBlock = `PARTICIPANT IDS — these entities already exist. Use these exact ids as
 subject/object/observer/target whenever the fact concerns them. Do NOT invent
 alternative ids for them:
 - ${characterId || "unknown"} = ${characterName} (the character speaking)
 - ${userId} = ${userLabel} (the person they are talking to)
+${others.map((p) => `- ${p.id} = ${p.name} (also present in the scene)`).join("\n")}
 
 `;
 
@@ -130,7 +134,9 @@ Rules:
   anything to the other, emit no delta, however ominous the scene feels.
 - stat_changes track how ${characterName} feels, so use observer
   "${characterId || "the character's id"}" and target "${userId}". Only use the
-  reverse direction for a stat that is explicitly about the other person's feelings.
+  reverse direction for a stat that is explicitly about the other person's feelings.${others.length > 0 ? `
+  In this group scene, stat changes between ANY two listed participants are
+  allowed when the conversation shows one — use their exact ids.` : ""}
 - For an entity NOT already listed above, mint a new snake_case id from its name
   (e.g. "kaspar_division", "sector_7"). Never mint one for an entity that is
   already listed — reuse its id verbatim.
@@ -226,8 +232,9 @@ export async function POST(req: NextRequest) {
       providerBaseUrl,
       modelId,
       apiKey,
+      participants,
     } = body as {
-      messages:        Array<{ role: string; content: string }>;
+      messages:        Array<{ role: string; content: string; speaker?: string }>;
       chatId:          string;
       characterId:     string;
       characterName:   string;
@@ -236,6 +243,10 @@ export async function POST(req: NextRequest) {
       providerBaseUrl: string;
       modelId:         string;
       apiKey?:         string;
+      /** Group chats: everyone present in the scene (characters + player).
+       *  Extracted facts are stamped known_to with these ids, so absent
+       *  members never "remember" what happened without them. */
+      participants?:   Array<{ id: string; name: string }>;
     };
 
     if (!messages?.length || !chatId || !characterId || !providerBaseUrl || !modelId) {
@@ -262,12 +273,25 @@ export async function POST(req: NextRequest) {
     // anchor on its real id
     store.ensureEntity(chatId, characterId, "character", characterName ?? characterId);
 
+    // Validated present-participant list (group chats). Facts extracted this
+    // turn are witnessed by exactly these ids; empty = 1:1, facts are public.
+    const present: Array<{ id: string; name: string }> = Array.isArray(participants)
+      ? participants.filter(
+          (p): p is { id: string; name: string } =>
+            !!p && typeof p.id === "string" && typeof p.name === "string"
+        )
+      : [];
+    for (const p of present) {
+      store.ensureEntity(chatId, p.id, "character", p.name);
+    }
+    const witnessIds = present.map((p) => p.id);
+
     const knownEntities = store.listEntities(chatId).map((e) => ({
       id: e.id, name: e.name, type: e.type,
     }));
     const prompt = buildExtractionPrompt(
       messages, characterName ?? characterId, knownEntities, personaName ?? "User",
-      characterId, "player"
+      characterId, "player", present
     );
 
     // ── Call LLM ──────────────────────────────────────────────────────────
@@ -387,6 +411,8 @@ export async function POST(req: NextRequest) {
         objectLiteral: objectEntity ? null : f.object,
         confidence:    clamp01(f.confidence, 0.85),
         importance:    clamp01(f.importance, 0.5),
+        // Witness stamp: group facts belong to whoever was in the scene
+        knownTo:       witnessIds,
       });
       writtenFacts.push(newFactId);
 

@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useEffect, type KeyboardEvent } from "react";
+import { useRef, useEffect, useState, type KeyboardEvent } from "react";
 import { useFableStore } from "@/lib/store";
+import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { startImageJob } from "@/lib/providers/comfyui";
-import { generateAssistantReply, stopGeneration } from "@/lib/chat/generation";
+import { generateAssistantReply, stopGeneration, presentMemberIds } from "@/lib/chat/generation";
 import {
   Paperclip,
   ImageIcon,
@@ -17,7 +18,7 @@ import {
 
 export function ChatInput() {
   const {
-    activeChatId,
+    activeChatId, chats, characters,
     inputValue, setInputValue,
     addMessage,
     addImageJob, updateImageJob, imageSettings,
@@ -27,6 +28,12 @@ export function ChatInput() {
   } = useFableStore();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Group chats: who replies next. null = auto (name-mention, else round-robin)
+  const [nextSpeaker, setNextSpeaker] = useState<string | null>(null);
+  const chat = chats.find((c) => c.id === activeChatId);
+  const present = chat ? presentMemberIds(chat) : [];
+  const isGroup = present.length >= 2;
 
   // ── Lazy stat decay ────────────────────────────────────────────────────────
   // On the first render of this component (i.e. first session), apply
@@ -61,7 +68,17 @@ export function ChatInput() {
     }
 
     addMessage(activeChatId, { chatId: activeChatId, role: "user", content: userContent });
-    generateAssistantReply(activeChatId);
+    generateAssistantReply(activeChatId, nextSpeaker ?? undefined);
+  };
+
+  // Group scene: tap a character with an empty input to have them speak now
+  const handleSpeakerTap = (id: string) => {
+    if (!activeChatId || isGenerating) return;
+    if (!inputValue.trim()) {
+      generateAssistantReply(activeChatId, id);
+    } else {
+      setNextSpeaker((prev) => (prev === id ? null : id));
+    }
   };
 
   // ── Image generation ──────────────────────────────────────────────────────
@@ -108,6 +125,45 @@ export function ChatInput() {
 
   return (
     <div className="px-4 pb-4 pt-2 flex-shrink-0">
+      {/* Group scene: pick who replies (tap with empty input = speak now) */}
+      {isGroup && (
+        <div className="flex items-center gap-1.5 mb-2 px-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-fg)]">
+            Reply:
+          </span>
+          <button
+            onClick={() => setNextSpeaker(null)}
+            className={`rounded-full px-2 py-0.5 text-[11px] transition-colors cursor-pointer ${
+              nextSpeaker === null
+                ? "bg-[var(--purple)] text-white"
+                : "bg-[var(--muted)] text-[var(--muted-fg)] hover:text-[var(--foreground)]"
+            }`}
+          >
+            Auto
+          </button>
+          {present.map((id) => {
+            const m = characters.find((c) => c.id === id);
+            if (!m) return null;
+            return (
+              <button
+                key={id}
+                onClick={() => handleSpeakerTap(id)}
+                disabled={isGenerating}
+                title={inputValue.trim() ? `${m.name} replies to your message` : `${m.name} speaks now`}
+                className={`flex items-center gap-1 rounded-full pl-0.5 pr-2 py-0.5 text-[11px] transition-colors cursor-pointer ${
+                  nextSpeaker === id
+                    ? "bg-[var(--purple-light)] text-[var(--purple-fg)] ring-1 ring-[var(--purple)]"
+                    : "bg-[var(--muted)] text-[var(--muted-fg)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                <Avatar name={m.name} src={m.avatar} size="xs" />
+                {m.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {isImageCommand && (
         <div className="flex items-center gap-2 mb-2 px-1">
           <Wand2 className="h-3.5 w-3.5 text-[var(--purple-fg)]" />

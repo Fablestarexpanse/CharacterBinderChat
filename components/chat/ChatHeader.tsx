@@ -50,7 +50,7 @@ export function ChatHeader() {
     setChatModel, providerSettings, providerStatuses,
     clearChat, isGenerating,
     customModels, addCustomModel,
-    updateChatSettings,
+    updateChatSettings, toggleMemberPresence,
   } = useFableStore();
 
   const chat      = chats.find((c) => c.id === activeChatId);
@@ -103,6 +103,21 @@ export function ChatHeader() {
     providerSettings.openrouter.apiKey,
     providerConnectivity,
   ]);
+
+  // A chat with no model yet DISPLAYS the first available model, but
+  // generation used a hardcoded default that may not be installed — commit
+  // the displayed choice so what you see is what generates. (Hook must sit
+  // before the early return below.)
+  // Only commit once the REAL provider lists have loaded — committing while
+  // the static fallback list is showing wrote a model that isn't installed.
+  const realModelsLoaded = models !== FALLBACK_MODELS;
+  const firstAvailable = customModels[0] ?? (realModelsLoaded ? models[0] : undefined);
+  useEffect(() => {
+    if (chat && !chat.modelId && firstAvailable) {
+      setChatModel(chat.id, firstAvailable.id, firstAvailable.providerId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat?.id, chat?.modelId, firstAvailable?.id]);
 
   if (!chat) return null;
 
@@ -161,19 +176,47 @@ export function ChatHeader() {
 
   return (
     <div className="flex items-center gap-3 px-4 h-14 border-b border-[var(--border)] bg-white flex-shrink-0">
-      {/* Character info */}
+      {/* Character info / group members with presence toggles */}
       <div className="flex items-center gap-2.5 flex-1 min-w-0">
-        <Avatar name={character?.name ?? chat.name} src={character?.avatar} size="sm" />
-        <div className="min-w-0">
-          <div className="font-semibold text-sm text-[var(--foreground)] truncate">
-            {chat.name}
-          </div>
-          {character && (
-            <div className="text-[11px] text-[var(--muted-fg)] truncate">
-              {character.tags.slice(0, 2).join(" · ")}
+        {(chat.memberIds?.length ?? 0) >= 2 ? (
+          <div className="flex items-center gap-1.5 min-w-0">
+            {chat.memberIds!.map((id) => {
+              const m = characters.find((c) => c.id === id);
+              if (!m) return null;
+              const absent = chat.absentIds?.includes(id) ?? false;
+              return (
+                <button
+                  key={id}
+                  onClick={() => toggleMemberPresence(chat.id, id)}
+                  title={absent ? `${m.name} is away — click to bring into the scene` : `${m.name} is present — click to send away`}
+                  className={`rounded-full transition-opacity cursor-pointer ${absent ? "opacity-30 grayscale" : ""}`}
+                >
+                  <Avatar name={m.name} src={m.avatar} size="sm" />
+                </button>
+              );
+            })}
+            <div className="min-w-0 ml-1">
+              <div className="font-semibold text-sm text-[var(--foreground)] truncate">{chat.name}</div>
+              <div className="text-[11px] text-[var(--muted-fg)] truncate">
+                group · click an avatar to toggle who is in the scene
+              </div>
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <>
+            <Avatar name={character?.name ?? chat.name} src={character?.avatar} size="sm" />
+            <div className="min-w-0">
+              <div className="font-semibold text-sm text-[var(--foreground)] truncate">
+                {chat.name}
+              </div>
+              {character && (
+                <div className="text-[11px] text-[var(--muted-fg)] truncate">
+                  {character.tags.slice(0, 2).join(" · ")}
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Model selector */}

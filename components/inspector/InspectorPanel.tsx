@@ -1,6 +1,7 @@
 "use client";
 
 import { useFableStore, type InspectorTab } from "@/lib/store";
+import { useInspectedCharacter } from "@/lib/hooks/useInspectedCharacter";
 import { CharacterTab } from "./CharacterTab";
 import { MemoryTab } from "./MemoryTab";
 import { GraphTab } from "./GraphTab";
@@ -21,12 +22,42 @@ const TABS: { id: InspectorTab; label: string }[] = [
 ];
 
 export function InspectorPanel() {
-  const { inspectorTab, setInspectorTab, inspectorOpen } = useFableStore();
+  const { inspectorTab, setInspectorTab, inspectorOpen, setInspectorMemberId, characters } =
+    useFableStore();
+  const { chat, character, isGroup } = useInspectedCharacter();
 
   if (!inspectorOpen) return null;
 
   return (
     <aside className="flex flex-col h-full w-[280px] flex-shrink-0 border-l border-[var(--border)] bg-[var(--sidebar-bg)]">
+      {/* Group chats: whose memory is the panel showing? */}
+      {isGroup && chat && (
+        <div className="flex items-center gap-1.5 px-2 pt-2 flex-shrink-0">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-fg)]">
+            Viewing
+          </span>
+          {chat.memberIds!.map((id) => {
+            const m = characters.find((c) => c.id === id);
+            if (!m) return null;
+            const active = character?.id === id;
+            return (
+              <button
+                key={id}
+                onClick={() => setInspectorMemberId(id)}
+                title={`Inspect ${m.name}'s memory`}
+                className={`rounded-full px-2 py-0.5 text-[11px] transition-colors cursor-pointer ${
+                  active
+                    ? "bg-[var(--purple)] text-white"
+                    : "bg-[var(--muted)] text-[var(--muted-fg)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                {m.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Tab bar */}
       <div className="flex border-b border-[var(--border)] bg-white px-2 pt-2 gap-0.5 flex-shrink-0 overflow-x-auto">
         {TABS.map((tab) => (
