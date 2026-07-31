@@ -6,10 +6,18 @@
 //   node tests/memory-eval/long-chat.mjs --turns 200
 //   node tests/memory-eval/long-chat.mjs --turns 40 --model deepseek/deepseek-chat
 //   node tests/memory-eval/long-chat.mjs --turns 200 --scenario tilly
+//   node tests/memory-eval/long-chat.mjs --turns 100 --scenario tilly --live
 //
 // Scenarios live in scenario-<name>.mjs and export an async load() returning
 // { characterId, chatId, characterName, personaName, character, persona,
 //   arc, probeQuestion, anchors }. Default scenario: caravan.
+//
+// --live runs against the REAL app (port 3000, main database) instead of an
+// isolated eval server, and mirrors the conversation into the app's durable
+// chat state as it goes — afterwards the run is an ordinary chat you can open
+// in FableChat: full history, Memory tab, Core Mem, the Web mind map, all of
+// it. Keep the FableChat browser tab closed while a live run is going (an
+// open tab's state sync could clobber the chat being written).
 //
 // Design notes
 // ------------
@@ -36,7 +44,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(HERE, "../..");
 const Database = require(path.join(APP_ROOT, "node_modules/better-sqlite3"));
 
-const PORT = 3159;
+let PORT = 3159; // --live switches to the real app on :3000
 const EVAL_DB = path.join(HERE, ".eval-db", "long-chat.db");
 const OUT_DIR = path.join(HERE, "results");
 
@@ -65,13 +73,14 @@ const ASSISTANT_TELLS = [
 // ─── CLI / env ────────────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const out = { turns: 200, model: "deepseek/deepseek-chat", scenario: "caravan" };
+  const out = { turns: 200, model: "deepseek/deepseek-chat", scenario: "caravan", live: false };
   for (let i = 0; i < argv.length; i++) {
     const [flag, inline] = argv[i].split("=");
     const val = inline ?? argv[i + 1];
     if (flag === "--turns") { out.turns = Number(val); if (inline === undefined) i++; }
     else if (flag === "--model") { out.model = val; if (inline === undefined) i++; }
     else if (flag === "--scenario") { out.scenario = val; if (inline === undefined) i++; }
+    else if (flag === "--live") { out.live = true; }
   }
   return out;
 }
@@ -164,12 +173,57 @@ async function startServer() {
   throw new Error(`server did not start:\n${fs.readFileSync(logFile, "utf8").split("\n").slice(-20).join("\n")}`);
 }
 
-const API = `http://127.0.0.1:${PORT}`;
+const API = () => `http://127.0.0.1:${PORT}`;
+
+// ─── Live mode: mirror the conversation into the app's durable chat state ────
+// Makes the soak an ordinary FableChat chat: GET the current app state, upsert
+// our chat (messages included), PUT it back. Runs every few turns so a stopped
+// run is still browsable.
+
+async function syncChatToApp(history, meta) {
+  try {
+    const state = await fetch(`${API()}/api/state`, { cache: "no-store" }).then((r) => r.json());
+    const nowIso = new Date().toISOString();
+    const base = Date.now() - history.length * 60_000; // spread timestamps ~1min apart
+    const messages = history.map((m, i) => ({
+      id:        `msg-${meta.chatId}-${i}`,
+      chatId:    meta.chatId,
+      role:      m.role,
+      content:   m.content,
+      ...(m.role === "assistant" ? { characterId: meta.characterId } : {}),
+      timestamp: new Date(base + i * 60_000).toISOString(),
+    }));
+    const chat = {
+      id:          meta.chatId,
+      name:        meta.name,
+      characterId: meta.characterId,
+      modelId:     meta.modelId,
+      providerId:  "openrouter",
+      messages,
+      createdAt:   meta.createdAt,
+      updatedAt:   nowIso,
+    };
+    const chats = Array.isArray(state.chats) ? state.chats : [];
+    const idx = chats.findIndex((c) => c.id === meta.chatId);
+    if (idx === -1) chats.unshift(chat);
+    else chats[idx] = chat;
+    const res = await fetch(`${API()}/api/state`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        characters: state.characters ?? [], chats,
+        personas: state.personas ?? [], lorebooks: state.lorebooks ?? [],
+      }),
+    });
+    if (!res.ok) console.log(`    [live-sync] rejected: ${(await res.text()).slice(0, 120)}`);
+  } catch (e) {
+    console.log(`    [live-sync] failed: ${String(e).slice(0, 120)}`);
+  }
+}
 
 async function fetchMemory(context = "") {
   const ctx = context ? `&context=${encodeURIComponent(context.slice(0, 600))}` : "";
   return fetch(
-    `${API}/api/chat/core-memory?chatId=${encodeURIComponent(CHAT_ID)}&characterId=${encodeURIComponent(CHARACTER_ID)}&name=${encodeURIComponent(CHARACTER_NAME)}${ctx}`,
+    `${API()}/api/chat/core-memory?chatId=${encodeURIComponent(CHAT_ID)}&characterId=${encodeURIComponent(CHARACTER_ID)}&name=${encodeURIComponent(CHARACTER_NAME)}${ctx}`,
     { cache: "no-store" }
   ).then((r) => r.json()).catch(() => ({}));
 }
@@ -267,13 +321,42 @@ async function main() {
   PROBE_QUESTION = scen.probeQuestion;
   ANCHORS = scen.anchors;
 
+  // ── Live mode: real app, real database, browsable chat afterwards ─────────
+  let liveMeta = null;
+  if (args.live) {
+    PORT = 3000;
+    CHAT_ID = `chat-soak-${Date.now()}`;
+    liveMeta = {
+      chatId:      CHAT_ID,
+      characterId: CHARACTER_ID,
+      name:        `${CHARACTER_NAME} & ${PERSONA_NAME} — soak`,
+      modelId:     MODEL,
+      createdAt:   new Date().toISOString(),
+    };
+  }
+
   const TOTAL = args.turns;
-  console.log(`\nLong-run relationship soak — ${TOTAL} exchanges, model ${MODEL}`);
+  console.log(`\nLong-run relationship soak — ${TOTAL} exchanges, model ${MODEL}${args.live ? " · LIVE (main app)" : ""}`);
   console.log(`Scenario "${args.scenario}": ${CHARACTER_NAME} (character) & ${PERSONA_NAME} (player)`);
   console.log(`Character receives FULL history (no trimming).\n`);
 
-  const proc = await startServer();
-  const db = new Database(EVAL_DB, { readonly: true });
+  let proc = null;
+  let dbPath = EVAL_DB;
+  if (args.live) {
+    // The real dev server must already be running; never spawn or wipe here.
+    try {
+      const r = await fetch(`${API()}/api/state`);
+      if (!r.ok) throw new Error(`app server on :${PORT} answered ${r.status}`);
+    } catch (e) {
+      console.error(`--live needs the app running on :${PORT} (npm run dev). ${e}`);
+      process.exit(1);
+    }
+    dbPath = path.join(APP_ROOT, "data", "fablestore.db");
+    console.log(`  using live app on :${PORT} · chat "${liveMeta.name}" (${CHAT_ID})`);
+  } else {
+    proc = await startServer();
+  }
+  const db = new Database(dbPath, { readonly: true });
 
   const history = [];        // {role, content}
   const timeline = [];
@@ -350,22 +433,22 @@ async function main() {
         providerType: "openrouter", providerBaseUrl: "https://openrouter.ai/api",
         modelId: MODEL, apiKey,
       };
-      const ex = await fetch(`${API}/api/drawer/extract`, {
+      const ex = await fetch(`${API()}/api/drawer/extract`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       }).then((r) => r.json()).catch(() => ({ ok: false }));
-      await fetch(`${API}/api/chat/core-memory/refresh`, {
+      await fetch(`${API()}/api/chat/core-memory/refresh`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       }).then((r) => r.json()).catch(() => null);
       // App cadence: an episode every 8 exchanges AND a reflection at every
       // 24 — two calls, not one (the old ternary skipped the episode at 24).
       if (turn % 8 === 0) {
-        await fetch(`${API}/api/drawer/episode`, {
+        await fetch(`${API()}/api/drawer/episode`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...body, mode: "episode" }),
         }).then((r) => r.json()).catch(() => null);
       }
       if (turn % 24 === 0) {
-        await fetch(`${API}/api/drawer/episode`, {
+        await fetch(`${API()}/api/drawer/episode`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...body, mode: "reflect" }),
         }).then((r) => r.json()).catch(() => null);
@@ -374,20 +457,21 @@ async function main() {
       // ── Metrics ────────────────────────────────────────────────────────────
       const after = await fetchMemory(recent);
       const acm = after.coreMemory ?? {};
+      // Every query chat-scoped: in live mode this database holds every chat
       const stats = Object.fromEntries(
-        db.prepare("SELECT stat_name, value FROM relationship_stats WHERE observer_id = ? AND target_id = 'player'")
-          .all(CHARACTER_ID).map((r) => [r.stat_name, Math.round(r.value * 10) / 10]));
+        db.prepare("SELECT stat_name, value FROM relationship_stats WHERE chat_id = ? AND observer_id = ? AND target_id = 'player'")
+          .all(CHAT_ID, CHARACTER_ID).map((r) => [r.stat_name, Math.round(r.value * 10) / 10]));
       const liveRows = db.prepare(
-        "SELECT subject_id, predicate, object_id, object_literal FROM facts WHERE superseded_by IS NULL AND t_valid_end IS NULL").all();
+        "SELECT subject_id, predicate, object_id, object_literal FROM facts WHERE chat_id = ? AND superseded_by IS NULL AND t_valid_end IS NULL").all(CHAT_ID);
       const graphBlob = liveRows.map((f) => `${f.subject_id} ${f.predicate} ${f.object_id ?? f.object_literal ?? ""}`).join(" | ");
       const promptBlob = (after.knownFacts ?? []).join(" | ");
       const lower = reply.toLowerCase();
 
       const row = {
         turn, beat: phase.beat, isProbe,
-        facts: db.prepare("SELECT COUNT(*) n FROM facts").get().n,
+        facts: db.prepare("SELECT COUNT(*) n FROM facts WHERE chat_id = ?").get(CHAT_ID).n,
         live: liveRows.length,
-        entities: db.prepare("SELECT COUNT(*) n FROM entities").get().n,
+        entities: db.prepare("SELECT COUNT(*) n FROM entities WHERE chat_id = ?").get(CHAT_ID).n,
         promptFacts: (after.knownFacts ?? []).length,
         summaryLen: (acm.narrative_summary ?? "").length,
         personaLen: (acm.persona ?? "").length,
@@ -441,9 +525,17 @@ async function main() {
         at: new Date().toISOString(), model: MODEL, turns: TOTAL, completed: turn,
         usage, timeline, probes,
       }, null, 2));
+
+      // Live mode: keep the app's durable chat in step so the conversation is
+      // browsable in FableChat at any point, not just after the run
+      if (liveMeta && (turn === 1 || turn % 5 === 0 || turn === TOTAL)) {
+        await syncChatToApp(history, liveMeta);
+      }
     }
   } finally {
-    db.close(); proc.kill();
+    if (liveMeta && history.length > 0) await syncChatToApp(history, liveMeta);
+    db.close();
+    proc?.kill();
   }
 
   // ── Summary ─────────────────────────────────────────────────────────────────
