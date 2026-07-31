@@ -56,7 +56,7 @@ Return ONLY valid JSON. No markdown, no explanation, just the JSON object.
     { "subject": "entity_id", "predicate": "lives_at", "object": "entity_id or literal string", "confidence": 0.9, "importance": 0.8 }
   ],
   "stat_changes": [
-    { "observer": "entity_id", "target": "entity_id", "stat": "affection|trust|desire|connection|mood", "delta": 5 }
+    { "observer": "entity_id", "target": "entity_id", "stat": "affection|trust|desire|connection", "delta": 5 }
   ],
   "commitments": [
     { "promisor": "entity_id", "promisee": "entity_id", "description": "what was promised, concretely, with any deadline" }
@@ -367,8 +367,10 @@ export async function POST(req: NextRequest) {
 
     // ── Write stat changes ────────────────────────────────────────────────
 
+    // Relationship stats only — mood lives in Drawer 1 (VAD), and letting the
+    // model write a "mood" stat row produced a stray -11 in the Tilly soak.
     const writtenStats: string[] = [];
-    const validStats = ["affection", "trust", "desire", "connection", "mood"];
+    const validStats = ["affection", "trust", "desire", "connection"];
     for (const rawSc of extracted.stat_changes ?? []) {
       if (!rawSc.observer || !rawSc.target || !validStats.includes(rawSc.stat)) continue;
       if (typeof rawSc.delta !== "number") continue;
@@ -388,6 +390,7 @@ export async function POST(req: NextRequest) {
     // ── Embed the new facts for semantic retrieval ────────────────────────
     // Best-effort: null when local embeddings are unavailable, and retrieval
     // falls back to lexical ranking for un-embedded facts.
+    const foldedFacts: number[] = [];
     if (writtenFacts.length > 0) {
       const byId = new Map(store.queryAllLiveFacts(chatId).map((f) => [f.id, f]));
       const factTexts = writtenFacts.map((id) => {
@@ -396,8 +399,23 @@ export async function POST(req: NextRequest) {
       });
       const vecs = await embedTexts(factTexts);
       if (vecs) {
+        const newIds = new Set(writtenFacts);
         writtenFacts.forEach((id, i) => {
-          if (vecs[i]) store.setFactEmbedding(id, vecToBuffer(vecs[i]));
+          const vec = vecs[i];
+          if (!vec) return;
+          store.setFactEmbedding(id, vecToBuffer(vec));
+          // Semantic dedupe: a restatement of an existing fact ("trusts Kael
+          // deeply" next to "has deep trust in Kael") passes the exact-key
+          // check above but adds no information — it only steals a prompt
+          // slot. Fold it into the older fact instead of keeping both.
+          const f = byId.get(id);
+          if (f) {
+            const dupOf = store.findSimilarLiveFact(chatId, f.subjectId, vec, newIds);
+            if (dupOf !== null) {
+              store.supersedeFact(id, dupOf);
+              foldedFacts.push(id);
+            }
+          }
         });
       }
     }
@@ -453,7 +471,9 @@ export async function POST(req: NextRequest) {
     return Response.json({
       ok:          true,
       entities:    writtenEntities,
-      facts:       writtenFacts,
+      facts:       writtenFacts.filter((id) => !foldedFacts.includes(id)),
+      // Restatements folded into an existing fact by embedding similarity
+      folded:      foldedFacts.length,
       stats:       writtenStats,
       commitments: writtenCommitments,
       // Which model-minted ids were folded onto existing entities. A large or

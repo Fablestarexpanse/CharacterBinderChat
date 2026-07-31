@@ -141,6 +141,14 @@ export async function rewriteCoreMemory(opts: RewriteOptions): Promise<{
     dominance: blend(result.mood?.dominance, current.data.mood.dominance,  0, 1),
   };
 
+  // While a rupture's refractory window is open, mood can't be euphoric: the
+  // Tilly soak hit valence 0.99 during "cold aftermath" with trust at 28,
+  // which reads as emotional amnesia. Warm scenes may still lift valence to
+  // mildly positive; genuine sunshine has to wait until the wound closes.
+  if (store.isRecentlyRuptured(opts.chatId, opts.characterId, "player")) {
+    mood.valence = Math.min(mood.valence, 0.35);
+  }
+
   store.patchCoreMemory(opts.chatId, opts.characterId, {
     persona:           result.persona ?? current.data.persona,
     mood,

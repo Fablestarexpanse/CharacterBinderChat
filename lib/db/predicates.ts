@@ -73,18 +73,27 @@ export function isSingleValued(p: string): boolean {
  * space for them. Matched as substrings because non-vocabulary predicates are
  * free-form ("has_sister", "is_afraid_of", "promised_to").
  */
-const DURABLE_PREDICATE_HINTS = [
-  // kinship
+const KINSHIP_HINTS = [
   "sister", "brother", "sibling", "mother", "father", "parent", "child",
   "son", "daughter", "wife", "husband", "spouse", "married", "family", "kin",
-  // fears and drives
-  "fear", "afraid", "phobia", "dread", "hope", "want",
-  // obligations
+];
+const FEAR_HINTS = ["fear", "afraid", "phobia", "dread"];
+const OBLIGATION_HINTS = [
   "promis", "owes", "owed", "swore", "vow", "oath", "commit", "debt", "deadline",
-  // standing relations
-  "loves", "hates", "trusts", "distrusts", "loyal", "betray", "protect", "trust",
-  // self-definition
+];
+const SELF_DEFINITION_HINTS = [
   "name", "alias", "title", "rank", "occupation", "job", "profession", "role",
+];
+// Standing relations and drives: durable, but they restate relationship
+// progress constantly and must NOT be pinned — they're what crowds the window.
+const RELATION_HINTS = [
+  "loves", "hates", "trusts", "distrusts", "loyal", "betray", "protect", "trust",
+  "hope", "want",
+];
+
+const DURABLE_PREDICATE_HINTS = [
+  ...KINSHIP_HINTS, ...FEAR_HINTS, ...OBLIGATION_HINTS,
+  ...SELF_DEFINITION_HINTS, ...RELATION_HINTS,
 ];
 
 /**
@@ -96,6 +105,24 @@ export function isDurableFact(predicate: string): boolean {
   if (isSingleValued(predicate)) return true;
   const p = normPredicate(predicate);
   return DURABLE_PREDICATE_HINTS.some((hint) => p.includes(hint));
+}
+
+const IDENTITY_CORE_HINTS = [
+  ...KINSHIP_HINTS, ...FEAR_HINTS, ...OBLIGATION_HINTS, ...SELF_DEFINITION_HINTS,
+];
+
+/**
+ * The subset of durable facts that define WHO someone is — family, fears,
+ * obligations, self-definition. These bypass relevance ranking entirely and
+ * are always injected: the Tilly soak showed that when "sister Lila" fell out
+ * of a crowded window, the model confabulated "you're an only child" rather
+ * than admitting ignorance. Standing relations (loves/trusts/…) and locations
+ * deliberately excluded — they churn, and pinning them would recreate the
+ * crowding this exists to fix.
+ */
+export function isIdentityCoreFact(predicate: string): boolean {
+  const p = normPredicate(predicate);
+  return IDENTITY_CORE_HINTS.some((hint) => p.includes(hint));
 }
 
 /**

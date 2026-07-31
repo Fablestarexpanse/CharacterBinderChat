@@ -6,7 +6,7 @@ import Database, { type Database as DB } from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 import { CREATE_TABLES_SQL } from "./schema";
-import { isDurableFact } from "./predicates";
+import { isDurableFact, isIdentityCoreFact } from "./predicates";
 import { bufferToVec, cosine } from "@/lib/llm/embeddings";
 import type {
   DbEntity,
@@ -374,6 +374,27 @@ export class FableStore {
     const row = this.db.prepare("SELECT embedding FROM facts WHERE id = ?").get(factId) as
       { embedding: Buffer | null } | undefined;
     return bufferToVec(row?.embedding ?? null);
+  }
+
+  /**
+   * Among a subject's OLDER live facts (excluding the given ids), find one
+   * semantically near-identical to `vec`. Used at write time to fold
+   * restatements — "trusts Kael deeply" arriving next to "has deep trust in
+   * Kael" — so redundant facts stop stealing prompt-window slots.
+   */
+  findSimilarLiveFact(
+    chatId:     string,
+    subjectId:  string,
+    vec:        Float32Array,
+    excludeIds: Set<number>,
+    threshold = 0.92
+  ): number | null {
+    for (const f of this.queryFacts(chatId, subjectId)) {
+      if (excludeIds.has(f.id)) continue;
+      const other = this.factEmbedding(f.id);
+      if (other && cosine(vec, other) >= threshold) return f.id;
+    }
+    return null;
   }
 
   supersedeFact(oldId: number, newId: number, atTime?: number): void {
@@ -1227,16 +1248,32 @@ export class FableStore {
 
     const involves = (f: DbFact, id: string) => f.subjectId === id || f.objectId === id;
 
-    const aboutCharacter = all.filter((f) => involves(f, characterId)).sort(rank);
-    const aboutPlayer    = all.filter((f) => !involves(f, characterId) && involves(f, playerId)).sort(rank);
-    const world          = all.filter((f) => !involves(f, characterId) && !involves(f, playerId)).sort(rank);
+    // ── Pinned identity-core facts ────────────────────────────────────────
+    // Family, fears, obligations, self-definition about either participant
+    // bypass relevance ranking entirely. At 120 live facts vs a 20-slot
+    // window, "sister Lila" fell out of the ranked pool late in the Tilly
+    // soak and the model confabulated the opposite ("you're an only child")
+    // rather than saying it didn't know. The cost of a miss here is
+    // confident fiction, so these facts don't compete — they're always in.
+    const PIN_CAP = Math.max(2, Math.floor(limit * 0.4));
+    const pinned = all
+      .filter((f) => (involves(f, characterId) || involves(f, playerId)) && isIdentityCoreFact(f.predicate))
+      .sort(rank)
+      .slice(0, PIN_CAP);
+    const isPinned = new Set(pinned.map((f) => f.id));
 
-    // Each participant gets a guaranteed share so neither can be crowded out.
-    // Take quotas first, then backfill any unused room in group order, so a
-    // sparse group never wastes slots.
-    const quota = Math.max(1, Math.floor(limit * 0.4));
+    const aboutCharacter = all.filter((f) => !isPinned.has(f.id) && involves(f, characterId)).sort(rank);
+    const aboutPlayer    = all.filter((f) => !isPinned.has(f.id) && !involves(f, characterId) && involves(f, playerId)).sort(rank);
+    const world          = all.filter((f) => !isPinned.has(f.id) && !involves(f, characterId) && !involves(f, playerId)).sort(rank);
+
+    // Each participant gets a guaranteed share of the remaining room so
+    // neither can be crowded out. Take quotas first, then backfill any unused
+    // room in group order, so a sparse group never wastes slots.
+    const room = Math.max(0, limit - pinned.length);
+    const quota = Math.max(1, Math.floor(room * 0.4));
     const groups = [aboutCharacter, aboutPlayer, world];
     const topFacts: DbFact[] = [
+      ...pinned,
       ...aboutCharacter.slice(0, quota),
       ...aboutPlayer.slice(0, quota),
     ];
