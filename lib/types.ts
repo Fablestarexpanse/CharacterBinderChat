@@ -35,6 +35,20 @@ export interface Message {
   imageJobId?: string;
   timestamp: string;
   tokens?: number;
+  /** Memory injected into the prompt that produced this reply (assistant only) */
+  memoryTrace?: MemoryTrace;
+}
+
+/** What memory shaped a given assistant reply — for the "why did you say
+ *  that?" inspector. Recorded at generation time from the exact injected
+ *  prompt sections. */
+export interface MemoryTrace {
+  facts:      string[];
+  episodes:   string[];
+  insights:   string[];
+  bits:       string[];
+  lore:       string[];
+  storyTime?: string | null;
 }
 
 export interface Chat {

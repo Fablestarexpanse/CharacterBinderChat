@@ -653,6 +653,48 @@ export class FableStore {
     return info.lastInsertRowid as number;
   }
 
+  // ── Shared language (bond cards) ──────────────────────────────────────────
+  // Running gags, nicknames, rituals, pet phrases — the texture of a long
+  // relationship. Stored as memory_cards tagged "bond". Soak #3 showed the
+  // extractor re-emitting these as ~200 duplicate "commitments"; giving them
+  // their own reinforced type is the fix: a re-mention strengthens the
+  // existing card instead of inserting a copy.
+
+  /**
+   * Insert a shared-language card, or reinforce an existing near-duplicate
+   * (content-word Jaccard ≥ 0.5). Reinforcement bumps importance so the bits
+   * a pair actually keeps using rise to the top of the injected list.
+   */
+  upsertBondCard(chatId: string, kind: string, text: string): { id: number; reinforced: boolean } {
+    const words = (s: string) =>
+      new Set(s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length > 3));
+    const incoming = words(text);
+    for (const card of this.listBondCards(chatId, 1000)) {
+      const ex = words(card.content);
+      if (incoming.size === 0 || ex.size === 0) continue;
+      let overlap = 0;
+      for (const w of incoming) if (ex.has(w)) overlap++;
+      if (overlap / (incoming.size + ex.size - overlap) >= 0.5) {
+        this.db
+          .prepare("UPDATE memory_cards SET importance = MIN(1.0, importance + 0.1), updated_at = ? WHERE id = ?")
+          .run(now(), card.id);
+        return { id: card.id, reinforced: true };
+      }
+    }
+    const id = this.insertMemoryCard(chatId, {
+      title: kind, content: text, tags: ["bond", kind], entityIds: [], importance: 0.4,
+    });
+    return { id, reinforced: false };
+  }
+
+  /** Bond cards, strongest (most-reinforced) first. */
+  listBondCards(chatId: string, limit = 6): DbMemoryCard[] {
+    return this.listMemoryCards(chatId)
+      .filter((c) => c.tags.includes("bond"))
+      .sort((a, b) => b.importance - a.importance || b.updatedAt - a.updatedAt)
+      .slice(0, limit);
+  }
+
   listMemoryCards(chatId: string, entityId?: string): DbMemoryCard[] {
     const rows = this.db
       .prepare("SELECT * FROM memory_cards WHERE chat_id = ? ORDER BY created_at DESC")
@@ -673,7 +715,8 @@ export class FableStore {
     context = "",
     queryEmbedding: Float32Array | null = null
   ): DbMemoryCard[] {
-    const cards = this.listMemoryCards(chatId);
+    // Bond cards (shared language) have their own retrieval path
+    const cards = this.listMemoryCards(chatId).filter((c) => !c.tags.includes("bond"));
     if (cards.length === 0) return [];
     const contextWords = new Set(
       context.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3)

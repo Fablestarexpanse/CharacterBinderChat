@@ -45,6 +45,7 @@ interface CoreMemoryResponse {
   knownFacts: string[];
   episodes:   string[];
   insights:   string[];
+  bits:       string[];
 }
 
 async function fetchCoreMemory(
@@ -61,18 +62,20 @@ async function fetchCoreMemory(
       `/api/chat/core-memory?chatId=${encodeURIComponent(chatId)}&characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}${ctxParam}`,
       { cache: "no-store" }
     );
-    if (!res.ok) return { coreMemory: null, knownFacts: [], episodes: [], insights: [] };
+    if (!res.ok) return { coreMemory: null, knownFacts: [], episodes: [], insights: [], bits: [] };
     const data = (await res.json()) as {
-      ok: boolean; coreMemory: CoreMemory; knownFacts?: string[]; episodes?: string[]; insights?: string[];
+      ok: boolean; coreMemory: CoreMemory; knownFacts?: string[]; episodes?: string[];
+      insights?: string[]; bits?: string[];
     };
     return {
       coreMemory: data.ok ? data.coreMemory : null,
       knownFacts: data.knownFacts ?? [],
       episodes:   data.episodes ?? [],
       insights:   data.insights ?? [],
+      bits:       data.bits ?? [],
     };
   } catch {
-    return { coreMemory: null, knownFacts: [], episodes: [], insights: [] };
+    return { coreMemory: null, knownFacts: [], episodes: [], insights: [], bits: [] };
   }
 }
 
@@ -101,9 +104,9 @@ export async function generateAssistantReply(chatId: string): Promise<void> {
   // ── Fetch Core Memory (Drawer 1) + Drawer 2 known facts ──────────────────
   // The last few turns act as the relevance signal for fact retrieval
   const recentText = chat.messages.slice(-3).map((m) => m.content).join(" ");
-  const { coreMemory, knownFacts, episodes, insights } = character
+  const { coreMemory, knownFacts, episodes, insights, bits } = character
     ? await fetchCoreMemory(chatId, character.id, character.name, recentText)
-    : { coreMemory: null, knownFacts: [], episodes: [], insights: [] };
+    : { coreMemory: null, knownFacts: [], episodes: [], insights: [], bits: [] };
 
   // ── Build message history within the model's token budget ────────────────
   const persona = store.personas.find((p) => p.id === store.activePersonaId) ?? null;
@@ -112,7 +115,7 @@ export async function generateAssistantReply(chatId: string): Promise<void> {
   // subject was raised.
   const loreScanText = chat.messages.slice(-6).map((m) => m.content).join("\n");
   const lore = matchLoreEntries(store.lorebooks, loreScanText);
-  const systemPrompt = buildSystemPrompt(character, coreMemory, knownFacts, persona, episodes, insights, lore);
+  const systemPrompt = buildSystemPrompt(character, coreMemory, knownFacts, persona, episodes, insights, lore, bits);
   const fullHistory: Array<{ role: MessageRole; content: string }> = chat.messages
     .filter((m) => m.content.trim().length > 0 && !m.imageJobId)
     .map((m) => ({ role: m.role as MessageRole, content: m.content }));
@@ -133,6 +136,12 @@ export async function generateAssistantReply(chatId: string): Promise<void> {
     role:        "assistant",
     content:     "",
     characterId: character?.id,
+  });
+  // Provenance: record exactly which memory was injected into this reply's
+  // prompt, so the message can answer "why did you say that?"
+  store.setMessageMemoryTrace(chatId, assistantMsgId, {
+    facts: knownFacts, episodes, insights, bits, lore,
+    storyTime: coreMemory?.story_time ?? null,
   });
 
   const controller = new AbortController();

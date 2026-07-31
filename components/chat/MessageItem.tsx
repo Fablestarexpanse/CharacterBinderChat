@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useFableStore } from "@/lib/store";
 import { regenerateLastReply } from "@/lib/chat/generation";
 import { formatTime } from "@/lib/utils";
-import type { Message } from "@/lib/types";
+import type { Message, MemoryTrace } from "@/lib/types";
 import {
   Copy,
   Pencil,
@@ -16,6 +17,8 @@ import {
   MoreHorizontal,
   Check,
   ImageIcon,
+  Brain,
+  Clock,
 } from "lucide-react";
 
 interface MessageItemProps {
@@ -40,6 +43,7 @@ export function MessageItem({ message }: MessageItemProps) {
   const { characters, chats, isGenerating } = useFableStore();
   const [copied, setCopied] = useState(false);
   const [liked, setLiked] = useState<"up" | "down" | null>(null);
+  const [traceOpen, setTraceOpen] = useState(false);
 
   const isUser = message.role === "user";
   const character = characters.find((c) => c.id === message.characterId);
@@ -116,6 +120,17 @@ export function MessageItem({ message }: MessageItemProps) {
               <RefreshCw className="h-3 w-3" />
             </Button>
           )}
+          {!isUser && message.memoryTrace && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              title="What memory shaped this reply"
+              onClick={() => setTraceOpen(true)}
+            >
+              <Brain className="h-3 w-3" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -139,7 +154,73 @@ export function MessageItem({ message }: MessageItemProps) {
           </Button>
         </div>
       </div>
+
+      {message.memoryTrace && (
+        <MemoryTraceDialog
+          open={traceOpen}
+          onClose={() => setTraceOpen(false)}
+          trace={message.memoryTrace}
+          characterName={displayName}
+        />
+      )}
     </div>
+  );
+}
+
+// ─── Memory provenance dialog ─────────────────────────────────────────────────
+// "Why did you say that?" — the exact memory injected into the prompt that
+// produced this reply, recorded at generation time.
+
+function MemoryTraceDialog({
+  open, onClose, trace, characterName,
+}: {
+  open: boolean;
+  onClose: () => void;
+  trace: MemoryTrace;
+  characterName: string;
+}) {
+  const sections: Array<{ label: string; items: string[] }> = [
+    { label: "Known facts",      items: trace.facts },
+    { label: "Memorable scenes", items: trace.episodes },
+    { label: "Understandings",   items: trace.insights },
+    { label: "Shared language",  items: trace.bits },
+    { label: "World lore",       items: trace.lore },
+  ].filter((s) => s.items.length > 0);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md p-5">
+        <DialogTitle className="flex items-center gap-2">
+          <Brain className="h-4 w-4 text-[var(--purple-fg)]" />
+          What {characterName} was remembering
+        </DialogTitle>
+        <div className="mt-3 space-y-3 overflow-y-auto text-xs">
+          {trace.storyTime && (
+            <div className="flex items-center gap-1.5 text-[var(--muted-fg)]">
+              <Clock className="h-3 w-3" />
+              Story time: <span className="text-[var(--foreground)]">{trace.storyTime}</span>
+            </div>
+          )}
+          {sections.length === 0 && !trace.storyTime && (
+            <div className="text-[var(--muted-fg)]">
+              Nothing was injected for this reply — the character worked from the conversation alone.
+            </div>
+          )}
+          {sections.map((s) => (
+            <div key={s.label}>
+              <div className="font-semibold text-[var(--muted-fg)] uppercase tracking-wider text-[10px] mb-1">
+                {s.label} ({s.items.length})
+              </div>
+              <ul className="space-y-0.5">
+                {s.items.map((item, i) => (
+                  <li key={i} className="text-[var(--foreground)] leading-relaxed">— {item}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

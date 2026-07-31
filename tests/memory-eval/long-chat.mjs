@@ -187,7 +187,7 @@ function describeVAD(v, a, d) {
 const signedPct = (v) =>
   v - 50 > 20 ? "high" : v - 50 > 5 ? "above avg" : v - 50 < -20 ? "low" : v - 50 < -5 ? "below avg" : "neutral";
 
-function buildSystemPrompt(cm, knownFacts, { withMemory = true, episodes = [], insights = [] } = {}) {
+function buildSystemPrompt(cm, knownFacts, { withMemory = true, episodes = [], insights = [], bits = [] } = {}) {
   const s = [
     `You are ${CHARACTER_NAME}. Stay in character throughout the entire conversation.`,
     CHARACTER.description,
@@ -207,6 +207,11 @@ function buildSystemPrompt(cm, knownFacts, { withMemory = true, episodes = [], i
     if (cm.internal_thoughts?.length) {
       block.push(`[Internal Thoughts]\n${cm.internal_thoughts.slice(0, 3).map((t) => `  - ${t}`).join("\n")}`);
     }
+    if (cm.story_time) block.push(`[Story Time] It is currently: ${cm.story_time}`);
+    if (cm.active_commitments?.length) {
+      block.push(`[Active Commitments]\n${cm.active_commitments.slice(0, 5).map((c) => `  - ${c}`).join("\n")}` +
+        (cm.story_time ? `\n  If any commitment's moment is at hand or approaching, bring it up yourself, naturally.` : ""));
+    }
     if (cm.narrative_summary && cm.narrative_summary !== "The story is just beginning.") {
       block.push(`[Story So Far] ${cm.narrative_summary}`);
     }
@@ -214,6 +219,10 @@ function buildSystemPrompt(cm, knownFacts, { withMemory = true, episodes = [], i
     if (knownFacts?.length) s.push(`[Known Facts]\n${knownFacts.map((f) => `  - ${f}`).join("\n")}`);
     if (episodes.length) s.push(`[Memorable Scenes]\n${episodes.map((e) => `  - ${e}`).join("\n")}`);
     if (insights.length) s.push(`[What You Have Come To Understand]\n${insights.map((i) => `  - ${i}`).join("\n")}`);
+    if (bits.length) {
+      s.push(`[Shared Language]\nNicknames, running jokes and little rituals between you two — use them the way old friends do, without explaining them:\n` +
+        bits.map((b) => `  - ${b}`).join("\n"));
+    }
   }
   s.push("Write in first person. Be immersive and emotionally consistent with your current mood and relationship state. Do not break character or refer to yourself as an AI.\n" +
     "Your memory above is what you actually know. If asked about something not in your memory or this conversation, say you don't know or don't remember — do not invent specifics such as names, events, or promises.");
@@ -307,7 +316,7 @@ async function main() {
       const cm = mem.coreMemory ?? null;
       const knownFacts = mem.knownFacts ?? [];
       const system = buildSystemPrompt(cm, knownFacts, {
-        episodes: mem.episodes ?? [], insights: mem.insights ?? [],
+        episodes: mem.episodes ?? [], insights: mem.insights ?? [], bits: mem.bits ?? [],
       });
 
       const reply = await chat([{ role: "system", content: system }, ...history], {

@@ -145,6 +145,10 @@ export interface CoreMemory {
   internal_thoughts:       string[];
   /** Running narrative context — what has happened so far */
   narrative_summary:       string;
+  /** In-fiction current time ("Thursday evening, before the symposium").
+   *  The story clock: lets the prompt surface commitments whose moment has
+   *  arrived, so characters bring promises up unprompted. */
+  story_time?:             string | null;
 }
 
 /** Row shape returned from SQLite */

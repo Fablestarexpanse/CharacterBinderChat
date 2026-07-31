@@ -5,6 +5,7 @@ import type {
   Chat,
   ChatSettings,
   Message,
+  MemoryTrace,
   Lorebook,
   LoreEntry,
   Memory,
@@ -234,6 +235,8 @@ interface FableStore {
   addMessage: (chatId: string, message: Omit<Message, "id" | "timestamp">) => string;
   /** Stream partial assistant content into an existing message */
   updateMessageContent: (chatId: string, messageId: string, content: string) => void;
+  /** Record which memory shaped a reply (provenance for the memory inspector) */
+  setMessageMemoryTrace: (chatId: string, messageId: string, trace: MemoryTrace) => void;
   /** Update which model / provider a chat uses */
   setChatModel: (chatId: string, modelId: string, providerId: string) => void;
   /** Update the real token accounting shown by the header context meter */
@@ -438,6 +441,21 @@ export const useFableStore = create<FableStore>()(
                   ...c,
                   messages: c.messages.map((m) =>
                     m.id === messageId ? { ...m, content } : m
+                  ),
+                }
+              : c
+          ),
+        }));
+      },
+
+      setMessageMemoryTrace: (chatId, messageId, trace) => {
+        set((state) => ({
+          chats: state.chats.map((c) =>
+            c.id === chatId
+              ? {
+                  ...c,
+                  messages: c.messages.map((m) =>
+                    m.id === messageId ? { ...m, memoryTrace: trace } : m
                   ),
                 }
               : c

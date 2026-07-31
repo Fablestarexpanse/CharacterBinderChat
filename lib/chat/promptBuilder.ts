@@ -43,11 +43,22 @@ export function formatCoreMemoryBlock(cm: CoreMemory): string {
     lines.push(`[Between You] ${cm.relationship_note}`);
   }
 
+  // ── Story clock ───────────────────────────────────────────────────────────
+  if (cm.story_time) {
+    lines.push(`[Story Time] It is currently: ${cm.story_time}`);
+  }
+
   // ── Active commitments ────────────────────────────────────────────────────
   if (cm.active_commitments.length > 0) {
     lines.push(`[Active Commitments]`);
     for (const c of cm.active_commitments.slice(0, 5)) {
       lines.push(`  - ${c}`);
+    }
+    // Prospective memory: with a story clock and standing promises, the
+    // character should raise due ones unprompted — that's what remembering
+    // a promise looks like from the other side.
+    if (cm.story_time) {
+      lines.push(`  If any commitment's moment is at hand or approaching, bring it up yourself, naturally.`);
     }
   }
 
@@ -91,7 +102,8 @@ export function buildSystemPrompt(
   persona?:    Persona | null,
   episodes?:   string[],
   insights?:   string[],
-  lore?:       string[]
+  lore?:       string[],
+  bits?:       string[]
 ): string {
   if (!character) return "You are a helpful assistant.";
 
@@ -148,6 +160,14 @@ export function buildSystemPrompt(
   // ── Reflective insights: patterns the character has come to understand ───
   if (insights && insights.length > 0) {
     sections.push(`[What You Have Come To Understand]\n${insights.map((i) => `  - ${i}`).join("\n")}`);
+  }
+
+  // ── Shared language: the texture of the relationship ─────────────────────
+  if (bits && bits.length > 0) {
+    sections.push(
+      `[Shared Language]\nNicknames, running jokes and little rituals between you two — use them the way old friends do, without explaining them:\n` +
+      bits.map((b) => `  - ${b}`).join("\n")
+    );
   }
 
   // ── Instructions ──────────────────────────────────────────────────────────

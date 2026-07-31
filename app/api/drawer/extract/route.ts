@@ -63,7 +63,11 @@ Return ONLY valid JSON. No markdown, no explanation, just the JSON object.
   ],
   "resolved_commitments": [
     { "match": "distinctive words from the earlier promise", "status": "fulfilled|broken" }
-  ]
+  ],
+  "shared_language": [
+    { "kind": "nickname|joke|ritual|phrase", "text": "the running bit, in a few words" }
+  ],
+  "story_time": "current in-fiction time as a short phrase, or null"
 }
 
 IMPORTANCE (0.0-1.0) — how much this fact matters to the story and relationship,
@@ -78,6 +82,18 @@ could return to.
 COMMITMENTS — capture promises, oaths, debts and deadlines as commitments, not
 just facts. When a conversation shows an earlier promise being kept or broken,
 emit a resolved_commitments entry instead of a new commitment.
+Commitments are for stakes the story could hold someone to. Playful banter,
+running jokes, teasing "deals" and pet rituals are NOT commitments — put those
+in shared_language instead.
+
+SHARED_LANGUAGE — nicknames, running jokes, little rituals, and pet phrases
+these two have between them (a standing coffee order, a recurring bit, a name
+only one of them uses). Emit each once, briefly; re-emit only if it appears
+again in this excerpt.
+
+STORY_TIME — the story's current in-fiction time, as a short phrase, whenever
+the conversation states or clearly implies it ("Thursday evening", "the
+morning after the storm", "an hour before the symposium"). null if unclear.
 
 PREDICATE VOCABULARY — for these relationship kinds you MUST use the exact predicate
 shown, never a synonym:
@@ -132,6 +148,8 @@ interface RawExtraction {
   stat_changes:Array<{ observer: string; target: string; stat: string; delta: number }>;
   commitments?: Array<{ promisor: string; promisee?: string; description: string }>;
   resolved_commitments?: Array<{ match: string; status: string }>;
+  shared_language?: Array<{ kind: string; text: string }>;
+  story_time?: string | null;
 }
 
 // ─── Entity identity resolution ───────────────────────────────────────────────
@@ -476,11 +494,31 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── Shared language (bond cards) ──────────────────────────────────────
+    // Running gags / nicknames / rituals. upsert: a re-mention reinforces the
+    // existing card instead of duplicating it.
+    const writtenBits: string[] = [];
+    const validKinds = ["nickname", "joke", "ritual", "phrase"];
+    for (const bit of extracted.shared_language ?? []) {
+      if (!bit.text?.trim()) continue;
+      const kind = validKinds.includes(bit.kind) ? bit.kind : "phrase";
+      const { reinforced } = store.upsertBondCard(chatId, kind, bit.text.trim());
+      writtenBits.push(`${kind}:${bit.text.trim().slice(0, 40)}${reinforced ? " (reinforced)" : ""}`);
+    }
+
+    // ── Story clock ───────────────────────────────────────────────────────
+    // The in-fiction "now" — lets the prompt surface commitments whose moment
+    // has arrived. Only overwrite when the model actually saw a time.
+    ensureCoreMemory(chatId, characterId, characterName ?? characterId);
+    if (typeof extracted.story_time === "string" && extracted.story_time.trim() &&
+        extracted.story_time.trim().toLowerCase() !== "null") {
+      store.patchCoreMemory(chatId, characterId, { story_time: extracted.story_time.trim().slice(0, 120) });
+    }
+
     // ── Mirror Drawer-2 stats into the Core Memory Block (Drawer 1) ────────
     // Without this, relationship_with_user stays at its 50-neutral defaults
     // and buildSystemPrompt never emits the [Relationship with User] line.
     // Run unconditionally so pre-existing stat drift is backfilled too.
-    ensureCoreMemory(chatId, characterId, characterName ?? characterId);
     syncStatsToCore(chatId, characterId);
     syncCommitmentsToCore(chatId, characterId, personaName ?? "the user");
 
@@ -492,6 +530,7 @@ export async function POST(req: NextRequest) {
       folded:      foldedFacts.length,
       stats:       writtenStats,
       commitments: writtenCommitments,
+      bits:        writtenBits,
       // Which model-minted ids were folded onto existing entities. A large or
       // growing list means the prompt's identity anchoring is losing.
       remapped: resolver.remapped.map(([from, to]) => `${from}->${to}`),

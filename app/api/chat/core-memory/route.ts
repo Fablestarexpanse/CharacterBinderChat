@@ -36,9 +36,11 @@ export async function GET(req: NextRequest) {
       .slice(0, 3).map((c) => `${c.title} — ${c.content}`);
     const insights = cards.filter((c) => c.tags.includes("reflection"))
       .slice(0, 2).map((c) => c.content);
+    // Shared language: nicknames / running jokes / rituals, strongest first
+    const bits = store.listBondCards(chatId, 6).map((c) => c.content);
     return Response.json({
       ok: true, coreMemory: cm.data, version: cm.version, updatedAt: cm.updatedAt,
-      knownFacts, episodes, insights,
+      knownFacts, episodes, insights, bits,
     });
   } catch (err) {
     console.error("[core-memory GET]", err);
@@ -72,6 +74,11 @@ function sanitizePatch(raw: Record<string, unknown>): Partial<CoreMemory> | stri
       case "relationship_note":
         if (value !== null && !isStr(value)) return "relationship_note must be a string or null";
         patch.relationship_note = value as string | null;
+        break;
+
+      case "story_time":
+        if (value !== null && !isStr(value)) return "story_time must be a string or null";
+        patch.story_time = value as string | null;
         break;
 
       case "mood": {
