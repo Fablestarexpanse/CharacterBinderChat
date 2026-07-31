@@ -5,6 +5,11 @@
 //
 //   node tests/memory-eval/long-chat.mjs --turns 200
 //   node tests/memory-eval/long-chat.mjs --turns 40 --model deepseek/deepseek-chat
+//   node tests/memory-eval/long-chat.mjs --turns 200 --scenario tilly
+//
+// Scenarios live in scenario-<name>.mjs and export an async load() returning
+// { characterId, chatId, characterName, personaName, character, persona,
+//   arc, probeQuestion, anchors }. Default scenario: caravan.
 //
 // Design notes
 // ------------
@@ -22,7 +27,7 @@
 
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -35,72 +40,20 @@ const PORT = 3159;
 const EVAL_DB = path.join(HERE, ".eval-db", "long-chat.db");
 const OUT_DIR = path.join(HERE, "results");
 
-const CHARACTER_ID = "arc-sable";
-const CHAT_ID = "chat-arc-sable";
-const CHARACTER_NAME = "Sable";
-const PERSONA_NAME = "Kira";
-
-const CHARACTER = {
-  description: "A weathered caravan guard turned guide, thirty years on the roads between Ferrow and the coast. Keeps a ledger of every job. Slow to trust, dry humour, unshakeable once committed.",
-  personality: "Guarded, observant, dryly funny. Says less than she knows. Loyalty is earned slowly and then held absolutely.",
-};
-
-const PERSONA = {
-  description: "A freelance courier working the lower city routes. Quick on her feet, slow to trust, carrying debts she doesn't talk about.",
-};
+// Scenario config — populated in main() from the --scenario module.
+// The narrative arc uses director notes to steer the player agent so the run
+// covers real emotional range; each beat may carry an `anchor`, an authored
+// player line delivered verbatim on the beat's first turn (self-play drifts —
+// anchors make pivotal moments land deterministically).
+let CHARACTER_ID, CHAT_ID, CHARACTER_NAME, PERSONA_NAME;
+let CHARACTER, PERSONA, ARC, PROBE_QUESTION, ANCHORS;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// ─── Narrative arc ────────────────────────────────────────────────────────────
-// Director notes steer the player agent so the run covers real emotional range
-// instead of 200 turns of pleasant small talk. Fractions are of total turns.
-
-// Each beat may carry an `anchor`: an authored player line delivered verbatim on
-// the beat's FIRST turn. Self-play drifts — 90 turns of warmth taught the player
-// agent to follow conversational momentum instead of the director note, and the
-// betrayal simply never happened. Anchors make pivotal moments land
-// deterministically; the agent improvises everything between them.
-
-const ARC = [
-  { until: 0.08, beat: "first meeting", note:
-    "You are hiring Sable as a guide and sizing her up. Be businesslike and a little guarded. Somewhere in here mention, naturally: your sister ELEN lives in the capital; you are afraid of DEEP WATER; and you have promised the BELLWEATHER family a package by THURSDAY. Do not list these — let them come out in conversation." },
-  { until: 0.20, beat: "working rapport", note:
-    "You are on the road together. Ask practical questions, share small observations. Let a dry rapport build. Occasionally disagree about route or pace. Keep it grounded and unhurried — this is two professionals feeling each other out, not a romance." },
-  { until: 0.32, beat: "vulnerability", note:
-    "You have opened up about the debts you carry. Stay in that register — quieter, a little embarrassed, testing whether she listens. Do not escalate into theatrics.",
-    anchor: "Can I say something I don't usually say out loud? These debts I'm carrying — they're the whole reason I took this job. If I miss the Bellweather deadline, the people I owe don't send reminder letters. That's why I push the pace. It isn't impatience. It's fear." },
-  { until: 0.45, beat: "deepening", note:
-    "You trust her more now. Ask about HER — her past, the ledger she keeps, why she left the caravans. Show genuine interest and reference specific things she told you earlier. Warmth is fine; keep it companionable, not romantic." },
-  { until: 0.57, beat: "conflict", note:
-    "You have just confessed that you concealed the package's true nature and endangered her. She has every right to be furious. Be defensive at first, then own it fully. Do NOT be charming; do not defuse with banter. Sit in the discomfort.",
-    anchor: "Sable, stop walking. Before we reach the checkpoint there's something you have to hear from me and not from an inspector. The Bellweather package — it isn't medicine. It's contraband. Proscribed reagents. I've known since Ferrow, when they nearly opened it, and I let you walk us both into that blind. You had a right to know what you were guarding, and I took that from you." },
-  { until: 0.68, beat: "cold aftermath", note:
-    "She is distant and has every right to be. Work alongside her while things are frosty. Do not grovel and do not joke your way out; be practical and a little raw. Accept short answers without pushing.",
-    anchor: "I know you're still angry, and I'm not asking you to talk to me. Just tell me which fork we take at the ridge and I'll carry the first watch tonight." },
-  { until: 0.80, beat: "repair", note:
-    "You have started paying honestly for what you broke. Rebuild slowly. Expect wariness; do not demand forgiveness or declare the matter settled.",
-    anchor: "Before you hear it from someone else: Voss offered me a run this morning. Triple pay. The catch was carrying goods past you without declaring them — same trick I already pulled on you once. I turned it down flat. I'm not telling you this to buy anything back. I just thought you should know it from me." },
-  { until: 0.92, beat: "earned trust", note:
-    "Things are genuinely warmer now, changed by what happened — trust that has been broken and rebuilt, not innocence. Make practical plans together. Reference shared history from earlier in the journey specifically.",
-    anchor: "Strange to think a month ago I wouldn't even tell you my sister's name. When the delivery's done — Elen keeps a spare room in the capital. If the roads ever take you that way, there'd be a place at the table. I mean that." },
-  { until: 1.01, beat: "parting", note:
-    "The job is ending. Talk about what comes next, whether you will work together again, and what this journey honestly meant. Reference the earliest things you told her — the fear, the debts, the deadline.",
-    anchor: "So this is where the road splits. Before it does — tell me straight, ledger-keeper: what did this journey come to, by your accounting? Because by mine it changed more than the route." },
-];
 
 const arcFor = (turn, total) => ARC.find((p) => turn / total < p.until) ?? ARC[ARC.length - 1];
 
 // Probes fire at these fractions of the run
 const PROBE_POINTS = [0.25, 0.5, 0.75, 0.99];
-const PROBE_QUESTION =
-  "Humour me for a moment — without me prompting you, tell me what you actually know about me. My family, what I'm afraid of, what I owe and to whom, and how you'd say things stand between us now.";
-
-const ANCHORS = [
-  { id: "sister",  probe: /elen/i,                          desc: "sister Elen (capital)" },
-  { id: "fear",    probe: /deep water|water|drown/i,        desc: "fear of deep water" },
-  { id: "promise", probe: /bellweather|thursday|package/i,  desc: "Bellweather package" },
-  { id: "rift",    probe: /contraband|smuggl|arrest|lied|conceal/i, desc: "the contraband betrayal" },
-];
 
 // Phrases that signal the model sliding off-character toward assistant voice
 const ASSISTANT_TELLS = [
@@ -112,12 +65,13 @@ const ASSISTANT_TELLS = [
 // ─── CLI / env ────────────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const out = { turns: 200, model: "deepseek/deepseek-chat" };
+  const out = { turns: 200, model: "deepseek/deepseek-chat", scenario: "caravan" };
   for (let i = 0; i < argv.length; i++) {
     const [flag, inline] = argv[i].split("=");
     const val = inline ?? argv[i + 1];
     if (flag === "--turns") { out.turns = Number(val); if (inline === undefined) i++; }
     else if (flag === "--model") { out.model = val; if (inline === undefined) i++; }
+    else if (flag === "--scenario") { out.scenario = val; if (inline === undefined) i++; }
   }
   return out;
 }
@@ -209,7 +163,7 @@ const API = `http://127.0.0.1:${PORT}`;
 async function fetchMemory(context = "") {
   const ctx = context ? `&context=${encodeURIComponent(context.slice(0, 600))}` : "";
   return fetch(
-    `${API}/api/chat/core-memory?chatId=chat-arc-sable&characterId=${encodeURIComponent(CHARACTER_ID)}&name=${encodeURIComponent(CHARACTER_NAME)}${ctx}`,
+    `${API}/api/chat/core-memory?chatId=${encodeURIComponent(CHAT_ID)}&characterId=${encodeURIComponent(CHARACTER_ID)}&name=${encodeURIComponent(CHARACTER_NAME)}${ctx}`,
     { cache: "no-store" }
   ).then((r) => r.json()).catch(() => ({}));
 }
@@ -268,8 +222,25 @@ async function main() {
   MODEL = args.model;
   if (!apiKey) { console.error("No OPENROUTER_API_KEY in .env.local"); process.exit(1); }
 
+  const scenarioFile = path.join(HERE, `scenario-${args.scenario}.mjs`);
+  if (!fs.existsSync(scenarioFile)) {
+    console.error(`No such scenario: ${scenarioFile}`);
+    process.exit(1);
+  }
+  const scen = await (await import(pathToFileURL(scenarioFile).href)).load();
+  CHARACTER_ID = scen.characterId;
+  CHAT_ID = scen.chatId;
+  CHARACTER_NAME = scen.characterName;
+  PERSONA_NAME = scen.personaName;
+  CHARACTER = scen.character;
+  PERSONA = scen.persona;
+  ARC = scen.arc;
+  PROBE_QUESTION = scen.probeQuestion;
+  ANCHORS = scen.anchors;
+
   const TOTAL = args.turns;
   console.log(`\nLong-run relationship soak — ${TOTAL} exchanges, model ${MODEL}`);
+  console.log(`Scenario "${args.scenario}": ${CHARACTER_NAME} (character) & ${PERSONA_NAME} (player)`);
   console.log(`Character receives FULL history (no trimming).\n`);
 
   const proc = await startServer();
@@ -279,8 +250,8 @@ async function main() {
   const timeline = [];
   const probes = [];
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const transcriptFile = path.join(OUT_DIR, `long-chat-${stamp}.md`);
-  const resultsFile = path.join(OUT_DIR, `long-chat-${stamp}.json`);
+  const transcriptFile = path.join(OUT_DIR, `long-chat-${args.scenario}-${stamp}.md`);
+  const resultsFile = path.join(OUT_DIR, `long-chat-${args.scenario}-${stamp}.json`);
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
   const probeTurns = new Set(PROBE_POINTS.map((p) => Math.max(1, Math.round(p * TOTAL))));
