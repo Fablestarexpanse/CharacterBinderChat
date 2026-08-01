@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useFableStore } from "@/lib/store";
+import { useFableStore, DEFAULT_UTILITY_MODEL } from "@/lib/store";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
@@ -208,6 +208,19 @@ export function SettingsView() {
               onChange={(e) => setProviderSetting("ollama", { baseUrl: e.target.value })}
               placeholder="http://127.0.0.1:11434"
             />
+          </div>
+          <div className="space-y-1.5 mt-3">
+            <label className="text-xs font-medium text-[var(--foreground)]">Utility model</label>
+            <Input
+              value={providerSettings.ollama.utilityModel ?? DEFAULT_UTILITY_MODEL}
+              onChange={(e) => setProviderSetting("ollama", { utilityModel: e.target.value })}
+              placeholder={DEFAULT_UTILITY_MODEL}
+            />
+            <p className="text-[11px] text-[var(--muted-fg)]">
+              Local model for background tasks that must stay uncensored regardless of the
+              chat&apos;s model — currently the <code className="bg-[var(--muted)] px-1 rounded">/image</code> scene
+              director, which turns the current scene into an image prompt.
+            </p>
           </div>
         </ProviderCard>
 

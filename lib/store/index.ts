@@ -18,6 +18,14 @@ import type {
   AspectRatio,
 } from "@/lib/types";
 
+// ─── Utility model ────────────────────────────────────────────────────────────
+// Local Ollama model for background tasks that must never hit a cloud
+// moderation layer — the /image scene director in particular. Read via
+// `providerSettings.ollama.utilityModel ?? DEFAULT_UTILITY_MODEL` because
+// persisted settings from before this field exist without it.
+export const DEFAULT_UTILITY_MODEL =
+  "hf.co/DavidAU/Qwen3.5-9B-The-Defiant-Fable-Uncensored-Heretic-NEO-IMATRIX-MAX-MTP-GGUF:Q6_K";
+
 // ─── Sidebar Navigation ───────────────────────────────────────────────────────
 
 export type SidebarSection =
@@ -693,7 +701,7 @@ export const useFableStore = create<FableStore>()(
         set((s) => ({ customModels: s.customModels.filter((m) => m.id !== id) })),
 
       providerSettings: {
-        ollama: { baseUrl: "http://127.0.0.1:11434", enabled: true },
+        ollama: { baseUrl: "http://127.0.0.1:11434", enabled: true, utilityModel: DEFAULT_UTILITY_MODEL },
         lmstudio: { baseUrl: "http://127.0.0.1:1234", enabled: true },
         openrouter: { apiKey: "", enabled: false },
         comfyui: { baseUrl: "http://127.0.0.1:8188", enabled: true },

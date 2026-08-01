@@ -163,7 +163,10 @@ export interface ModelInfo {
 }
 
 export interface ProviderSettings {
-  ollama: { baseUrl: string; enabled: boolean };
+  /** utilityModel: local Ollama model for background tasks that must run
+   *  uncensored regardless of the chat's (possibly cloud) model — currently
+   *  the /image scene-director step. */
+  ollama: { baseUrl: string; enabled: boolean; utilityModel?: string };
   lmstudio: { baseUrl: string; enabled: boolean };
   openrouter: { apiKey: string; enabled: boolean };
   comfyui: { baseUrl: string; enabled: boolean };

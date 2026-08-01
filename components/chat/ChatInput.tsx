@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useState, type KeyboardEvent } from "react";
-import { useFableStore } from "@/lib/store";
+import { useFableStore, DEFAULT_UTILITY_MODEL } from "@/lib/store";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { startImageJob } from "@/lib/providers/comfyui";
@@ -35,6 +35,9 @@ export function ChatInput() {
   const present = chat ? presentMemberIds(chat) : [];
   const isGroup = present.length >= 2;
 
+  // /image: the scene director is reading the chat and writing a visual prompt
+  const [directing, setDirecting] = useState(false);
+
   // ── Lazy stat decay ────────────────────────────────────────────────────────
   // On the first render of this component (i.e. first session), apply
   // Ebbinghaus decay once. The server computes decay per-row from each stat's
@@ -61,9 +64,10 @@ export function ChatInput() {
     setInputValue("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
-    // /image command
-    if (userContent.startsWith("/image ")) {
-      await handleImageGeneration(userContent.slice(7).trim());
+    // /image command — bare "/image" snapshots the current scene; any text
+    // after it becomes focus guidance for the scene director
+    if (userContent === "/image" || userContent.startsWith("/image ")) {
+      await handleImageGeneration(userContent.slice(6).trim());
       return;
     }
 
@@ -83,8 +87,59 @@ export function ChatInput() {
 
   // ── Image generation ──────────────────────────────────────────────────────
 
-  const handleImageGeneration = async (prompt: string) => {
-    if (!activeChatId) return;
+  const handleImageGeneration = async (focus: string) => {
+    if (!activeChatId || !chat) return;
+
+    // ── Scene director ───────────────────────────────────────────────────
+    // Distill WHAT THE SCENE LOOKS LIKE from the recent messages into a
+    // visual prompt (never conversation text), on the local uncensored
+    // utility model. Any text after /image steers the shot.
+    const store = useFableStore.getState();
+    const character = store.characters.find((c) => c.id === chat.characterId);
+    const sceneMessages = chat.messages
+      .filter((m) => !m.error && !m.imageJobId && m.content.trim())
+      .slice(-8)
+      .map((m) => ({
+        role: m.role,
+        content: m.content,
+        speaker: m.role === "user"
+          ? store.personas.find((p) => p.id === store.activePersonaId)?.name ?? "User"
+          : store.characters.find((c) => c.id === m.characterId)?.name ?? character?.name ?? "Character",
+      }));
+
+    let prompt = focus;
+    if (sceneMessages.length > 0) {
+      setDirecting(true);
+      try {
+        const res = await fetch("/api/image/scene-prompt", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages:      sceneMessages,
+            focus:         focus || undefined,
+            appearance:    character
+              ? [character.name + ":", character.description, character.personality].filter(Boolean).join("\n")
+              : undefined,
+            ollamaBaseUrl: providerSettings.ollama.baseUrl,
+            modelId:       providerSettings.ollama.utilityModel ?? DEFAULT_UTILITY_MODEL,
+          }),
+        });
+        const data = await res.json().catch(() => null) as { ok?: boolean; prompt?: string; error?: string } | null;
+        if (res.ok && data?.prompt) {
+          prompt = data.prompt;
+        } else if (!focus) {
+          // No scene prompt and nothing typed — surface the failure instead
+          // of silently generating from an empty prompt
+          console.warn("[/image] scene director failed:", data?.error);
+        }
+      } catch (e) {
+        console.warn("[/image] scene director failed:", e);
+      } finally {
+        setDirecting(false);
+      }
+    }
+    if (!prompt.trim()) return;
+
     const settings = { ...imageSettings, prompt };
     // Queues to ComfyUI and streams status back into the job via the store —
     // the ImageCard in the message list re-renders as the job progresses.
@@ -119,7 +174,7 @@ export function ChatInput() {
     el.style.height = Math.min(el.scrollHeight, 160) + "px";
   };
 
-  const isImageCommand = inputValue.startsWith("/image ");
+  const isImageCommand = inputValue === "/image" || inputValue.startsWith("/image ");
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -164,12 +219,23 @@ export function ChatInput() {
         </div>
       )}
 
-      {isImageCommand && (
+      {(isImageCommand || directing) && (
         <div className="flex items-center gap-2 mb-2 px-1">
-          <Wand2 className="h-3.5 w-3.5 text-[var(--purple-fg)]" />
-          <span className="text-xs text-[var(--purple-fg)]">
-            Image generation — press Enter to generate
-          </span>
+          {directing ? (
+            <>
+              <div className="h-3 w-3 rounded-full border-2 border-[var(--purple)] border-t-transparent animate-spin" />
+              <span className="text-xs text-[var(--purple-fg)]">
+                Reading the scene and directing the shot…
+              </span>
+            </>
+          ) : (
+            <>
+              <Wand2 className="h-3.5 w-3.5 text-[var(--purple-fg)]" />
+              <span className="text-xs text-[var(--purple-fg)]">
+                Image — Enter snapshots the current scene; add words to steer the shot
+              </span>
+            </>
+          )}
         </div>
       )}
 
