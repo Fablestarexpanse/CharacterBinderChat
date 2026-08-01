@@ -8,6 +8,7 @@ import { useFableStore } from "@/lib/store";
 import { createChatProvider } from "@/lib/providers/factory";
 import { buildSystemPrompt, estimateTokens } from "./promptBuilder";
 import { matchLoreEntries, booksForChat } from "./lorebook";
+import { resolveGeneration } from "./settings";
 import { fitHistoryToBudget } from "./tokenBudget";
 import type { Chat, Character, MessageRole } from "@/lib/types";
 import type { CoreMemory } from "@/lib/db/models";
@@ -143,6 +144,11 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
 
     // ── Build message history within the model's token budget ──────────────
     const persona = store.personas.find((p) => p.id === store.activePersonaId) ?? null;
+    // Preset + global instructions + per-chat overrides, collapsed once.
+    // NOTE: none of this may be forwarded to the extraction routes — they run
+    // format:"json" on backend defaults, and a roleplay temperature or a
+    // jailbreak prompt would break structured extraction.
+    const resolved = resolveGeneration(chat, store);
     // Lorebook entries fire on keywords in the recent turns — a wider window
     // than fact retrieval so lore doesn't flicker out one exchange after its
     // subject was raised.
@@ -152,7 +158,14 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
     const promptCharacter = character && chat.scenarioText
       ? { ...character, scenario: chat.scenarioText }
       : character;
-    let systemPrompt = buildSystemPrompt(promptCharacter, coreMemory, knownFacts, persona, episodes, insights, lore, bits);
+    let systemPrompt = buildSystemPrompt(
+      promptCharacter, coreMemory, knownFacts, persona, episodes, insights, lore, bits,
+      {
+        globalPrompt:   resolved.globalPrompt,
+        customPrompt:   resolved.customPrompt,
+        forbiddenWords: resolved.forbiddenWords,
+      }
+    );
 
     // ── Group scene block ───────────────────────────────────────────────────
     // The speaker needs to know who else is in the room, and that other
@@ -190,7 +203,7 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
           ? { role: "assistant" as MessageRole, content: m.content }
           : { role: "user" as MessageRole, content: `${speakerLabel(m)}: ${m.content}` };
       });
-    const fit = fitHistoryToBudget(systemPrompt, fullHistory, modelId);
+    const fit = fitHistoryToBudget(systemPrompt, fullHistory, modelId, undefined, resolved.params.contextSize);
     if (fit.dropped > 0) {
       console.info(`[chat] context window: dropped ${fit.dropped} oldest message(s) to fit`);
     }
@@ -218,7 +231,7 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
     abortController = controller;
 
     try {
-      for await (const token of provider.streamChat(history, modelId, chat.settings, controller.signal)) {
+      for await (const token of provider.streamChat(history, modelId, resolved.params, controller.signal)) {
         accumulated += token;
         store.updateMessageContent(chatId, assistantMsgId, accumulated);
       }
@@ -396,7 +409,10 @@ function runExtraction(chatId: string, speakerId?: string): void {
     characterId:     character.id,
     characterName:   character.name,
     personaName:     persona?.name,
-    // Drift anchor for the persona rewrite
+    // Drift anchor for the persona rewrite. Character sheet ONLY — never fold
+    // in the global or preset prompt. Extraction runs format:"json" on backend
+    // defaults, and a roleplay instruction here would poison the anchor and
+    // break structured output. Same reason no generation params are sent.
     characterAnchor: [character.description, character.personality].filter(Boolean).join(" "),
     participants,
     providerType,

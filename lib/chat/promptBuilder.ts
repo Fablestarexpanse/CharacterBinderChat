@@ -103,7 +103,15 @@ export function buildSystemPrompt(
   episodes?:   string[],
   insights?:   string[],
   lore?:       string[],
-  bits?:       string[]
+  bits?:       string[],
+  /** Standing instructions from the active preset and the global settings.
+   *  A trailing options object rather than three more positionals — the list
+   *  above is already at the limit of what's readable. */
+  instructions?: {
+    globalPrompt?:   string;
+    customPrompt?:   string;
+    forbiddenWords?: string[];
+  }
 ): string {
   if (!character) return "You are a helpful assistant.";
 
@@ -111,6 +119,18 @@ export function buildSystemPrompt(
 
   // ── Identity ──────────────────────────────────────────────────────────────
   sections.push(`You are ${character.name}. Stay in character throughout the entire conversation.`);
+
+  // ── Standing instructions ─────────────────────────────────────────────────
+  // Deliberately BELOW the identity line, not above it. The "You are X" anchor
+  // is what the memory and anti-confabulation behaviour was tuned around; a
+  // global instruction placed above it could outrank every character at once.
+  // Global comes before preset so the preset reads as a refinement of it.
+  if (instructions?.globalPrompt?.trim()) {
+    sections.push(`[Global Instructions]\n${instructions.globalPrompt.trim()}`);
+  }
+  if (instructions?.customPrompt?.trim()) {
+    sections.push(`[Preset Instructions]\n${instructions.customPrompt.trim()}`);
+  }
 
   if (character.description) sections.push(character.description);
   if (character.personality)  sections.push(`Personality: ${character.personality}`);
@@ -174,9 +194,16 @@ export function buildSystemPrompt(
   // The anti-confabulation line exists because absence of a memory otherwise
   // reads as licence to invent one — observed as a fabricated fear ("afraid of
   // cages") and an invented shared history in the long-run soaks.
+  // Forbidden words ride with the instructions rather than the prompts above:
+  // negative constraints are the first thing a long prompt loses, and this
+  // block is last precisely because behavioural rules survive better here.
+  const banned = (instructions?.forbiddenWords ?? []).filter((w) => w.trim());
   sections.push(
     `Write in first person. Be immersive and emotionally consistent with your current mood and relationship state. Do not break character or refer to yourself as an AI.\n` +
-    `Your memory above is what you actually know. If asked about something not in your memory or this conversation, say you don't know or don't remember — do not invent specifics such as names, events, or promises.`
+    `Your memory above is what you actually know. If asked about something not in your memory or this conversation, say you don't know or don't remember — do not invent specifics such as names, events, or promises.` +
+    (banned.length > 0
+      ? `\nNever use these words or phrases: ${banned.join(", ")}.`
+      : "")
   );
 
   return sections.join("\n\n");

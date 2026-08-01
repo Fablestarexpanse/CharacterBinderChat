@@ -43,9 +43,13 @@ export function fitHistoryToBudget<M extends { content: string }>(
   systemPrompt:   string,
   messages:       M[],
   modelId:        string,
-  reservedOutput  = 1_500
+  reservedOutput  = 1_500,
+  /** Preset "context size", when set. Otherwise inferred from the model id. */
+  contextOverride?: number
 ): FittedHistory<M> {
-  const contextMax       = estimateContextSize(modelId);
+  const contextMax       = contextOverride && contextOverride > 0
+    ? contextOverride
+    : estimateContextSize(modelId);
   const systemTokens     = estimateTokens(systemPrompt);
   const budgetForHistory = contextMax - systemTokens - reservedOutput;
 

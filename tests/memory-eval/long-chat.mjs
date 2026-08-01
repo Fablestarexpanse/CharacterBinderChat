@@ -241,6 +241,13 @@ function describeVAD(v, a, d) {
 const signedPct = (v) =>
   v - 50 > 20 ? "high" : v - 50 > 5 ? "above avg" : v - 50 < -20 ? "low" : v - 50 < -5 ? "below avg" : "neutral";
 
+// Mirrors lib/chat/promptBuilder.buildSystemPrompt. The real builder also has
+// optional [Global Instructions] and [Preset Instructions] sections just below
+// the identity line, and appends a "Never use these words" line to the final
+// instructions block. All three come from user-configured presets, which the
+// harness deliberately leaves empty — with no preset the real builder emits a
+// byte-identical prompt, so soak results stay comparable across that change.
+// A non-empty global prompt puts a run off this measured baseline.
 function buildSystemPrompt(cm, knownFacts, { withMemory = true, episodes = [], insights = [], bits = [] } = {}) {
   const s = [
     `You are ${CHARACTER_NAME}. Stay in character throughout the entire conversation.`,
