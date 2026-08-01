@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useFableStore } from "@/lib/store";
+import { useFableStore, DEFAULT_UTILITY_MODEL } from "@/lib/store";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -104,6 +104,13 @@ export function ChatHeader() {
     providerConnectivity,
   ]);
 
+  // Backend models never belong in the chat selector: the image scene
+  // director is configured in Settings, and embedding models can't chat at
+  // all. They still RUN — just not as a conversational choice here.
+  const utilityModel = providerSettings.ollama.utilityModel ?? DEFAULT_UTILITY_MODEL;
+  const isBackendModel = (m: ModelInfo) => m.id === utilityModel || /embed/i.test(m.id);
+  const chatModels = models.filter((m) => !isBackendModel(m));
+
   // A chat with no model yet DISPLAYS the first available model, but
   // generation used a hardcoded default that may not be installed — commit
   // the displayed choice so what you see is what generates. (Hook must sit
@@ -111,7 +118,7 @@ export function ChatHeader() {
   // Only commit once the REAL provider lists have loaded — committing while
   // the static fallback list is showing wrote a model that isn't installed.
   const realModelsLoaded = models !== FALLBACK_MODELS;
-  const firstAvailable = customModels[0] ?? (realModelsLoaded ? models[0] : undefined);
+  const firstAvailable = customModels[0] ?? (realModelsLoaded ? chatModels[0] : undefined);
   useEffect(() => {
     if (chat && !chat.modelId && firstAvailable) {
       setChatModel(chat.id, firstAvailable.id, firstAvailable.providerId);
@@ -128,7 +135,7 @@ export function ChatHeader() {
   // Custom models the user typed in, plus whatever the providers reported. If
   // the chat's saved model isn't in either list (e.g. set before a provider
   // went offline), surface it so the selector still shows the truth.
-  const knownModels: ModelInfo[] = [...customModels, ...models];
+  const knownModels: ModelInfo[] = [...customModels, ...chatModels];
   const savedModelMissing =
     !!chat.modelId && !knownModels.some((m) => m.id === chat.modelId);
   const allModels: ModelInfo[] = savedModelMissing
