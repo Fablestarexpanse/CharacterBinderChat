@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { estimateTokens } from "@/lib/chat/promptBuilder";
 import { LORE_TOKEN_BUDGET } from "@/lib/chat/lorebook";
-import { BookOpen, Plus, Trash2, Zap, Pin } from "lucide-react";
+import { BookOpen, Plus, Trash2, Zap, Pin, ChevronDown, ChevronRight } from "lucide-react";
 import type { LoreEntry } from "@/lib/types";
 
 function entryTokens(e: LoreEntry): number {
@@ -27,10 +27,24 @@ export function LorebooksView() {
   // second, explicit confirmation click.
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
+  // Books start collapsed — a handful of worlds with a dozen entries each
+  // buries the page otherwise. Open one to edit it.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleBook = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
   const totalEntries = lorebooks.reduce((n, b) => n + b.entries.length, 0);
+  const allOpen = lorebooks.length > 0 && expanded.size === lorebooks.length;
 
   const handleNewBook = () => {
-    addLorebook(`Lorebook ${lorebooks.length + 1}`);
+    // A book you just made is a book you want to fill in — open it
+    const id = addLorebook(`Lorebook ${lorebooks.length + 1}`);
+    setExpanded((prev) => new Set(prev).add(id));
   };
 
   const handleNewEntry = (bookId: string) => {
@@ -49,10 +63,21 @@ export function LorebooksView() {
               entr{totalEntries !== 1 ? "ies" : "y"}
             </p>
           </div>
-          <Button variant="purple" size="md" onClick={handleNewBook}>
-            <Plus className="h-4 w-4 mr-1.5" />
-            New Lorebook
-          </Button>
+          <div className="flex items-center gap-2">
+            {lorebooks.length > 1 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setExpanded(allOpen ? new Set() : new Set(lorebooks.map((b) => b.id)))}
+              >
+                {allOpen ? "Collapse all" : "Expand all"}
+              </Button>
+            )}
+            <Button variant="purple" size="md" onClick={handleNewBook}>
+              <Plus className="h-4 w-4 mr-1.5" />
+              New Lorebook
+            </Button>
+          </div>
         </div>
 
         <p className="text-xs text-[var(--muted-fg)] mb-6">
@@ -75,16 +100,46 @@ export function LorebooksView() {
           {lorebooks.map((book) => {
             const enabled = book.entries.filter((e) => e.enabled);
             const tokens = enabled.reduce((sum, e) => sum + entryTokens(e), 0);
+            const isOpen = expanded.has(book.id);
+            // Collapsed books still need to be identifiable at a glance
+            const keyPreview = book.entries
+              .map((e) => e.key.split(",")[0]?.trim())
+              .filter(Boolean)
+              .join(" · ");
             return (
               <Card key={book.id}>
                 <CardHeader className="flex items-center gap-3">
-                  <BookOpen className="h-4 w-4 text-[var(--purple-fg)] flex-shrink-0" />
-                  <Input
-                    value={book.name}
-                    onChange={(e) => updateLorebook(book.id, { name: e.target.value })}
-                    className="h-8 text-sm font-medium flex-1"
-                    placeholder="Lorebook name"
-                  />
+                  <button
+                    onClick={() => toggleBook(book.id)}
+                    title={isOpen ? "Collapse lorebook" : "Expand lorebook"}
+                    className="flex items-center gap-2 flex-shrink-0 text-[var(--muted-fg)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
+                  >
+                    {isOpen
+                      ? <ChevronDown className="h-4 w-4" />
+                      : <ChevronRight className="h-4 w-4" />}
+                    <BookOpen className="h-4 w-4 text-[var(--purple-fg)]" />
+                  </button>
+                  {isOpen ? (
+                    <Input
+                      value={book.name}
+                      onChange={(e) => updateLorebook(book.id, { name: e.target.value })}
+                      className="h-8 text-sm font-medium flex-1"
+                      placeholder="Lorebook name"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => toggleBook(book.id)}
+                      className="flex-1 min-w-0 text-left cursor-pointer"
+                      title="Expand lorebook"
+                    >
+                      <div className="text-sm font-medium text-[var(--foreground)] truncate">
+                        {book.name || <span className="text-[var(--muted-fg)]">Untitled lorebook</span>}
+                      </div>
+                      {keyPreview && (
+                        <div className="text-[11px] text-[var(--muted-fg)] truncate">{keyPreview}</div>
+                      )}
+                    </button>
+                  )}
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     <Badge variant="default" title="Estimated tokens if every enabled entry fires at once">
                       <Zap className="h-2.5 w-2.5 mr-0.5" />
@@ -115,6 +170,7 @@ export function LorebooksView() {
                     )}
                   </div>
                 </CardHeader>
+                {isOpen && (
                 <CardBody className="space-y-3">
                   {book.entries.map((entry) => (
                     <div
@@ -199,6 +255,7 @@ export function LorebooksView() {
                     Add entry
                   </Button>
                 </CardBody>
+                )}
               </Card>
             );
           })}
