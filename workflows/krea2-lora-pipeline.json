@@ -336,7 +336,8 @@
       "cfgNode": "16.inputs.cfg",
       "seedNode": "14.inputs.value",
       "widthNode": "13.inputs.width",
-      "heightNode": "13.inputs.height"
+      "heightNode": "13.inputs.height",
+      "loraSyntaxNode": "7.inputs.value"
     }
   }
 }

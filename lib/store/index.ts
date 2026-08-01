@@ -66,113 +66,15 @@ const defaultImageSettings: ImageGenerationSettings = {
   sampler: "euler",
   seed: -1,
   batchCount: 1,
-  refiner: false,
   loras: [],
-  controlNet: undefined,
 };
 
-// ─── Placeholder Data ─────────────────────────────────────────────────────────
-// Timestamps are FIXED, not Date.now()-derived. These objects are evaluated at
-// module load, which happens once on the server and again in the browser — any
-// clock-derived value differs between the two and makes React throw away the
-// hydrated tree. Real chats get real timestamps at creation time.
-
-const SEED_EPOCH = "2026-06-06T00:00:00.000Z";
-const seedTime = (msOffset: number) =>
-  new Date(Date.parse(SEED_EPOCH) + msOffset).toISOString();
-
-const PLACEHOLDER_CHARACTERS: Character[] = [
-  {
-    id: "char-ronan",
-    name: "Ronan",
-    description:
-      "A grizzled mercenary with a sharp wit and a code of honor. Former city guard turned freelance operative in the neon-drenched sprawl.",
-    personality: "Sarcastic, loyal, world-weary but optimistic underneath the cynicism.",
-    tags: ["cyberpunk", "mercenary", "male", "action"],
-    avatar: "/avatars/ronan.png",
-    createdAt: seedTime(0),
-    updatedAt: seedTime(0),
-  },
-  {
-    id: "char-fen",
-    name: "Fen",
-    description:
-      "A quiet, enigmatic netrunner who speaks in riddles and sees the world through a lattice of data streams.",
-    personality: "Introspective, brilliant, cautious. Speaks sparingly but precisely.",
-    tags: ["cyberpunk", "hacker", "female", "mystery"],
-    avatar: "/avatars/fen.png",
-    createdAt: seedTime(0),
-    updatedAt: seedTime(0),
-  },
-];
-
-const PLACEHOLDER_MESSAGES: Message[] = [
-  {
-    id: "msg-1",
-    chatId: "chat-1",
-    role: "assistant",
-    content:
-      "The rain hammers the corrugated roof above us. I lean against the wall of the safehouse, arms crossed, watching you with that half-lidded expression I've perfected over a decade of bad deals.\n\n\"You're late,\" I say. Not an accusation — just a statement of fact. \"The shuttle to the upper levels leaves in forty minutes. You want to tell me what kept you, or do we move?\"",
-    characterId: "char-ronan",
-    timestamp: seedTime(-600000),
-  },
-  {
-    id: "msg-2",
-    chatId: "chat-1",
-    role: "user",
-    content:
-      "Sorry — the checkpoint at Sector 7 was locked down. Corporate security sweep. I had to go three levels underground to get around it.",
-    timestamp: seedTime(-480000),
-  },
-  {
-    id: "msg-3",
-    chatId: "chat-1",
-    role: "assistant",
-    content:
-      "A low exhale. I push off the wall and move to the window, peering through a crack in the boards at the alley below.\n\n\"Sector 7.\" My jaw tightens. \"That's Kaspar's territory. If they were running a sweep, it means someone's been talking.\" I turn back, eyes sharp. \"Anyone follow you down here?\"",
-    characterId: "char-ronan",
-    timestamp: seedTime(-360000),
-  },
-];
-
-const PLACEHOLDER_CHATS: Chat[] = [
-  {
-    id: "chat-1",
-    name: "Neon Rain",
-    characterId: "char-ronan",
-    modelId: "llama3.2:latest",
-    providerId: "ollama",
-    messages: PLACEHOLDER_MESSAGES,
-    createdAt: seedTime(-86400000),
-    updatedAt: seedTime(0),
-    contextUsed: 2847,
-    contextMax: 8192,
-  },
-  {
-    id: "chat-2",
-    name: "Ghost Protocol",
-    characterId: "char-fen",
-    modelId: "mistral:latest",
-    providerId: "ollama",
-    messages: [],
-    createdAt: seedTime(-172800000),
-    updatedAt: seedTime(-172800000),
-    contextUsed: 512,
-    contextMax: 8192,
-  },
-];
-
-const PLACEHOLDER_LORE: Lorebook = {
-  id: "lb-1",
-  name: "Neon City Lore",
-  description: "World-building entries for the cyberpunk setting",
-  entries: [
-    { id: "le-1", lorebookId: "lb-1", key: "Kaspar Division", value: "Elite corporate security force contracted by Apex Corp to police the upper levels.", enabled: true, tokens: 24, priority: 10 },
-    { id: "le-2", lorebookId: "lb-1", key: "lower city", value: "The sprawling underground districts beneath the sky bridges, home to the majority of the city's population.", enabled: true, tokens: 30, priority: 5 },
-    { id: "le-3", lorebookId: "lb-1", key: "netrunner", value: "A hacker capable of interfacing directly with the city's data grid using neural implants.", enabled: true, tokens: 22, priority: 5 },
-  ],
-  createdAt: seedTime(0),
-};
+// ─── Empty defaults ───────────────────────────────────────────────────────────
+// The app used to seed demo characters, a written-out sample chat and a
+// "Neon City Lore" book. They were indistinguishable from real content, and
+// the seeded lore actually injected into live prompts. A fresh install now
+// starts genuinely empty; every section has an empty state that explains what
+// to create first.
 
 // ─── Store Shape ──────────────────────────────────────────────────────────────
 
@@ -345,7 +247,7 @@ export const useFableStore = create<FableStore>()(
       inspectorOpen: true,
       setInspectorOpen: (v) => set({ inspectorOpen: v }),
 
-      characters: PLACEHOLDER_CHARACTERS,
+      characters: [],
 
       addCharacter: (data) => {
         // Readable slug id — doubles as the Drawer 2 entity id
@@ -440,8 +342,8 @@ export const useFableStore = create<FableStore>()(
       closeCharacterEditor: () =>
         set({ characterEditorOpen: false, characterEditorId: null, characterEditorDraft: null }),
 
-      chats: PLACEHOLDER_CHATS,
-      activeChatId: "chat-1",
+      chats: [],
+      activeChatId: null,
       setActiveChatId: (id) => set({ activeChatId: id }),
 
       hydrateFromServer: (characters, chats, personas, lorebooks, scenarios) => {
@@ -825,7 +727,7 @@ export const useFableStore = create<FableStore>()(
       inputValue: "",
       setInputValue: (v) => set({ inputValue: v }),
 
-      lorebooks: [PLACEHOLDER_LORE],
+      lorebooks: [],
       addLorebook: (name) => {
         const id = `lb-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         const book: Lorebook = { id, name, entries: [], createdAt: new Date().toISOString() };

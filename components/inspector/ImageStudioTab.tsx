@@ -7,16 +7,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
-import { startImageJob } from "@/lib/providers/comfyui";
+import { startImageJob, dimensionsForRatio, ComfyUIProvider } from "@/lib/providers/comfyui";
 import { ImageLightbox } from "@/components/ui/ImageLightbox";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Zap,
   Plus,
   X,
   ListChecks,
   RefreshCw,
-  ImageIcon,
   Layers,
 } from "lucide-react";
 import type { AspectRatio } from "@/lib/types";
@@ -31,14 +30,26 @@ const WORKFLOWS = [
 
 const SAMPLERS = ["euler", "euler_a", "dpmpp_2m", "dpmpp_2m_karras", "ddim", "lcm"];
 const ASPECT_RATIOS: AspectRatio[] = ["1:1", "16:9", "9:16", "4:3", "3:4", "2:1", "custom"];
-const LORA_OPTIONS = ["Cyberpunk Style", "Anime Face", "Film Grain", "Neon Glow", "Concept Art"];
 
 export function ImageStudioTab() {
   const { imageSettings, setImageSettings, imageJobs, addImageJob, updateImageJob, providerSettings, activeChatId } =
     useFableStore();
   const [newLora, setNewLora] = useState("");
+  const [loraWeight, setLoraWeight] = useState("0.8");
   // In-app viewer — never navigate away to view an output
   const [viewer, setViewer] = useState<{ url: string; id: string } | null>(null);
+
+  // Real LoRA filenames from the ComfyUI host. Keyed by base URL so a settings
+  // change refetches; setState only inside the async continuation.
+  const comfyBase = providerSettings.comfyui.baseUrl;
+  const [loraCatalog, setLoraCatalog] = useState<{ key: string; names: string[] }>({ key: "", names: [] });
+  useEffect(() => {
+    let cancelled = false;
+    new ComfyUIProvider(comfyBase).listLoras().then((names) => {
+      if (!cancelled) setLoraCatalog({ key: comfyBase, names });
+    });
+    return () => { cancelled = true; };
+  }, [comfyBase]);
 
   const handleGenerate = () => {
     // startImageJob returns immediately; connection check, queueing and
@@ -52,15 +63,28 @@ export function ImageStudioTab() {
     addImageJob(job);
   };
 
+  // Choosing a ratio resolves to real pixels; typing a dimension by hand flips
+  // the selector to "custom" so it never claims a shape the render won't have.
+  const handleRatioChange = (ratio: AspectRatio) => {
+    const dims = dimensionsForRatio(ratio);
+    setImageSettings(dims ? { aspectRatio: ratio, ...dims } : { aspectRatio: ratio });
+  };
+
   const handleAddLora = () => {
-    if (!newLora) return;
-    setImageSettings({ loras: [...imageSettings.loras, { name: newLora, weight: 0.8 }] });
+    const name = newLora.trim();
+    if (!name || imageSettings.loras.some((l) => l.name === name)) return;
+    const weight = Number(loraWeight);
+    setImageSettings({
+      loras: [...imageSettings.loras, { name, weight: Number.isFinite(weight) ? weight : 0.8 }],
+    });
     setNewLora("");
   };
 
   const handleRemoveLora = (name: string) => {
     setImageSettings({ loras: imageSettings.loras.filter((l) => l.name !== name) });
   };
+
+  const workflowSupportsLoras = imageSettings.workflow === "krea2-lora-pipeline";
 
   const recentJobs = imageJobs.slice(0, 4);
   const runningCount = imageJobs.filter((j) => j.status === "queued" || j.status === "generating").length;
@@ -70,14 +94,6 @@ export function ImageStudioTab() {
   return (
     <div className="overflow-y-auto h-full">
       <div className="p-3 space-y-4">
-        {/* Provider & Workflow */}
-        <div className="space-y-2">
-          <label className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider">Provider</label>
-          <Select value="comfyui" onChange={() => {}}>
-            <option value="comfyui">ComfyUI Local</option>
-          </Select>
-        </div>
-
         <div className="space-y-2">
           <label className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider">Workflow</label>
           <Select
@@ -118,7 +134,7 @@ export function ImageStudioTab() {
           <label className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider">Aspect Ratio</label>
           <Select
             value={imageSettings.aspectRatio}
-            onChange={(e) => setImageSettings({ aspectRatio: e.target.value as AspectRatio })}
+            onChange={(e) => handleRatioChange(e.target.value as AspectRatio)}
           >
             {ASPECT_RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
           </Select>
@@ -130,7 +146,7 @@ export function ImageStudioTab() {
             <Input
               type="number"
               value={imageSettings.width}
-              onChange={(e) => setImageSettings({ width: Number(e.target.value) })}
+              onChange={(e) => setImageSettings({ width: Number(e.target.value), aspectRatio: "custom" })}
               className="h-8 text-xs"
               step={64}
               min={512}
@@ -142,13 +158,16 @@ export function ImageStudioTab() {
             <Input
               type="number"
               value={imageSettings.height}
-              onChange={(e) => setImageSettings({ height: Number(e.target.value) })}
+              onChange={(e) => setImageSettings({ height: Number(e.target.value), aspectRatio: "custom" })}
               className="h-8 text-xs"
               step={64}
               min={512}
               max={2048}
             />
           </div>
+        </div>
+        <div className="text-[10px] text-[var(--muted-fg)] -mt-1">
+          {((imageSettings.width * imageSettings.height) / 1_000_000).toFixed(1)} megapixels
         </div>
 
         {/* Sliders */}
@@ -207,113 +226,85 @@ export function ImageStudioTab() {
           min={1} max={4} step={1}
         />
 
-        {/* Refiner toggle */}
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider">
-            Refiner
-          </label>
-          <button
-            onClick={() => setImageSettings({ refiner: !imageSettings.refiner })}
-            className={`relative inline-flex h-5 w-9 rounded-full transition-colors cursor-pointer ${
-              imageSettings.refiner ? "bg-[var(--purple)]" : "bg-[var(--border)]"
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
-                imageSettings.refiner ? "translate-x-4" : ""
-              }`}
-            />
-          </button>
-        </div>
-
-        {/* Character reference */}
-        <div className="space-y-2">
-          <label className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider">
-            Character Reference
-          </label>
-          <div className="border-2 border-dashed border-[var(--border)] rounded-lg p-4 text-center cursor-pointer hover:border-[var(--purple)] transition-colors">
-            <ImageIcon className="h-5 w-5 text-[var(--muted-fg)] mx-auto mb-1" />
-            <div className="text-[11px] text-[var(--muted-fg)]">Drop image or click to upload</div>
-          </div>
-        </div>
-
-        {/* LoRA stack */}
-        <div className="space-y-2">
-          <label className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider flex items-center gap-1.5">
-            <Layers className="h-3 w-3" />
-            LoRA Stack
-          </label>
-          <div className="flex gap-2">
-            <Select
-              value={newLora}
-              onChange={(e) => setNewLora(e.target.value)}
-              className="flex-1 h-8 text-xs"
-            >
-              <option value="">Select LoRA…</option>
-              {LORA_OPTIONS.map((l) => <option key={l} value={l}>{l}</option>)}
-            </Select>
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={handleAddLora}>
-              <Plus className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-          {imageSettings.loras.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-1">
-              {imageSettings.loras.map((lora) => (
-                <div
-                  key={lora.name}
-                  className="flex items-center gap-1 bg-[var(--purple-light)] text-[var(--purple-fg)] rounded-full pl-2 pr-1 py-0.5 text-[11px]"
+        {/* LoRA stack — injected as <lora:name:weight> into the workflow */}
+        {workflowSupportsLoras && (
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider flex items-center gap-1.5">
+              <Layers className="h-3 w-3" />
+              LoRA Stack
+            </label>
+            <div className="flex gap-1.5">
+              {loraCatalog.names.length > 0 ? (
+                <Select
+                  value={newLora}
+                  onChange={(e) => setNewLora(e.target.value)}
+                  className="flex-1 h-8 text-xs min-w-0"
                 >
-                  {lora.name}
-                  <button
-                    onClick={() => handleRemoveLora(lora.name)}
-                    className="hover:text-red-500 transition-colors"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
+                  <option value="">Select LoRA…</option>
+                  {loraCatalog.names.map((l) => <option key={l} value={l}>{l}</option>)}
+                </Select>
+              ) : (
+                <Input
+                  value={newLora}
+                  onChange={(e) => setNewLora(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleAddLora(); }}
+                  placeholder="lora filename"
+                  className="flex-1 h-8 text-xs min-w-0"
+                />
+              )}
+              <Input
+                type="number"
+                value={loraWeight}
+                onChange={(e) => setLoraWeight(e.target.value)}
+                className="h-8 w-14 text-xs flex-shrink-0"
+                step={0.05}
+                min={0}
+                max={2}
+                title="Weight"
+              />
+              <Button variant="outline" size="icon" className="h-8 w-8 flex-shrink-0" onClick={handleAddLora}>
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
             </div>
-          )}
-        </div>
+            {loraCatalog.key === comfyBase && loraCatalog.names.length === 0 && (
+              <p className="text-[10px] text-[var(--muted-fg)]">
+                Couldn&apos;t read LoRAs from ComfyUI — type the filename exactly as it appears in models/loras.
+              </p>
+            )}
+            {imageSettings.loras.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {imageSettings.loras.map((lora) => (
+                  <div
+                    key={lora.name}
+                    className="flex items-center gap-1 bg-[var(--purple-light)] text-[var(--purple-fg)] rounded-full pl-2 pr-1 py-0.5 text-[11px] max-w-full"
+                    title={`<lora:${lora.name}:${lora.weight}>`}
+                  >
+                    <span className="truncate">{lora.name}</span>
+                    <span className="opacity-70 flex-shrink-0">{lora.weight}</span>
+                    <button
+                      onClick={() => handleRemoveLora(lora.name)}
+                      className="hover:text-red-500 transition-colors flex-shrink-0 cursor-pointer"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
-        {/* ControlNet */}
-        <div className="space-y-2">
-          <label className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider">ControlNet</label>
-          <Select
-            value={imageSettings.controlNet ?? ""}
-            onChange={(e) => setImageSettings({ controlNet: e.target.value || undefined })}
-          >
-            <option value="">None</option>
-            <option value="depth">Depth Map</option>
-            <option value="canny">Canny Edge</option>
-            <option value="openpose">OpenPose</option>
-            <option value="ip-adapter">IP-Adapter</option>
-          </Select>
-        </div>
-
-        {/* Generate / Queue buttons */}
-        <div className="grid grid-cols-2 gap-2 pt-1">
-          <Button
-            variant="purple"
-            size="md"
-            className="w-full"
-            onClick={handleGenerate}
-            disabled={!imageSettings.prompt.trim()}
-          >
-            <Zap className="h-3.5 w-3.5 mr-1.5" />
-            Generate
-          </Button>
-          <Button
-            variant="outline"
-            size="md"
-            className="w-full"
-            onClick={handleGenerate}
-            disabled={!imageSettings.prompt.trim()}
-          >
-            <ListChecks className="h-3.5 w-3.5 mr-1.5" />
-            Queue
-          </Button>
-        </div>
+        {/* Generate */}
+        <Button
+          variant="purple"
+          size="md"
+          className="w-full"
+          onClick={handleGenerate}
+          disabled={!imageSettings.prompt.trim()}
+        >
+          <Zap className="h-3.5 w-3.5 mr-1.5" />
+          Generate
+        </Button>
 
         {/* Queue status */}
         <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)] p-3">

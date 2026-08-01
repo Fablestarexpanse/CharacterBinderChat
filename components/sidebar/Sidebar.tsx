@@ -19,7 +19,6 @@ import {
   ImageIcon,
   GalleryHorizontal,
   GitBranch,
-  Puzzle,
   Settings,
   Plus,
   Sparkles,
@@ -38,7 +37,6 @@ const NAV_ITEMS: { id: SidebarSection; label: string; icon: React.ElementType }[
   { id: "image-studio", label: "Image Studio", icon: ImageIcon },
   { id: "gallery", label: "Gallery", icon: GalleryHorizontal },
   { id: "workflows", label: "Workflows", icon: GitBranch },
-  { id: "extensions", label: "Extensions", icon: Puzzle },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 

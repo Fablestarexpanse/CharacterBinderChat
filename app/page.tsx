@@ -8,6 +8,7 @@ import { SettingsView } from "@/components/sections/SettingsView";
 import { CharactersView } from "@/components/sections/CharactersView";
 import { LorebooksView } from "@/components/sections/LorebooksView";
 import { ScenariosView } from "@/components/sections/ScenariosView";
+import { ImageStudioView } from "@/components/sections/ImageStudioView";
 import { GroupsView } from "@/components/sections/GroupsView";
 import { CharacterEditorDialog } from "@/components/characters/CharacterEditorDialog";
 import { NewChatDialog } from "@/components/chat/NewChatDialog";
@@ -17,10 +18,8 @@ import { PlaceholderView } from "@/components/sections/PlaceholderView";
 import { useHydrated } from "@/lib/hooks/useHydrated";
 import {
   Sliders,
-  ImageIcon,
   GalleryHorizontal,
   GitBranch,
-  Puzzle,
 } from "lucide-react";
 
 export default function Home() {
@@ -53,13 +52,7 @@ export default function Home() {
             description="Save and load generation parameter presets."
           />
         )}
-        {activeSection === "image-studio" && (
-          <PlaceholderView
-            icon={ImageIcon}
-            title="Image Studio"
-            description="Full-screen image generation with ComfyUI workflows."
-          />
-        )}
+        {activeSection === "image-studio" && <ImageStudioView />}
         {activeSection === "gallery" && (
           <PlaceholderView
             icon={GalleryHorizontal}
@@ -72,13 +65,6 @@ export default function Home() {
             icon={GitBranch}
             title="Workflows"
             description="Manage and edit ComfyUI workflow templates."
-          />
-        )}
-        {activeSection === "extensions" && (
-          <PlaceholderView
-            icon={Puzzle}
-            title="Extensions"
-            description="Install community extensions and plugins."
           />
         )}
 

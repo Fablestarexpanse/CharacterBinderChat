@@ -12,10 +12,8 @@ import {
   flushPendingExtraction,
 } from "@/lib/chat/generation";
 import {
-  Paperclip,
   ImageIcon,
   BookOpen,
-  Wrench,
   Send,
   Square,
   Wand2,
@@ -250,9 +248,6 @@ export function ChatInput() {
 
         <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-0.5">
-            <Button variant="ghost" size="icon" className="h-7 w-7" title="Attach file">
-              <Paperclip className="h-3.5 w-3.5" />
-            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -270,9 +265,6 @@ export function ChatInput() {
               onClick={() => setActiveSection("lorebooks")}
             >
               <BookOpen className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7" title="Tools">
-              <Wrench className="h-3.5 w-3.5" />
             </Button>
           </div>
 

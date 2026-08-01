@@ -12,7 +12,7 @@
  * queue-poll-update lifecycle.
  */
 
-import type { ImageJob, ImageGenerationSettings } from "@/lib/types";
+import type { ImageJob, ImageGenerationSettings, AspectRatio } from "@/lib/types";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:8188";
 const POLL_INTERVAL_MS = 1500;
@@ -37,6 +37,34 @@ interface FableWorkflowMeta {
   seedNode?: string | null;
   widthNode?: string | null;
   heightNode?: string | null;
+  /** Node taking inline `<lora:name:weight>` syntax (LoRA Manager pipelines) */
+  loraSyntaxNode?: string | null;
+}
+
+// ─── Aspect ratio ─────────────────────────────────────────────────────────────
+// Picking a ratio used to store a label that nothing read, so "16:9" still
+// rendered a square. Ratios now resolve to real dimensions at a fixed
+// megapixel target, snapped to 32px like the Krea2 preset table.
+
+const RATIO_SIDES: Record<Exclude<AspectRatio, "custom">, [number, number]> = {
+  "1:1":  [1, 1],
+  "16:9": [16, 9],
+  "9:16": [9, 16],
+  "4:3":  [4, 3],
+  "3:4":  [3, 4],
+  "2:1":  [2, 1],
+};
+
+/** Width/height for an aspect ratio at a given megapixel budget. */
+export function dimensionsForRatio(
+  ratio: AspectRatio,
+  megapixels = 1.5
+): { width: number; height: number } | null {
+  if (ratio === "custom") return null;
+  const [w, h] = RATIO_SIDES[ratio];
+  const scale = Math.sqrt((megapixels * 1_000_000) / (w * h));
+  const snap = (v: number) => Math.max(256, Math.round((v * scale) / 32) * 32);
+  return { width: snap(w), height: snap(h) };
 }
 
 type WorkflowNode = { inputs?: Record<string, unknown>; class_type?: string };
@@ -65,6 +93,29 @@ export class ComfyUIProvider {
       return res.ok;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * LoRA filenames installed on the ComfyUI host. Read from core LoraLoader's
+   * enum, which lists models/loras regardless of which LoRA nodes a workflow
+   * actually uses. Returns [] when ComfyUI is unreachable — the picker falls
+   * back to free-text entry rather than showing invented names.
+   */
+  async listLoras(): Promise<string[]> {
+    try {
+      const res = await fetch(this.proxied("object_info/LoraLoader"), {
+        signal: AbortSignal.timeout(8000),
+        cache: "no-store",
+      });
+      if (!res.ok) return [];
+      const data = await res.json() as {
+        LoraLoader?: { input?: { required?: { lora_name?: unknown[] } } };
+      };
+      const enumValues = data.LoraLoader?.input?.required?.lora_name?.[0];
+      return Array.isArray(enumValues) ? enumValues.filter((v): v is string => typeof v === "string") : [];
+    } catch {
+      return [];
     }
   }
 
@@ -195,6 +246,14 @@ export function applySettingsToWorkflow(
 
   setPath(meta.promptNode, settings.prompt);
   setPath(meta.negativePromptNode, settings.negativePrompt);
+  // LoRA Manager pipelines take a free-text `<lora:name:weight>` line; without
+  // a node to put it in, selected LoRAs would silently never load.
+  if (meta.loraSyntaxNode) {
+    setPath(
+      meta.loraSyntaxNode,
+      settings.loras.map((l) => `<lora:${l.name}:${l.weight}>`).join(" ")
+    );
+  }
   setPath(meta.stepsNode, settings.steps);
   setPath(meta.cfgNode, settings.cfg);
   setPath(meta.seedNode, seed);

@@ -145,10 +145,8 @@ export interface ImageGenerationSettings {
   sampler: string;
   seed: number | -1;
   batchCount: number;
-  refiner: boolean;
-  characterReferenceImage?: string;
+  /** Injected as `<lora:name:weight>` into the workflow's loraSyntaxNode */
   loras: LoraEntry[];
-  controlNet?: string;
 }
 
 export interface ImageJob {
