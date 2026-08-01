@@ -242,6 +242,8 @@ interface FableStore {
   markMessageError: (chatId: string, messageId: string) => void;
   /** Repoint an image-card message at a new job (retry / re-roll) */
   setMessageImageJob: (chatId: string, messageId: string, jobId: string) => void;
+  /** Collapse / expand an image card in the transcript */
+  toggleMessageCollapsed: (chatId: string, messageId: string) => void;
   /** Update which model / provider a chat uses */
   setChatModel: (chatId: string, modelId: string, providerId: string) => void;
   /** Choose which lorebooks (worlds) apply to a chat; undefined = all */
@@ -586,6 +588,21 @@ export const useFableStore = create<FableStore>()(
                   ...c,
                   messages: c.messages.map((m) =>
                     m.id === messageId ? { ...m, imageJobId: jobId } : m
+                  ),
+                }
+              : c
+          ),
+        }));
+      },
+
+      toggleMessageCollapsed: (chatId, messageId) => {
+        set((state) => ({
+          chats: state.chats.map((c) =>
+            c.id === chatId
+              ? {
+                  ...c,
+                  messages: c.messages.map((m) =>
+                    m.id === messageId ? { ...m, collapsed: !m.collapsed } : m
                   ),
                 }
               : c

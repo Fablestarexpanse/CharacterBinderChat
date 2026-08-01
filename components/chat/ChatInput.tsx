@@ -5,7 +5,12 @@ import { useFableStore } from "@/lib/store";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { generateSceneImage } from "@/lib/chat/imageGen";
-import { generateAssistantReply, stopGeneration, presentMemberIds } from "@/lib/chat/generation";
+import {
+  generateAssistantReply,
+  stopGeneration,
+  presentMemberIds,
+  flushPendingExtraction,
+} from "@/lib/chat/generation";
 import {
   Paperclip,
   ImageIcon,
@@ -70,6 +75,10 @@ export function ChatInput() {
       await handleImageGeneration(userContent.slice(6).trim());
       return;
     }
+
+    // Replying settles the previous exchange: the reply survived, so its
+    // memory can be written now (re-rolling instead would have cancelled it).
+    flushPendingExtraction();
 
     addMessage(activeChatId, { chatId: activeChatId, role: "user", content: userContent });
     generateAssistantReply(activeChatId, nextSpeaker ?? undefined);

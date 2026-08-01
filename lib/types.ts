@@ -55,6 +55,8 @@ export interface Message {
   memoryTrace?: MemoryTrace;
   /** User feedback on this reply (thumbs up/down in the hover actions) */
   rating?: "up" | "down";
+  /** Image cards only: collapsed to a one-line summary to declutter the chat */
+  collapsed?: boolean;
   /** True when this is a provider-failure notice, not real dialogue — such
    *  messages are excluded from prompts, extraction, and cadence counts */
   error?: boolean;

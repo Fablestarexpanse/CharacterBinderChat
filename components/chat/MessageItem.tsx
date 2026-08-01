@@ -25,6 +25,9 @@ import {
   Clock,
   Download,
   Loader2,
+  Minus,
+  Trash2,
+  ChevronDown,
 } from "lucide-react";
 
 interface MessageItemProps {
@@ -300,9 +303,12 @@ function MemoryTraceDialog({
 }
 
 function ImageCard({ message }: { message: Message }) {
-  const { imageJobs, providerSettings, addImageJob, updateImageJob, setMessageImageJob, updateMessageContent } =
-    useFableStore();
+  const {
+    imageJobs, providerSettings, addImageJob, updateImageJob, setMessageImageJob,
+    updateMessageContent, toggleMessageCollapsed, removeMessage,
+  } = useFableStore();
   const job = imageJobs.find((j) => j.id === message.imageJobId);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Edit-prompt mode: tweak the prompt and regenerate in place — the new
   // render replaces this card's image (the message keeps its spot in the chat)
@@ -357,6 +363,55 @@ function ImageCard({ message }: { message: Message }) {
   // In-app viewer — clicking an image must never navigate away from the chat
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
 
+  const handleDelete = () => {
+    if (confirmDelete) removeMessage(message.chatId, message.id);
+    else {
+      setConfirmDelete(true);
+      setTimeout(() => setConfirmDelete(false), 3000);
+    }
+  };
+
+  // Minimized: one compact line with a thumbnail, so a long scene keeps its
+  // images without them dominating the transcript.
+  if (message.collapsed) {
+    const thumb = job?.status === "complete" ? job.outputUrls[0] : undefined;
+    return (
+      <div className="px-4 py-1.5 mx-2">
+        <div className="flex items-center gap-2 ml-11 max-w-sm rounded-lg border border-[var(--border)] bg-[var(--muted)] px-2 py-1.5">
+          {thumb ? (
+            // eslint-disable-next-line @next/next/no-img-element -- served straight from local ComfyUI
+            <img
+              src={thumb}
+              alt=""
+              className="h-6 w-6 rounded object-cover flex-shrink-0 cursor-pointer"
+              onClick={() => setViewerUrl(thumb)}
+              title="View full size"
+            />
+          ) : (
+            <ImageIcon className="h-3.5 w-3.5 text-[var(--muted-fg)] flex-shrink-0" />
+          )}
+          <span className="flex-1 min-w-0 text-[11px] text-[var(--muted-fg)] truncate">
+            {job?.prompt ?? message.content}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 flex-shrink-0"
+            title="Expand image"
+            onClick={() => toggleMessageCollapsed(message.chatId, message.id)}
+          >
+            <ChevronDown className="h-3 w-3" />
+          </Button>
+        </div>
+        <ImageLightbox
+          url={viewerUrl}
+          filename={`fablechat-${(job?.id ?? "image").slice(0, 8)}.png`}
+          onClose={() => setViewerUrl(null)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="px-4 py-3 mx-2">
       <div className="flex gap-3">
@@ -364,7 +419,27 @@ function ImageCard({ message }: { message: Message }) {
           <ImageIcon className="h-4 w-4 text-[var(--purple-fg)]" />
         </div>
         <div className="flex-1">
-          <div className="text-xs font-semibold text-[var(--foreground)] mb-2">Image Generation</div>
+          <div className="flex items-center gap-1 mb-2 max-w-sm">
+            <span className="text-xs font-semibold text-[var(--foreground)]">Image Generation</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 ml-auto"
+              title="Minimize image"
+              onClick={() => toggleMessageCollapsed(message.chatId, message.id)}
+            >
+              <Minus className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-6 w-6 ${confirmDelete ? "text-red-500 bg-red-50" : ""}`}
+              title={confirmDelete ? "Click again to remove this image from the chat" : "Remove image"}
+              onClick={handleDelete}
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
           <div className="rounded-xl border border-[var(--border)] overflow-hidden max-w-sm">
             <div className="bg-[var(--muted)] aspect-square flex items-center justify-center relative">
               {job?.status === "complete" && job.outputUrls.length > 0 ? (

@@ -260,9 +260,8 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
     if (!failed && accumulated.trim()) {
       // Include the finished reply in the context meter
       store.setChatContext(chatId, fit.usedTokens + estimateTokens(accumulated) + 4, fit.contextMax);
-      // Extraction runs after the full (or stopped-partial) response,
-      // attributed to whoever just spoke
-      triggerExtraction(chatId, speakerCharId);
+      // Extraction waits until the exchange settles — see schedulePending.
+      schedulePendingExtraction(chatId, speakerCharId, assistantMsgId);
     } else if (!failed && assistantMsgId) {
       // Stop pressed before the first token — drop the empty bubble
       store.removeMessage(chatId, assistantMsgId);
@@ -288,14 +287,72 @@ export async function regenerateLastReply(chatId: string): Promise<void> {
   let speaker: string | undefined;
   if (last.role === "assistant" && !last.imageJobId) {
     speaker = last.characterId; // groups: regenerate as the same speaker
+    // A discarded take must leave no trace in memory — drop its pending
+    // extraction rather than letting the re-rolled version stack a second
+    // round of facts and stat deltas on top of it.
+    cancelPendingExtraction(last.id);
     store.removeMessage(chatId, last.id);
   }
   await generateAssistantReply(chatId, speaker);
 }
 
+// ─── Deferred extraction ──────────────────────────────────────────────────────
+// Extraction used to fire the instant a reply finished, which meant every
+// re-roll wrote ANOTHER round of facts, stat deltas and bond cards for a take
+// the user then threw away (deltaStat accumulates, so three re-rolls moved the
+// relationship three times). Now a finished reply is only *pending*: it
+// extracts once the exchange settles — the user sends their next message, a
+// different reply supersedes it, or the idle timer expires. Re-rolling or
+// deleting the reply before then cancels it outright.
+
+interface PendingExtraction {
+  chatId:    string;
+  speakerId?: string;
+  messageId: string;
+  timer:     ReturnType<typeof setTimeout>;
+}
+
+let pending: PendingExtraction | null = null;
+
+/** Idle fallback so a conversation left mid-turn still records its memory. */
+const SETTLE_IDLE_MS = 120_000;
+
+function schedulePendingExtraction(chatId: string, speakerId: string | undefined, messageId: string): void {
+  // A new reply means the previous one is settled — flush it first.
+  flushPendingExtraction();
+  pending = {
+    chatId,
+    speakerId,
+    messageId,
+    timer: setTimeout(() => flushPendingExtraction(), SETTLE_IDLE_MS),
+  };
+}
+
+/** Run any pending extraction now (called when the user sends their next message). */
+export function flushPendingExtraction(): void {
+  if (!pending) return;
+  const p = pending;
+  pending = null;
+  clearTimeout(p.timer);
+  runExtraction(p.chatId, p.speakerId);
+}
+
+/**
+ * Drop a pending extraction. With a messageId, only cancels when that exact
+ * reply is the one pending — so deleting an unrelated message can't silently
+ * discard another turn's memory.
+ */
+export function cancelPendingExtraction(messageId?: string): boolean {
+  if (!pending) return false;
+  if (messageId && pending.messageId !== messageId) return false;
+  clearTimeout(pending.timer);
+  pending = null;
+  return true;
+}
+
 // ─── Knowledge extraction (Drawer 2 + Core Memory refresh) ───────────────────
 
-function triggerExtraction(chatId: string, speakerId?: string): void {
+function runExtraction(chatId: string, speakerId?: string): void {
   // Read current store state directly rather than a stale snapshot — the
   // assistant's completed reply is only present in the live store state.
   const {
@@ -307,6 +364,9 @@ function triggerExtraction(chatId: string, speakerId?: string): void {
   const character = characters.find((c) => c.id === (speakerId ?? chat?.characterId));
   const persona   = personas.find((p) => p.id === activePersonaId) ?? null;
   if (!chat || !character) return;
+  // The chat may have been cleared while this was pending — extracting from
+  // an empty (or image-only) history would hallucinate memory from nothing.
+  if (!chat.messages.some((m) => m.role === "assistant" && !m.error && !m.imageJobId)) return;
 
   // Witness list for group scenes: everyone present right now (+ player).
   // 1:1 chats send no list, and their facts stay public.
