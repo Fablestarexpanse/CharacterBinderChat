@@ -84,6 +84,10 @@ export async function POST(req: NextRequest) {
           messages: buildDirectorMessages(body),
           stream:   false,
           ...(withThink ? { think: false } : {}),
+          // Unload the 9B director from VRAM the moment it answers — ComfyUI
+          // needs that memory next, and leaving the model resident forces a
+          // multi-minute UNet reload shuffle on every image job.
+          keep_alive: 0,
           options:  { temperature: 0.6, num_predict: 1200 },
         }),
         signal: AbortSignal.timeout(90_000),

@@ -256,6 +256,10 @@ export function startImageJob(
   void (async () => {
     const comfyui = new ComfyUIProvider(baseUrl);
     try {
+      // ComfyUI and Ollama share one GPU: evict Ollama's resident models
+      // first or the UNet load thrashes for minutes. Best-effort — Ollama
+      // reloads on demand after the render.
+      await fetch("/api/ollama/unload", { method: "POST" }).catch(() => {});
       if (!(await comfyui.checkConnection())) {
         throw new Error(
           `ComfyUI is not reachable at ${baseUrl || DEFAULT_BASE_URL}. Start ComfyUI (or fix the URL in Settings) and try again.`
