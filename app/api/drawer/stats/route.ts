@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
-import type { StatName } from "@/lib/db/models";
 import { STAT_NAMES } from "@/lib/db/models";
 
 export const dynamic = "force-dynamic";
@@ -36,39 +35,8 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/drawer/stats
-// Body: { observer, target, stat, value }   (absolute set)
-// Body: { observer, target, stat, delta }   (relative delta)
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const { chatId, observer, target, stat } = body as {
-      chatId: string; observer: string; target: string; stat: StatName;
-    };
-    if (!chatId || !observer || !target || !stat) {
-      return Response.json({ error: "chatId, observer, target and stat required" }, { status: 400 });
-    }
-    // Validate here rather than letting the CHECK constraint turn a typo
-    // into an opaque SQL 500
-    if (!STAT_NAMES.includes(stat)) {
-      return Response.json(
-        { error: `stat must be one of: ${STAT_NAMES.join(", ")}` },
-        { status: 400 }
-      );
-    }
-    const store = getStore();
-    store.ensureEntity(chatId, observer, "character", observer);
-    store.ensureEntity(chatId, target,   "character", target);
-    let updated;
-    if (typeof body.delta === "number") {
-      updated = store.deltaStat(chatId, observer, target, stat, body.delta);
-    } else if (typeof body.value === "number") {
-      updated = store.setStat(chatId, observer, target, stat, body.value);
-    } else {
-      return Response.json({ error: "Either value or delta is required" }, { status: 400 });
-    }
-    return Response.json({ stat: updated });
-  } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
-  }
-}
+// There was a POST here that wrote stats directly, including an absolute-set
+// path through setStat. Nothing ever called it, and it bypassed deltaStat's
+// headroom scaling, loss aversion and rupture refractory — exactly the
+// footgun AGENTS.md warns against. Stats are written by extraction only; if
+// manual adjustment is wanted later it must go through deltaStat.

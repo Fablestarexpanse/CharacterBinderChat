@@ -240,10 +240,6 @@ export class FableStore {
     }
   }
 
-  close(): void {
-    this.db.close();
-  }
-
   // ── Entities ──────────────────────────────────────────────────────────────
   // All memory operations are scoped by chatId: each chat is its own story.
 

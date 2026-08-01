@@ -17,5 +17,4 @@ export function getStore(): FableStore {
   return _store;
 }
 
-export { FableStore };
 export * from "./models";

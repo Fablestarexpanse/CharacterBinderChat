@@ -13,14 +13,17 @@ export function formatTime(isoString: string): string {
   return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 }
 
+/** "3h ago" for a millisecond age. The single implementation — callers differ
+ *  only in the unit they start from (ISO strings vs Drawer 2's Unix seconds). */
+export function formatAge(msAgo: number): string {
+  if (msAgo < 60_000)     return "just now";
+  if (msAgo < 3_600_000)  return `${Math.floor(msAgo / 60_000)}m ago`;
+  if (msAgo < 86_400_000) return `${Math.floor(msAgo / 3_600_000)}h ago`;
+  return `${Math.floor(msAgo / 86_400_000)}d ago`;
+}
+
 export function formatRelative(isoString: string): string {
-  const now = Date.now();
-  const then = new Date(isoString).getTime();
-  const diff = now - then;
-  if (diff < 60000) return "just now";
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-  return `${Math.floor(diff / 86400000)}d ago`;
+  return formatAge(Date.now() - new Date(isoString).getTime());
 }
 
 export function truncate(text: string, max: number): string {

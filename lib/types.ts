@@ -162,17 +162,8 @@ export interface ImageJob {
   error?: string;
 }
 
-// ─── Workflow Templates ───────────────────────────────────────────────────────
-
-export interface WorkflowTemplate {
-  id: string;
-  name: string;
-  description: string;
-  filename: string;
-  supportedSamplers: string[];
-  defaultSettings: Partial<ImageGenerationSettings>;
-  previewImage?: string;
-}
+// Workflow templates are described by GET /api/workflows, read from the JSON
+// on disk — there was a WorkflowTemplate interface here that nothing ever used.
 
 // ─── Provider Types ───────────────────────────────────────────────────────────
 

@@ -1,10 +1,8 @@
-/** Format a Unix-seconds timestamp as a relative string */
+import { formatAge } from "@/lib/utils";
+
+/** Format a Unix-seconds timestamp (Drawer 2's unit) as a relative string */
 export function formatRelativeTime(unixSeconds: number): string {
-  const diff = Math.floor(Date.now() / 1000) - unixSeconds;
-  if (diff < 60)    return "just now";
-  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+  return formatAge(Date.now() - unixSeconds * 1000);
 }
 
 /** Format a Unix-seconds timestamp as an absolute date string */

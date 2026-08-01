@@ -7,9 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { OllamaProvider } from "@/lib/providers/ollama";
-import { LMStudioProvider } from "@/lib/providers/lmstudio";
-import { OpenRouterProvider } from "@/lib/providers/openrouter";
+import { allChatProviders } from "@/lib/providers/factory";
 import { regenerateLastReply } from "@/lib/chat/generation";
 import type { ModelInfo, ProviderId } from "@/lib/types";
 import {
@@ -19,6 +17,7 @@ import {
   RefreshCw,
   Trash2,
   Loader2,
+  X,
 } from "lucide-react";
 
 // ─── Fallback static list (shown before dynamic load or when offline) ─────────
@@ -49,7 +48,7 @@ export function ChatHeader() {
     inspectorOpen, setInspectorOpen,
     setChatModel, providerSettings, providerStatuses,
     clearChat, isGenerating,
-    customModels, addCustomModel,
+    customModels, addCustomModel, removeCustomModel,
     updateChatSettings, toggleMemberPresence,
   } = useFableStore();
 
@@ -78,17 +77,15 @@ export function ChatHeader() {
     const fetchAll = async () => {
       setLoadingModels(true);
 
-      // All three provider fetches run in parallel
-      const [ollamaModels, lmModels, orModels] = await Promise.all([
-        new OllamaProvider(providerSettings.ollama.baseUrl).listModels().catch(() => [] as ModelInfo[]),
-        new LMStudioProvider(providerSettings.lmstudio.baseUrl).listModels().catch(() => [] as ModelInfo[]),
-        providerSettings.openrouter.apiKey
-          ? new OpenRouterProvider(providerSettings.openrouter.apiKey).listModels().catch(() => [] as ModelInfo[])
-          : Promise.resolve([] as ModelInfo[]),
-      ]);
+      // Every reachable provider is queried in parallel
+      const lists = await Promise.all(
+        allChatProviders(providerSettings).map((p) =>
+          p.listModels().catch(() => [] as ModelInfo[])
+        )
+      );
 
       if (!cancelled) {
-        const collected = [...ollamaModels, ...lmModels, ...orModels];
+        const collected = lists.flat();
         setModels(collected.length > 0 ? collected : FALLBACK_MODELS);
         setLoadingModels(false);
       }
@@ -96,7 +93,10 @@ export function ChatHeader() {
 
     fetchAll();
     return () => { cancelled = true; };
-    // Re-fetch whenever settings change or a provider comes online
+    // Deps are the three fields that actually change the model lists, not the
+    // whole providerSettings object — ComfyUI's URL and the utility model live
+    // there too, and neither should trigger a chat-model refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     providerSettings.ollama.baseUrl,
     providerSettings.lmstudio.baseUrl,
@@ -409,6 +409,35 @@ export function ChatHeader() {
                 </p>
               )}
             </div>
+
+            {/* Without this a mistyped id stayed in the dropdown forever */}
+            {customModels.length > 0 && (
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-[var(--foreground)]">Your custom models</label>
+                <div className="space-y-1">
+                  {customModels.map((m) => (
+                    <div
+                      key={m.id}
+                      className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-2 py-1"
+                    >
+                      <span className="flex-1 min-w-0 truncate font-mono text-[11px] text-[var(--foreground)]">
+                        {m.id}
+                      </span>
+                      <span className="text-[10px] text-[var(--muted-fg)] flex-shrink-0">
+                        {PROVIDER_LABELS[m.providerId ?? ""] ?? m.providerId}
+                      </span>
+                      <button
+                        onClick={() => removeCustomModel(m.id)}
+                        title="Remove from the model list"
+                        className="flex-shrink-0 rounded p-0.5 text-[var(--muted-fg)] hover:text-red-500 transition-colors cursor-pointer"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-2 border-t border-[var(--border)] px-5 py-3">

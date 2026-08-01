@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "eval": "node tests/memory-eval/run.mjs",
+    "eval:long": "node tests/memory-eval/long-chat.mjs",
+    "eval:longitudinal": "node tests/memory-eval/longitudinal.mjs"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.11",

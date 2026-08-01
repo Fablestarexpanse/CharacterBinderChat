@@ -4,9 +4,9 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export const Dialog        = DialogPrimitive.Root;
-export const DialogTrigger = DialogPrimitive.Trigger;
-export const DialogClose   = DialogPrimitive.Close;
+// Every dialog here is controlled via open/onOpenChange, so Radix's Trigger
+// and Close wrappers were never re-exported for a caller that existed.
+export const Dialog = DialogPrimitive.Root;
 
 export function DialogContent({
   className,

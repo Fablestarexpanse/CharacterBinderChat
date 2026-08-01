@@ -5,37 +5,17 @@
 // the AbortController stays module-local (not serialisable).
 
 import { useFableStore } from "@/lib/store";
-import { OllamaProvider } from "@/lib/providers/ollama";
-import { LMStudioProvider } from "@/lib/providers/lmstudio";
-import { OpenRouterProvider } from "@/lib/providers/openrouter";
+import { createChatProvider } from "@/lib/providers/factory";
 import { buildSystemPrompt, estimateTokens } from "./promptBuilder";
 import { matchLoreEntries, booksForChat } from "./lorebook";
 import { fitHistoryToBudget } from "./tokenBudget";
-import type { Chat, Character, ChatProvider, MessageRole, ProviderSettings } from "@/lib/types";
+import type { Chat, Character, MessageRole } from "@/lib/types";
 import type { CoreMemory } from "@/lib/db/models";
 
 let abortController: AbortController | null = null;
 
 export function stopGeneration(): void {
   abortController?.abort();
-}
-
-// ─── Provider factory ─────────────────────────────────────────────────────────
-
-function instantiateProvider(
-  providerId: string | undefined,
-  settings: ProviderSettings
-): ChatProvider | null {
-  switch (providerId) {
-    case "lmstudio":
-      return new LMStudioProvider(settings.lmstudio.baseUrl);
-    case "openrouter":
-      if (!settings.openrouter.apiKey) return null;
-      return new OpenRouterProvider(settings.openrouter.apiKey);
-    case "ollama":
-    default:
-      return new OllamaProvider(settings.ollama.baseUrl);
-  }
 }
 
 // ─── Core Memory fetcher ──────────────────────────────────────────────────────
@@ -133,7 +113,7 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
   const character  = store.characters.find((c) => c.id === speakerCharId);
   const providerId = chat.providerId ?? "ollama";
   const modelId    = chat.modelId    ?? "llama3.2:latest";
-  const provider   = instantiateProvider(providerId, store.providerSettings);
+  const provider   = createChatProvider(providerId, store.providerSettings);
 
   if (!provider) {
     store.addMessage(chatId, {
