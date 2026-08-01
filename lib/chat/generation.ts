@@ -133,6 +133,10 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
   let assistantMsgId: string | null = null;
   let accumulated = "";
   let failed = false;
+  /** Did the model emit anything? Distinct from `accumulated` being non-empty,
+   *  which a prefill alone would satisfy — saving a bare prefill as a reply
+   *  would also schedule extraction on words the model never wrote. */
+  let produced = false;
 
   try {
     // ── Fetch Core Memory (Drawer 1) + Drawer 2 known facts ────────────────
@@ -203,6 +207,15 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
           ? { role: "assistant" as MessageRole, content: m.content }
           : { role: "user" as MessageRole, content: `${speakerLabel(m)}: ${m.content}` };
       });
+    // ── Prefill ─────────────────────────────────────────────────────────────
+    // A trailing assistant turn is how every backend here expresses "continue
+    // from this" — the reply comes back as the continuation, not a fresh turn.
+    // It goes in BEFORE the fit so it counts against the budget, and the fit's
+    // "newest is always kept" rule then protects it from being trimmed.
+    const prefill = resolved.prefill;
+    if (prefill) fullHistory.push({ role: "assistant", content: prefill });
+    accumulated = prefill;
+
     const fit = fitHistoryToBudget(systemPrompt, fullHistory, modelId, undefined, resolved.params.contextSize);
     if (fit.dropped > 0) {
       console.info(`[chat] context window: dropped ${fit.dropped} oldest message(s) to fit`);
@@ -214,10 +227,12 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
     ];
 
     // ── Create placeholder assistant message + stream into it ───────────────
+    // Seeded with the prefill so the bubble reads correctly from the first
+    // frame — the model continues it rather than repeating it.
     assistantMsgId = store.addMessage(chatId, {
       chatId,
       role:        "assistant",
-      content:     "",
+      content:     prefill,
       characterId: character?.id,
     });
     // Provenance: record exactly which memory was injected into this reply's
@@ -232,6 +247,7 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
 
     try {
       for await (const token of provider.streamChat(history, modelId, resolved.params, controller.signal)) {
+        produced = true;
         accumulated += token;
         store.updateMessageContent(chatId, assistantMsgId, accumulated);
       }
@@ -250,13 +266,20 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
       }
     }
 
-    if (!failed && accumulated.trim()) {
-      // Include the finished reply in the context meter
-      store.setChatContext(chatId, fit.usedTokens + estimateTokens(accumulated) + 4, fit.contextMax);
+    if (!failed && produced) {
+      // Only the generated part is new: fit.usedTokens already counted the
+      // prefill, which was part of the history sent.
+      store.setChatContext(
+        chatId,
+        fit.usedTokens + estimateTokens(accumulated.slice(prefill.length)) + 4,
+        fit.contextMax
+      );
       // Extraction waits until the exchange settles — see schedulePending.
       schedulePendingExtraction(chatId, speakerCharId, assistantMsgId);
     } else if (!failed && assistantMsgId) {
-      // Stop pressed before the first token — drop the empty bubble
+      // Stop pressed before the first token — drop the bubble. Checking
+      // `produced` rather than the text means a bubble holding only the
+      // prefill goes too, instead of being saved as if the model wrote it.
       store.removeMessage(chatId, assistantMsgId);
     }
   } finally {
