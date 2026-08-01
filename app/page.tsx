@@ -3,6 +3,7 @@
 import { useFableStore } from "@/lib/store";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { ChatArea } from "@/components/chat/ChatArea";
+import { ChatsView } from "@/components/sections/ChatsView";
 import { InspectorPanel } from "@/components/inspector/InspectorPanel";
 import { SettingsView } from "@/components/sections/SettingsView";
 import { CharactersView } from "@/components/sections/CharactersView";
@@ -20,14 +21,15 @@ import { DropImport } from "@/components/DropImport";
 import { useHydrated } from "@/lib/hooks/useHydrated";
 
 export default function Home() {
-  const { activeSection } = useFableStore();
+  const { activeSection, activeChatId } = useFableStore();
   // The persisted store rehydrates from localStorage before React's first
   // client render, so any returning user's state differs from the SSR HTML
   // (which only knows the seeds) — a guaranteed hydration mismatch. This is
   // a local-first app; skip SSR content entirely and render post-mount.
   const hydrated = useHydrated();
 
-  const showInspector = activeSection === "chats";
+  // No open chat means we're browsing the list, which has nothing to inspect
+  const showInspector = activeSection === "chats" && !!activeChatId;
 
   if (!hydrated) return null;
 
@@ -36,7 +38,7 @@ export default function Home() {
       <Sidebar />
 
       <main className="flex flex-1 min-w-0 overflow-hidden">
-        {activeSection === "chats" && <ChatArea />}
+        {activeSection === "chats" && (activeChatId ? <ChatArea /> : <ChatsView />)}
         {activeSection === "characters" && <CharactersView />}
         {activeSection === "settings" && <SettingsView />}
         {activeSection === "groups" && <GroupsView />}

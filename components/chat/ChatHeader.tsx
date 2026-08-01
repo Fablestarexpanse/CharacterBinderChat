@@ -19,6 +19,7 @@ import {
   Trash2,
   Loader2,
   X,
+  ChevronLeft,
 } from "lucide-react";
 
 // ─── Fallback static list (shown before dynamic load or when offline) ─────────
@@ -52,6 +53,7 @@ export function ChatHeader() {
     customModels, addCustomModel, removeCustomModel,
     updateChatSettings, toggleMemberPresence,
     presets, defaultPresetId, setChatPreset, resetChatOverrides, setActiveSection,
+    setActiveChatId,
   } = useFableStore();
 
   const defaultPreset = presets.find((p) => p.id === defaultPresetId);
@@ -197,6 +199,15 @@ export function ChatHeader() {
 
   return (
     <div className="flex items-center gap-3 px-4 h-14 border-b border-[var(--border)] bg-white flex-shrink-0">
+      {/* Back to the chat list — clearing the active chat is what shows it */}
+      <button
+        onClick={() => setActiveChatId(null)}
+        title="All chats"
+        className="flex-shrink-0 rounded-lg p-1 text-[var(--muted-fg)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+
       {/* Character info / group members with presence toggles */}
       <div className="flex items-center gap-2.5 flex-1 min-w-0">
         {(chat.memberIds?.length ?? 0) >= 2 ? (

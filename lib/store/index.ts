@@ -500,9 +500,12 @@ export const useFableStore = create<FableStore>()(
           presets: presets ?? s.presets,
           defaultPresetId: defaultPresetId !== undefined ? defaultPresetId : s.defaultPresetId,
           globalInstructions: globalInstructions ?? s.globalInstructions,
-          activeChatId: chats.some((c) => c.id === s.activeChatId)
+          // null means "show the chat list". Only keep an active chat if it
+          // still exists; don't invent one, or the app would always open into
+          // an arbitrary conversation instead of letting you pick.
+          activeChatId: s.activeChatId && chats.some((c) => c.id === s.activeChatId)
             ? s.activeChatId
-            : chats[0]?.id ?? null,
+            : null,
           activePersonaId: personas.some((p) => p.id === s.activePersonaId)
             ? s.activePersonaId
             : personas[0]?.id ?? null,

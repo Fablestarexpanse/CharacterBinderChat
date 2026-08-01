@@ -41,7 +41,7 @@ const NAV_ITEMS: { id: SidebarSection; label: string; icon: React.ElementType }[
 ];
 
 export function Sidebar() {
-  const { activeSection, setActiveSection, chats, characters, activeChatId, setChatBuilderOpen } =
+  const { activeSection, setActiveSection, setActiveChatId, chats, characters, activeChatId, setChatBuilderOpen } =
     useFableStore();
 
   // All chats, newest first. This list is the only way to open a chat, so it
@@ -86,7 +86,12 @@ export function Sidebar() {
             icon={item.icon}
             label={item.label}
             active={activeSection === item.id}
-            onClick={() => setActiveSection(item.id)}
+            onClick={() => {
+              setActiveSection(item.id);
+              // "Chats" means browse them all. Jumping straight back into
+              // whichever was last open makes the list unreachable.
+              if (item.id === "chats") setActiveChatId(null);
+            }}
           />
         ))}
       </nav>
