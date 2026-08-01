@@ -1,9 +1,13 @@
 "use client";
 
 // ─── Gallery ──────────────────────────────────────────────────────────────────
-// Every render, grouped by the chat it came from. The Image Studio is the
-// working surface (settings + latest output); this is the archive: search by
-// prompt, see the settings behind a render, download it, or drop it.
+// Two levels: the albums (one per chat that produced renders), then that
+// chat's images. A single flat wall of every render stopped being navigable
+// somewhere around the second chat.
+//
+// Selection and deletion work on a *job*, not a URL: a batch render is one
+// job with several outputs, and removing "one image" of it would leave the
+// job half-real. Batch tiles say so with a +N badge.
 
 import { useState } from "react";
 import { useFableStore } from "@/lib/store";
@@ -11,26 +15,34 @@ import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { GalleryHorizontal, Download, Trash2, Search, MessageSquare } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import {
+  GalleryHorizontal, Download, Trash2, Search, MessageSquare,
+  ChevronLeft, CheckSquare, Square, ImageIcon,
+} from "lucide-react";
+import type { ImageJob } from "@/lib/types";
+
+const STUDIO_KEY = "__studio__";
 
 export function GalleryView() {
   const { imageJobs, chats, removeImageJob, setActiveSection, setActiveChatId } = useFableStore();
-  const [query, setQuery] = useState("");
-  const [viewer, setViewer] = useState<{ url: string; id: string } | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
-  const q = query.trim().toLowerCase();
-  const completed = imageJobs.filter(
-    (j) => j.status === "complete" && j.outputUrls.length > 0 && (!q || j.prompt.toLowerCase().includes(q))
-  );
+  const [openAlbum, setOpenAlbum]   = useState<string | null>(null);
+  const [query, setQuery]           = useState("");
+  const [viewer, setViewer]         = useState<{ url: string; id: string } | null>(null);
+  const [selecting, setSelecting]   = useState(false);
+  const [selected, setSelected]     = useState<Set<string>>(new Set());
+  const [confirmBulk, setConfirmBulk] = useState(false);
 
-  // Group by originating chat; renders made from the Image Studio with no chat
-  // open fall into "Studio".
-  const groups = new Map<string, { label: string; chatId?: string; jobs: typeof completed }>();
-  for (const job of completed) {
-    const key = job.chatId ?? "__studio__";
-    if (!groups.has(key)) {
-      groups.set(key, {
+  const renders = imageJobs.filter((j) => j.status === "complete" && j.outputUrls.length > 0);
+
+  // ── Albums ────────────────────────────────────────────────────────────────
+  const albums = new Map<string, { key: string; label: string; chatId?: string; jobs: ImageJob[] }>();
+  for (const job of renders) {
+    const key = job.chatId ?? STUDIO_KEY;
+    if (!albums.has(key)) {
+      albums.set(key, {
+        key,
         label: job.chatId
           ? chats.find((c) => c.id === job.chatId)?.name ?? "Deleted chat"
           : "Image Studio",
@@ -38,8 +50,18 @@ export function GalleryView() {
         jobs: [],
       });
     }
-    groups.get(key)!.jobs.push(job);
+    albums.get(key)!.jobs.push(job);
   }
+  const albumList = [...albums.values()].sort((a, b) => b.jobs.length - a.jobs.length);
+
+  const album = openAlbum ? albums.get(openAlbum) : undefined;
+
+  const leaveAlbum = () => {
+    setOpenAlbum(null);
+    setQuery("");
+    setSelecting(false);
+    setSelected(new Set());
+  };
 
   const download = async (url: string, id: string) => {
     try {
@@ -54,127 +76,276 @@ export function GalleryView() {
     }
   };
 
-  const totalImages = completed.reduce((n, j) => n + j.outputUrls.length, 0);
+  // ── Album grid ────────────────────────────────────────────────────────────
+  if (!album) {
+    return (
+      <div className="flex-1 overflow-y-auto p-6 bg-white">
+        <div className="max-w-5xl mx-auto">
+          <h1 className="text-xl font-bold text-[var(--foreground)]">Gallery</h1>
+          <p className="text-sm text-[var(--muted-fg)] mt-1 mb-6">
+            {renders.length} render{renders.length === 1 ? "" : "s"} across {albumList.length}{" "}
+            {albumList.length === 1 ? "chat" : "chats"}
+          </p>
+
+          {albumList.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-[var(--border)] p-10 text-center">
+              <GalleryHorizontal className="h-6 w-6 text-[var(--muted-fg)] mx-auto mb-2" />
+              <div className="text-sm text-[var(--muted-fg)]">
+                No images yet — generate one from a chat or the Image Studio.
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
+              {albumList.map((a) => {
+                const cover = a.jobs[0]?.outputUrls[0];
+                const count = a.jobs.reduce((n, j) => n + j.outputUrls.length, 0);
+                return (
+                  <button
+                    key={a.key}
+                    onClick={() => setOpenAlbum(a.key)}
+                    className="group text-left rounded-xl border border-[var(--border)] overflow-hidden hover:border-[var(--purple)] transition-colors cursor-pointer"
+                  >
+                    <div className="relative aspect-[4/3] bg-[var(--muted)]">
+                      {cover ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- local ComfyUI output
+                        <img src={cover} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <ImageIcon className="h-6 w-6 text-[var(--muted-fg)]" />
+                        </div>
+                      )}
+                      <div className="absolute bottom-2 right-2">
+                        <Badge variant="default" className="bg-white/90">
+                          {count} image{count === 1 ? "" : "s"}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="p-3">
+                      <div className="text-sm font-medium text-[var(--foreground)] truncate group-hover:text-[var(--purple-fg)] transition-colors">
+                        {a.label}
+                      </div>
+                      <div className="text-[11px] text-[var(--muted-fg)] mt-0.5">
+                        {a.chatId ? "chat" : "studio renders"}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Inside an album ───────────────────────────────────────────────────────
+  const q = query.trim().toLowerCase();
+  const visible = album.jobs.filter((j) => !q || j.prompt.toLowerCase().includes(q));
+  const allSelected = visible.length > 0 && visible.every((j) => selected.has(j.id));
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const deleteSelected = () => {
+    selected.forEach((id) => removeImageJob(id));
+    setSelected(new Set());
+    setSelecting(false);
+    setConfirmBulk(false);
+    // Nothing left in this album — the album itself is gone too
+    if (album.jobs.every((j) => selected.has(j.id))) setOpenAlbum(null);
+  };
 
   return (
     <div className="flex-1 overflow-y-auto p-6 bg-white">
       <div className="max-w-5xl mx-auto">
-        <div className="flex items-start justify-between gap-4 mb-6">
+        <button
+          onClick={leaveAlbum}
+          className="flex items-center gap-1 text-xs text-[var(--muted-fg)] hover:text-[var(--foreground)] transition-colors mb-3 cursor-pointer"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+          All albums
+        </button>
+
+        <div className="flex items-start justify-between gap-4 mb-4 flex-wrap">
           <div>
-            <h1 className="text-xl font-bold text-[var(--foreground)]">Gallery</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold text-[var(--foreground)]">{album.label}</h1>
+              {album.chatId && chats.some((c) => c.id === album.chatId) && (
+                <button
+                  onClick={() => { setActiveChatId(album.chatId!); setActiveSection("chats"); }}
+                  className="text-[11px] text-[var(--purple-fg)] hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <MessageSquare className="h-3 w-3" />
+                  open chat
+                </button>
+              )}
+            </div>
             <p className="text-sm text-[var(--muted-fg)] mt-1">
-              {totalImages} image{totalImages === 1 ? "" : "s"} across {groups.size} source
-              {groups.size === 1 ? "" : "s"}
+              {visible.length} render{visible.length === 1 ? "" : "s"}
+              {q && ` matching “${query}”`}
             </p>
           </div>
-          <div className="relative w-64 flex-shrink-0">
-            <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted-fg)] pointer-events-none" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search prompts…"
-              className="pl-8 h-9 text-xs"
-            />
+
+          <div className="flex items-center gap-2">
+            <div className="relative w-52">
+              <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted-fg)] pointer-events-none" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search prompts…"
+                className="pl-8 h-9 text-xs"
+              />
+            </div>
+            {selecting ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setSelected(allSelected ? new Set() : new Set(visible.map((j) => j.id)))
+                  }
+                >
+                  {allSelected ? "Clear" : "Select all"}
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                  disabled={selected.size === 0}
+                  onClick={() => setConfirmBulk(true)}
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                  Delete {selected.size || ""}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setSelecting(false); setSelected(new Set()); }}
+                >
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => setSelecting(true)}>
+                <CheckSquare className="h-3.5 w-3.5 mr-1.5" />
+                Select
+              </Button>
+            )}
           </div>
         </div>
 
-        {completed.length === 0 && (
-          <div className="rounded-xl border border-dashed border-[var(--border)] p-10 text-center">
-            <GalleryHorizontal className="h-6 w-6 text-[var(--muted-fg)] mx-auto mb-2" />
-            <div className="text-sm text-[var(--muted-fg)]">
-              {q ? `No renders match "${query}".` : "No images yet — generate one from a chat or the Image Studio."}
-            </div>
+        {visible.length === 0 && (
+          <div className="rounded-xl border border-dashed border-[var(--border)] p-10 text-center text-sm text-[var(--muted-fg)]">
+            No renders match “{query}”.
           </div>
         )}
 
-        <div className="space-y-8">
-          {[...groups.values()].map((group) => (
-            <div key={group.label + (group.chatId ?? "")}>
-              <div className="flex items-center gap-2 mb-3">
-                <h2 className="text-sm font-semibold text-[var(--foreground)]">{group.label}</h2>
-                <Badge variant="default">
-                  {group.jobs.reduce((n, j) => n + j.outputUrls.length, 0)}
-                </Badge>
-                {group.chatId && chats.some((c) => c.id === group.chatId) && (
-                  <button
-                    onClick={() => { setActiveChatId(group.chatId!); setActiveSection("chats"); }}
-                    className="text-[11px] text-[var(--purple-fg)] hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <MessageSquare className="h-3 w-3" />
-                    open chat
-                  </button>
-                )}
-              </div>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+          {visible.map((job) => {
+            const url    = job.outputUrls[0];
+            const extra  = job.outputUrls.length - 1;
+            const isSel  = selected.has(job.id);
+            return (
+              <div
+                key={job.id}
+                className={`group rounded-xl border overflow-hidden transition-colors ${
+                  isSel ? "border-[var(--purple)] ring-2 ring-[var(--purple)]" : "border-[var(--border)] hover:border-[var(--purple)]"
+                }`}
+              >
+                <div className="relative aspect-square bg-[var(--muted)]">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- local ComfyUI output */}
+                  <img
+                    src={url}
+                    alt={job.prompt.slice(0, 60)}
+                    className="w-full h-full object-cover cursor-pointer"
+                    onClick={() => (selecting ? toggle(job.id) : setViewer({ url, id: job.id }))}
+                    title={selecting ? "Select" : "View full size"}
+                  />
 
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
-                {group.jobs.flatMap((job) =>
-                  job.outputUrls.map((url, i) => (
-                    <div
-                      key={`${job.id}-${i}`}
-                      className="group rounded-xl border border-[var(--border)] overflow-hidden hover:border-[var(--purple)] transition-colors"
+                  {selecting && (
+                    <button
+                      onClick={() => toggle(job.id)}
+                      className="absolute top-2 left-2 rounded bg-white/90 p-1 cursor-pointer"
+                      title={isSel ? "Deselect" : "Select"}
                     >
-                      <div className="relative aspect-square bg-[var(--muted)]">
-                        {/* eslint-disable-next-line @next/next/no-img-element -- local ComfyUI output */}
-                        <img
-                          src={url}
-                          alt={job.prompt.slice(0, 60)}
-                          className="w-full h-full object-cover cursor-pointer"
-                          onClick={() => setViewer({ url, id: job.id })}
-                          title="View full size"
-                        />
-                        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-7 w-7 bg-white/90"
-                            title="Download"
-                            onClick={() => download(url, job.id)}
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                          </Button>
-                          {i === 0 && (
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className={`h-7 w-7 bg-white/90 ${confirmDelete === job.id ? "text-red-600 border-red-300" : ""}`}
-                              title={confirmDelete === job.id
-                                ? "Click again to remove from the gallery"
-                                : "Remove from gallery (the file stays in ComfyUI's output folder)"}
-                              onClick={() => {
-                                if (confirmDelete === job.id) {
-                                  removeImageJob(job.id);
-                                  setConfirmDelete(null);
-                                } else {
-                                  setConfirmDelete(job.id);
-                                  setTimeout(() => setConfirmDelete((v) => (v === job.id ? null : v)), 3000);
-                                }
-                              }}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                      <div className="p-2.5 space-y-1.5">
-                        <p className="text-[11px] text-[var(--foreground)] line-clamp-2 leading-snug">
-                          {job.prompt}
-                        </p>
-                        <div className="flex items-center gap-1 flex-wrap">
-                          <Badge variant="default">{job.settings.workflow}</Badge>
-                          <Badge variant="default">{job.settings.width}×{job.settings.height}</Badge>
-                          {job.settings.loras.length > 0 && (
-                            <Badge variant="purple">{job.settings.loras.length} LoRA</Badge>
-                          )}
-                        </div>
-                      </div>
+                      {isSel
+                        ? <CheckSquare className="h-4 w-4 text-[var(--purple-fg)]" />
+                        : <Square className="h-4 w-4 text-[var(--muted-fg)]" />}
+                    </button>
+                  )}
+
+                  {extra > 0 && (
+                    <Badge variant="default" className="absolute bottom-2 left-2 bg-white/90">
+                      +{extra}
+                    </Badge>
+                  )}
+
+                  {!selecting && (
+                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-7 w-7 bg-white/90"
+                        title="Download"
+                        onClick={() => download(url, job.id)}
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-7 w-7 bg-white/90"
+                        title="Select this render to delete"
+                        onClick={() => { setSelecting(true); setSelected(new Set([job.id])); }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
-                  ))
-                )}
+                  )}
+                </div>
+                <div className="p-2.5 space-y-1.5">
+                  <p className="text-[11px] text-[var(--foreground)] line-clamp-2 leading-snug">
+                    {job.prompt}
+                  </p>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <Badge variant="default">{job.settings.workflow}</Badge>
+                    <Badge variant="default">{job.settings.width}×{job.settings.height}</Badge>
+                    {job.settings.loras.length > 0 && (
+                      <Badge variant="purple">{job.settings.loras.length} LoRA</Badge>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
+
+      {/* Bulk delete confirmation */}
+      <Dialog open={confirmBulk} onOpenChange={(o) => !o && setConfirmBulk(false)}>
+        <DialogContent className="max-w-sm p-5" aria-describedby={undefined}>
+          <DialogTitle>
+            Remove {selected.size} render{selected.size === 1 ? "" : "s"}?
+          </DialogTitle>
+          <p className="text-xs text-[var(--muted-fg)] mt-2 leading-relaxed">
+            They disappear from the gallery and from any chat card that shows them. The
+            PNG files stay in ComfyUI&apos;s output folder — this only clears FableChat&apos;s record.
+          </p>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" size="sm" onClick={() => setConfirmBulk(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white" onClick={deleteSelected}>
+              <Trash2 className="h-3 w-3 mr-1.5" />
+              Remove
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <ImageLightbox
         url={viewer?.url ?? null}
