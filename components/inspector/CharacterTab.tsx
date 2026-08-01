@@ -7,7 +7,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Section } from "./Section";
-import { ExternalLink, Edit2, Heart, Shield, Flame, Link2, CloudSun, UserRound } from "lucide-react";
+import { ExternalLink, Edit2, Heart, Shield, Flame, Link2, CloudSun, UserRound, ChevronDown, Check } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -70,10 +70,11 @@ function StatBar({ name, value }: { name: string; value: number }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CharacterTab() {
-  const { activeChatId, extractionVersion, openCharacterEditor, setActiveSection, personas, activePersonaId } =
+  const { activeChatId, extractionVersion, openCharacterEditor, setActiveSection, personas, activePersonaId, setActivePersona } =
     useFableStore();
   const { character } = useInspectedCharacter();
   const persona = personas.find((p) => p.id === activePersonaId);
+  const [personaPickerOpen, setPersonaPickerOpen] = useState(false);
 
   const [relationships, setRelationships] = useState<RelationshipGroup[]>([]);
   const [stats, setStats]                 = useState<StatRow[]>([]);
@@ -134,28 +135,60 @@ export function CharacterTab() {
         </div>
       </div>
 
-      {/* ...and you (the active persona) */}
-      <div className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-white p-3">
-        {persona
-          ? <Avatar name={persona.name} src={persona.avatar} size="md" />
-          : <div className="h-10 w-10 rounded-full bg-[var(--muted)] flex items-center justify-center flex-shrink-0">
-              <UserRound className="h-5 w-5 text-[var(--muted-fg)]" />
-            </div>}
-        <div className="flex-1 min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-fg)]">You are</div>
-          <div className="text-sm font-semibold text-[var(--foreground)] truncate">
-            {persona?.name ?? "No persona selected"}
+      {/* ...and you (the active persona) — click to switch to any saved one */}
+      <div className="rounded-lg border border-[var(--border)] bg-white overflow-hidden">
+        <button
+          onClick={() => setPersonaPickerOpen((v) => !v)}
+          title="Switch persona"
+          className="w-full flex items-center gap-3 p-3 text-left hover:bg-[var(--muted)] transition-colors cursor-pointer"
+        >
+          {persona
+            ? <Avatar name={persona.name} src={persona.avatar} size="md" />
+            : <div className="h-10 w-10 rounded-full bg-[var(--muted)] flex items-center justify-center flex-shrink-0">
+                <UserRound className="h-5 w-5 text-[var(--muted-fg)]" />
+              </div>}
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-fg)]">You are</div>
+            <div className="text-sm font-semibold text-[var(--foreground)] truncate">
+              {persona?.name ?? "No persona selected"}
+            </div>
+            {persona?.description && (
+              <p className="text-[11px] text-[var(--muted-fg)] leading-snug line-clamp-2 mt-0.5">
+                {persona.description}
+              </p>
+            )}
           </div>
-          {persona?.description && (
-            <p className="text-[11px] text-[var(--muted-fg)] leading-snug line-clamp-2 mt-0.5">
-              {persona.description}
-            </p>
-          )}
-        </div>
-        {!persona && (
-          <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={() => setActiveSection("characters")}>
-            Pick
-          </Button>
+          <ChevronDown
+            className={`h-3.5 w-3.5 text-[var(--muted-fg)] flex-shrink-0 transition-transform ${personaPickerOpen ? "rotate-180" : ""}`}
+          />
+        </button>
+        {personaPickerOpen && (
+          <div className="border-t border-[var(--border)] p-1.5 space-y-0.5">
+            {personas.map((p) => {
+              const active = p.id === persona?.id;
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => { setActivePersona(p.id); setPersonaPickerOpen(false); }}
+                  className={`w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors cursor-pointer ${
+                    active
+                      ? "bg-[var(--purple-light)] text-[var(--purple-fg)]"
+                      : "hover:bg-[var(--muted)] text-[var(--foreground)]"
+                  }`}
+                >
+                  <Avatar name={p.name} src={p.avatar} size="xs" />
+                  <span className="flex-1 min-w-0 text-xs font-medium truncate">{p.name}</span>
+                  {active && <Check className="h-3 w-3 flex-shrink-0" />}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setActiveSection("characters")}
+              className="w-full rounded-md px-2 py-1.5 text-left text-xs text-[var(--muted-fg)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
+            >
+              + Manage personas…
+            </button>
+          </div>
         )}
       </div>
 
