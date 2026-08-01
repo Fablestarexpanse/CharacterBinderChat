@@ -18,14 +18,14 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   GalleryHorizontal, Download, Trash2, Search, MessageSquare,
-  ChevronLeft, CheckSquare, Square, ImageIcon,
+  ChevronLeft, CheckSquare, Square, ImageIcon, AlertTriangle,
 } from "lucide-react";
 import type { ImageJob } from "@/lib/types";
 
 const STUDIO_KEY = "__studio__";
 
 export function GalleryView() {
-  const { imageJobs, chats, removeImageJob, setActiveSection, setActiveChatId } = useFableStore();
+  const { imageJobs, chats, deleteRenders, setActiveSection, setActiveChatId } = useFableStore();
 
   const [openAlbum, setOpenAlbum]   = useState<string | null>(null);
   const [query, setQuery]           = useState("");
@@ -33,6 +33,7 @@ export function GalleryView() {
   const [selecting, setSelecting]   = useState(false);
   const [selected, setSelected]     = useState<Set<string>>(new Set());
   const [confirmBulk, setConfirmBulk] = useState(false);
+  const [confirmAlbum, setConfirmAlbum] = useState(false);
 
   const renders = imageJobs.filter((j) => j.status === "complete" && j.outputUrls.length > 0);
 
@@ -152,13 +153,22 @@ export function GalleryView() {
     });
 
   const deleteSelected = () => {
-    selected.forEach((id) => removeImageJob(id));
+    const emptiesAlbum = album.jobs.every((j) => selected.has(j.id));
+    deleteRenders([...selected]);
     setSelected(new Set());
     setSelecting(false);
     setConfirmBulk(false);
-    // Nothing left in this album — the album itself is gone too
-    if (album.jobs.every((j) => selected.has(j.id))) setOpenAlbum(null);
+    if (emptiesAlbum) setOpenAlbum(null);
   };
+
+  const deleteAlbum = () => {
+    deleteRenders(album.jobs.map((j) => j.id));
+    setConfirmAlbum(false);
+    leaveAlbum();
+  };
+
+  const albumImageCount = album.jobs.reduce((n, j) => n + j.outputUrls.length, 0);
+  const chatStillExists = !!album.chatId && chats.some((c) => c.id === album.chatId);
 
   return (
     <div className="flex-1 overflow-y-auto p-6 bg-white">
@@ -230,10 +240,22 @@ export function GalleryView() {
                 </Button>
               </>
             ) : (
-              <Button variant="outline" size="sm" onClick={() => setSelecting(true)}>
-                <CheckSquare className="h-3.5 w-3.5 mr-1.5" />
-                Select
-              </Button>
+              <>
+                <Button variant="outline" size="sm" onClick={() => setSelecting(true)}>
+                  <CheckSquare className="h-3.5 w-3.5 mr-1.5" />
+                  Select
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-red-600 border-red-200 hover:bg-red-50"
+                  onClick={() => setConfirmAlbum(true)}
+                  title="Remove every render in this album"
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                  Delete album
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -312,9 +334,15 @@ export function GalleryView() {
                     {job.prompt}
                   </p>
                   <div className="flex items-center gap-1 flex-wrap">
-                    <Badge variant="default">{job.settings.workflow}</Badge>
-                    <Badge variant="default">{job.settings.width}×{job.settings.height}</Badge>
-                    {job.settings.loras.length > 0 && (
+                    {/* A job persisted by an older build can be missing
+                        settings, or fields added since — never assume shape */}
+                    {job.settings?.workflow && (
+                      <Badge variant="default">{job.settings.workflow}</Badge>
+                    )}
+                    {job.settings?.width && job.settings?.height && (
+                      <Badge variant="default">{job.settings.width}×{job.settings.height}</Badge>
+                    )}
+                    {(job.settings?.loras?.length ?? 0) > 0 && (
                       <Badge variant="purple">{job.settings.loras.length} LoRA</Badge>
                     )}
                   </div>
@@ -332,8 +360,9 @@ export function GalleryView() {
             Remove {selected.size} render{selected.size === 1 ? "" : "s"}?
           </DialogTitle>
           <p className="text-xs text-[var(--muted-fg)] mt-2 leading-relaxed">
-            They disappear from the gallery and from any chat card that shows them. The
-            PNG files stay in ComfyUI&apos;s output folder — this only clears FableChat&apos;s record.
+            They leave the gallery, and their image cards are removed from the chat.
+            The conversation itself is untouched, and the PNG files stay in
+            ComfyUI&apos;s output folder — this only clears FableChat&apos;s record.
           </p>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" size="sm" onClick={() => setConfirmBulk(false)}>
@@ -342,6 +371,54 @@ export function GalleryView() {
             <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white" onClick={deleteSelected}>
               <Trash2 className="h-3 w-3 mr-1.5" />
               Remove
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Whole-album delete — the warning has to make it unmistakable that the
+          chat survives, since "delete album" sits one word away from it */}
+      <Dialog open={confirmAlbum} onOpenChange={(o) => !o && setConfirmAlbum(false)}>
+        <DialogContent className="max-w-md p-5" aria-describedby={undefined}>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-600" />
+            Delete all {albumImageCount} image{albumImageCount === 1 ? "" : "s"} in “{album.label}”?
+          </DialogTitle>
+
+          <div className="mt-3 space-y-2">
+            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-2.5">
+              <Trash2 className="h-3.5 w-3.5 text-red-600 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-red-700 leading-relaxed">
+                Every render in this album is removed, along with the image cards showing
+                them in the chat. This can&apos;t be undone.
+              </p>
+            </div>
+            <div className="flex items-start gap-2 rounded-lg border border-[var(--border)] bg-[var(--muted)] p-2.5">
+              <MessageSquare className="h-3.5 w-3.5 text-[var(--muted-fg)] mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-[var(--muted-fg)] leading-relaxed">
+                {chatStillExists ? (
+                  <>
+                    The chat <span className="font-medium text-[var(--foreground)]">{album.label}</span> is{" "}
+                    <span className="font-medium text-[var(--foreground)]">not</span> deleted — every message,
+                    and everything the character remembers, stays exactly as it is.
+                  </>
+                ) : album.chatId ? (
+                  <>This chat was already deleted; only its leftover renders remain.</>
+                ) : (
+                  <>These were made in the Image Studio and belong to no chat.</>
+                )}{" "}
+                The PNG files stay in ComfyUI&apos;s output folder.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" size="sm" onClick={() => setConfirmAlbum(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white" onClick={deleteAlbum}>
+              <Trash2 className="h-3 w-3 mr-1.5" />
+              Delete {albumImageCount} image{albumImageCount === 1 ? "" : "s"}
             </Button>
           </div>
         </DialogContent>

@@ -329,12 +329,12 @@ function ImageCard({ message }: { message: Message }) {
   // Failed → exact retry with the same settings. Complete → re-roll with a
   // fresh random seed for a new take on the same prompt.
   const handleRetry = () => {
-    if (!job) return;
+    if (!job?.settings) return;
     runWithSettings(job.status === "complete" ? { ...job.settings, seed: -1 } : job.settings);
   };
 
   const handleEditedRun = () => {
-    if (!job) return;
+    if (!job?.settings) return;
     const prompt = promptDraft.trim();
     if (!prompt) return;
     runWithSettings({ ...job.settings, prompt, seed: -1 });
@@ -459,13 +459,14 @@ function ImageCard({ message }: { message: Message }) {
                   </div>
                 </div>
               ) : !job ? (
-                // Jobs live in localStorage; the message is durable. After a
-                // cache clear the job is gone — show a terminal state, not a
-                // spinner that never resolves.
+                // Jobs live in localStorage; the message is durable. Deleting
+                // from the gallery removes the card too, so reaching this state
+                // means a cache clear — show a terminal state, not a spinner
+                // that never resolves.
                 <div className="flex flex-col items-center gap-2 px-4 text-center">
                   <ImageIcon className="h-6 w-6 text-[var(--muted-fg)]" />
                   <div className="text-xs text-[var(--muted-fg)]">
-                    Image no longer available — its job data was cleared with the browser cache.
+                    Image no longer available — its render data was cleared with the browser cache.
                   </div>
                 </div>
               ) : (
@@ -521,11 +522,11 @@ function ImageCard({ message }: { message: Message }) {
               )}
               <div className="flex items-center gap-2 mt-2">
                 <span className="text-[10px] text-[var(--muted-fg)]">
-                  {job?.settings.workflow ?? "flux-cinematic"}
+                  {job?.settings?.workflow ?? "unknown workflow"}
                 </span>
                 <span className="text-[10px] text-[var(--muted-fg)]">·</span>
                 <span className="text-[10px] text-[var(--muted-fg)]">
-                  {job?.settings.width}×{job?.settings.height}
+                  {job?.settings?.width}×{job?.settings?.height}
                 </span>
                 <span
                   className={`ml-auto text-[10px] font-medium ${
