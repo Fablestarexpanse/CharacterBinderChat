@@ -97,25 +97,30 @@ export function MemoryTab() {
         )}
       </div>
 
-      {/* Summary shortcut */}
-      <div>
-        <div className="text-[10px] font-semibold text-[var(--muted-fg)] uppercase tracking-wider mb-2">
-          Summary
-        </div>
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)] p-3">
-          <p className="text-[11px] text-[var(--muted-fg)] italic">
-            Switch to the Summary tab for a full character overview.
-          </p>
-          <Button
-            variant="subtle"
-            size="sm"
-            className="mt-2 w-full text-xs"
-            onClick={() => useFableStore.getState().setInspectorTab("summary")}
-          >
-            Open Summary
-          </Button>
-        </div>
-      </div>
+      {/* Export the whole graph for this chat */}
+      {chat && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full text-xs"
+          onClick={() => {
+            fetch(`/api/drawer/entities?chat=${encodeURIComponent(chat.id)}`)
+              .then((r) => r.json())
+              .then((d) => {
+                const blob = new Blob([JSON.stringify(d, null, 2)], { type: "application/json" });
+                const url  = URL.createObjectURL(blob);
+                const a    = document.createElement("a");
+                a.href     = url;
+                a.download = "fablestore-export.json";
+                a.click();
+                URL.revokeObjectURL(url);
+              })
+              .catch(console.error);
+          }}
+        >
+          Export Graph JSON
+        </Button>
+      )}
     </div>
   );
 }

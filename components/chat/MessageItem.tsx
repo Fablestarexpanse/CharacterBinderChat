@@ -46,7 +46,8 @@ function renderContent(content: string) {
 }
 
 export function MessageItem({ message }: MessageItemProps) {
-  const { characters, chats, isGenerating, rateMessage, updateMessageContent } = useFableStore();
+  const { characters, chats, personas, activePersonaId, isGenerating, rateMessage, updateMessageContent } =
+    useFableStore();
   const [copied, setCopied] = useState(false);
   const [traceOpen, setTraceOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -55,8 +56,10 @@ export function MessageItem({ message }: MessageItemProps) {
 
   const isUser = message.role === "user";
   const character = characters.find((c) => c.id === message.characterId);
-  const displayName = isUser ? "You" : character?.name ?? "Assistant";
-  const avatarSrc = isUser ? undefined : character?.avatar;
+  // The user speaks AS their persona — show its name and portrait, not "You"
+  const persona = isUser ? personas.find((p) => p.id === activePersonaId) : undefined;
+  const displayName = isUser ? persona?.name ?? "You" : character?.name ?? "Assistant";
+  const avatarSrc = isUser ? persona?.avatar : character?.avatar;
 
   // Regenerate only applies to the newest message in the chat
   const chat = chats.find((c) => c.id === message.chatId);

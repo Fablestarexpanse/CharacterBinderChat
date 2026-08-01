@@ -9,7 +9,7 @@ import { OllamaProvider } from "@/lib/providers/ollama";
 import { LMStudioProvider } from "@/lib/providers/lmstudio";
 import { OpenRouterProvider } from "@/lib/providers/openrouter";
 import { buildSystemPrompt, estimateTokens } from "./promptBuilder";
-import { matchLoreEntries } from "./lorebook";
+import { matchLoreEntries, booksForChat } from "./lorebook";
 import { fitHistoryToBudget } from "./tokenBudget";
 import type { Chat, Character, ChatProvider, MessageRole, ProviderSettings } from "@/lib/types";
 import type { CoreMemory } from "@/lib/db/models";
@@ -167,7 +167,7 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
     // than fact retrieval so lore doesn't flicker out one exchange after its
     // subject was raised.
     const loreScanText = chat.messages.slice(-6).map((m) => m.content).join("\n");
-    const lore = matchLoreEntries(store.lorebooks, loreScanText);
+    const lore = matchLoreEntries(booksForChat(store.lorebooks, chat), loreScanText);
     let systemPrompt = buildSystemPrompt(character, coreMemory, knownFacts, persona, episodes, insights, lore, bits);
 
     // ── Group scene block ───────────────────────────────────────────────────

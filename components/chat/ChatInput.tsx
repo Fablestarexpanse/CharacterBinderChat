@@ -19,12 +19,14 @@ import {
 export function ChatInput() {
   const {
     activeChatId, chats, characters,
+    personas, activePersonaId, setActivePersona,
     inputValue, setInputValue,
     addMessage,
     isGenerating,
     setActiveSection,
   } = useFableStore();
 
+  const activePersona = personas.find((p) => p.id === activePersonaId);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Group chats: who replies next. null = auto (name-mention, else round-robin)
@@ -56,7 +58,7 @@ export function ChatInput() {
   // ── Send handler ──────────────────────────────────────────────────────────
 
   const handleSend = async () => {
-    if (!inputValue.trim() || !activeChatId || isGenerating) return;
+    if (!inputValue.trim() || !activeChatId || isGenerating || !activePersona) return;
 
     const userContent = inputValue.trim();
     setInputValue("");
@@ -120,6 +122,39 @@ export function ChatInput() {
   const isImageCommand = inputValue === "/image" || inputValue.startsWith("/image ");
 
   // ── Render ────────────────────────────────────────────────────────────────
+
+  // RP needs an identity: no persona, no chatting. Offer the existing
+  // personas as one-tap chips; otherwise point at the creator.
+  if (!activePersona) {
+    return (
+      <div className="px-4 pb-4 pt-2 flex-shrink-0">
+        <div className="rounded-2xl border border-[var(--purple)] bg-[var(--purple-light)] p-4 space-y-2">
+          <div className="text-sm font-semibold text-[var(--purple-fg)]">Who are you in this story?</div>
+          <div className="text-xs text-[var(--purple-fg)] opacity-80">
+            Pick a persona before chatting — the character remembers <em>you</em>, and memory needs to know who that is.
+          </div>
+          {personas.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {personas.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setActivePersona(p.id)}
+                  className="flex items-center gap-1.5 rounded-full bg-white pl-1 pr-3 py-1 text-xs text-[var(--foreground)] border border-[var(--border)] hover:border-[var(--purple)] transition-colors cursor-pointer"
+                >
+                  <Avatar name={p.name} src={p.avatar} size="xs" />
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <Button size="sm" className="mt-1" onClick={() => setActiveSection("characters")}>
+              Create a persona
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="px-4 pb-4 pt-2 flex-shrink-0">

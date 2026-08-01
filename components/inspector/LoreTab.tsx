@@ -4,16 +4,29 @@ import { useFableStore } from "@/lib/store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { estimateTokens } from "@/lib/chat/promptBuilder";
-import { entryTriggered, LORE_TOKEN_BUDGET } from "@/lib/chat/lorebook";
-import { BookOpen, Zap, Pencil } from "lucide-react";
+import { entryTriggered, booksForChat, LORE_TOKEN_BUDGET } from "@/lib/chat/lorebook";
+import { BookOpen, Zap, Pencil, Globe, Check } from "lucide-react";
 
 export function LoreTab() {
-  const { lorebooks, chats, activeChatId, setActiveSection } = useFableStore();
+  const { lorebooks, chats, activeChatId, setActiveSection, setChatLorebooks } = useFableStore();
 
   const chat = chats.find((c) => c.id === activeChatId);
   const recentText = (chat?.messages ?? []).slice(-6).map((m) => m.content).join("\n").toLowerCase();
 
-  const allEnabled = lorebooks.flatMap((b) =>
+  // Which worlds are in play for THIS chat (undefined selection = all)
+  const activeBooks = booksForChat(lorebooks, chat);
+  const activeIds = new Set(activeBooks.map((b) => b.id));
+
+  const toggleBook = (id: string) => {
+    if (!chat) return;
+    const next = new Set(activeIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    // Selecting every book stores undefined — new books then join automatically
+    setChatLorebooks(chat.id, next.size === lorebooks.length ? undefined : [...next]);
+  };
+
+  const allEnabled = activeBooks.flatMap((b) =>
     b.entries.filter((e) => e.enabled).map((e) => ({ ...e, bookName: b.name }))
   );
   // Literally the same trigger predicate generation uses — a reimplementation
@@ -33,7 +46,7 @@ export function LoreTab() {
           <BookOpen className="h-4 w-4 text-[var(--purple-fg)]" />
           <div>
             <div className="text-sm font-medium text-[var(--foreground)]">
-              {lorebooks.length} lorebook{lorebooks.length !== 1 ? "s" : ""}
+              {activeBooks.length} of {lorebooks.length} world{lorebooks.length !== 1 ? "s" : ""} active
             </div>
             <div className="text-[10px] text-[var(--muted-fg)]">
               {allEnabled.length} enabled · {triggered.length} triggered by this scene
@@ -45,6 +58,42 @@ export function LoreTab() {
           Edit
         </Button>
       </div>
+
+      {/* Which worlds apply to this chat */}
+      {lorebooks.length > 0 && chat && (
+        <div>
+          <div className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider mb-2">
+            Worlds in this chat
+          </div>
+          <div className="space-y-1">
+            {lorebooks.map((book) => {
+              const active = activeIds.has(book.id);
+              return (
+                <button
+                  key={book.id}
+                  onClick={() => toggleBook(book.id)}
+                  className={`w-full flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-colors cursor-pointer ${
+                    active
+                      ? "border-[var(--purple)] bg-[var(--purple-light)]"
+                      : "border-[var(--border)] bg-white hover:bg-[var(--muted)]"
+                  }`}
+                >
+                  <Globe className={`h-3.5 w-3.5 flex-shrink-0 ${active ? "text-[var(--purple-fg)]" : "text-[var(--muted-fg)]"}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-xs font-medium truncate ${active ? "text-[var(--purple-fg)]" : "text-[var(--foreground)]"}`}>
+                      {book.name}
+                    </div>
+                    <div className="text-[10px] text-[var(--muted-fg)]">
+                      {book.entries.length} entr{book.entries.length !== 1 ? "ies" : "y"}
+                    </div>
+                  </div>
+                  {active && <Check className="h-3.5 w-3.5 text-[var(--purple-fg)] flex-shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Token usage of currently-triggered entries */}
       <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)] p-3">
@@ -82,6 +131,7 @@ export function LoreTab() {
                 <div className="flex items-start justify-between gap-2 mb-1">
                   <span className="text-xs font-medium text-[var(--purple-fg)]">{entry.key}</span>
                   <div className="flex items-center gap-1 flex-shrink-0">
+                    <span className="text-[10px] text-[var(--muted-fg)]">{entry.bookName}</span>
                     <Badge variant="default">
                       {estimateTokens(`${entry.key}: ${entry.value}`)}t
                     </Badge>

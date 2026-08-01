@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useFableStore, type SidebarSection } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { NavItem } from "./NavItem";
 import { SystemStatus } from "./SystemStatus";
 import { useHydrated } from "@/lib/hooks/useHydrated";
@@ -205,26 +206,44 @@ function ChatRow({
               <Pencil className="h-3 w-3" />
             </button>
             <button
-              title={confirmDelete ? "Click again to delete" : "Delete chat"}
-              onClick={() => {
-                if (confirmDelete) {
-                  deleteChat(chat.id);
-                } else {
-                  setConfirmDelete(true);
-                  setTimeout(() => setConfirmDelete(false), 3000);
-                }
-              }}
-              className={`rounded p-1 transition-colors ${
-                confirmDelete
-                  ? "text-red-500 bg-red-50 hover:bg-red-100"
-                  : "text-[var(--muted-fg)] hover:bg-[var(--border)] hover:text-red-500"
-              }`}
+              title="Delete chat"
+              onClick={() => setConfirmDelete(true)}
+              className="rounded p-1 text-[var(--muted-fg)] hover:bg-[var(--border)] hover:text-red-500 transition-colors"
             >
               <Trash2 className="h-3 w-3" />
             </button>
           </div>
         </>
       )}
+
+      {/* Deleting a chat purges its memory too — always ask first */}
+      <Dialog open={confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(false)}>
+        <DialogContent
+          className="max-w-sm p-5"
+          aria-describedby={undefined}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <DialogTitle>Delete “{chat.name}”?</DialogTitle>
+          <p className="text-xs text-[var(--muted-fg)] mt-2 leading-relaxed">
+            This permanently deletes the chat and everything the character
+            remembers from it — {chat.messages.length} message{chat.messages.length !== 1 ? "s" : ""},
+            facts, stats, and episodes. This can’t be undone.
+          </p>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" size="sm" onClick={() => setConfirmDelete(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => { setConfirmDelete(false); deleteChat(chat.id); }}
+            >
+              <Trash2 className="h-3 w-3 mr-1.5" />
+              Delete chat
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

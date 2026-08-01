@@ -6,7 +6,8 @@ import { useInspectedCharacter } from "@/lib/hooks/useInspectedCharacter";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Edit2, Heart, Shield, Flame, Link2, CloudSun } from "lucide-react";
+import { Section } from "./Section";
+import { ExternalLink, Edit2, Heart, Shield, Flame, Link2, CloudSun, UserRound } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,8 +70,10 @@ function StatBar({ name, value }: { name: string; value: number }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CharacterTab() {
-  const { activeChatId, extractionVersion, openCharacterEditor, setActiveSection } = useFableStore();
+  const { activeChatId, extractionVersion, openCharacterEditor, setActiveSection, personas, activePersonaId } =
+    useFableStore();
   const { character } = useInspectedCharacter();
+  const persona = personas.find((p) => p.id === activePersonaId);
 
   const [relationships, setRelationships] = useState<RelationshipGroup[]>([]);
   const [stats, setStats]                 = useState<StatRow[]>([]);
@@ -115,45 +118,52 @@ export function CharacterTab() {
   const playerStats = stats.filter((s) => s.value !== null) as Array<StatRow & { value: number }>;
 
   return (
-    <div className="p-4 space-y-4">
-      {/* Portrait */}
-      <div className="flex flex-col items-center gap-3">
-        <Avatar name={character.name} src={character.avatar} size="lg" />
-        <div className="text-center">
-          <div className="font-semibold text-[var(--foreground)]">{character.name}</div>
+    <div className="p-3 space-y-3">
+      {/* Who's in the scene: the character... */}
+      <div className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-white p-3">
+        <Avatar name={character.name} src={character.avatar} size="md" />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-[var(--foreground)] truncate">{character.name}</div>
+          {character.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {character.tags.slice(0, 4).map((tag) => (
+                <Badge key={tag} variant="purple">{tag}</Badge>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Tags */}
-      <div className="flex flex-wrap gap-1">
-        {character.tags.map((tag) => (
-          <Badge key={tag} variant="purple">{tag}</Badge>
-        ))}
-      </div>
-
-      {/* Description */}
-      <div>
-        <div className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider mb-1.5">
-          Description
-        </div>
-        <p className="text-xs text-[var(--foreground)] leading-relaxed">{character.description}</p>
-      </div>
-
-      {/* Personality */}
-      {character.personality && (
-        <div>
-          <div className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider mb-1.5">
-            Personality
+      {/* ...and you (the active persona) */}
+      <div className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-white p-3">
+        {persona
+          ? <Avatar name={persona.name} src={persona.avatar} size="md" />
+          : <div className="h-10 w-10 rounded-full bg-[var(--muted)] flex items-center justify-center flex-shrink-0">
+              <UserRound className="h-5 w-5 text-[var(--muted-fg)]" />
+            </div>}
+        <div className="flex-1 min-w-0">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-fg)]">You are</div>
+          <div className="text-sm font-semibold text-[var(--foreground)] truncate">
+            {persona?.name ?? "No persona selected"}
           </div>
-          <p className="text-xs text-[var(--foreground)] leading-relaxed">{character.personality}</p>
+          {persona?.description && (
+            <p className="text-[11px] text-[var(--muted-fg)] leading-snug line-clamp-2 mt-0.5">
+              {persona.description}
+            </p>
+          )}
         </div>
-      )}
+        {!persona && (
+          <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={() => setActiveSection("characters")}>
+            Pick
+          </Button>
+        )}
+      </div>
 
-      {/* Relationship stats — player → character */}
+      {/* What the memory system is tracking — the reason this tab exists */}
       {playerStats.length > 0 && (
         <div>
           <div className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider mb-2">
-            Relationship Stats
+            How {character.name} feels about you
           </div>
           <div className="rounded-lg border border-[var(--border)] bg-white p-3 space-y-2">
             {playerStats.map((s) => (
@@ -188,6 +198,25 @@ export function CharacterTab() {
           </div>
         </div>
       )}
+
+      {/* The full sheet stays a click away instead of flooding the panel */}
+      <Section title="Character sheet" defaultOpen={false}>
+        <div className="space-y-2">
+          <p className="text-[11px] text-[var(--foreground)] leading-relaxed whitespace-pre-wrap">
+            {character.description}
+          </p>
+          {character.personality && (
+            <>
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-fg)] pt-1">
+                Personality
+              </div>
+              <p className="text-[11px] text-[var(--foreground)] leading-relaxed whitespace-pre-wrap">
+                {character.personality}
+              </p>
+            </>
+          )}
+        </div>
+      </Section>
 
       {/* Actions */}
       <div className="flex gap-2">

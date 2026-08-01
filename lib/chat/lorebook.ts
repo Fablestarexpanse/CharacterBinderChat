@@ -7,10 +7,22 @@
 // appear, and never otherwise.
 
 import { estimateTokens } from "./promptBuilder";
-import type { Lorebook, LoreEntry } from "@/lib/types";
+import type { Lorebook, LoreEntry, Chat } from "@/lib/types";
 
 /** Default token budget for injected lore (matches the LoreTab meter). */
 export const LORE_TOKEN_BUDGET = 500;
+
+/**
+ * The lorebooks (worlds) active for a chat. Undefined selection = every book
+ * (legacy chats); otherwise only the chosen worlds inject — THE shared filter
+ * for generation and the Lore tab, so the meter never disagrees with the
+ * prompt.
+ */
+export function booksForChat(lorebooks: Lorebook[], chat: Pick<Chat, "lorebookIds"> | undefined): Lorebook[] {
+  const ids = chat?.lorebookIds;
+  if (ids === undefined) return lorebooks;
+  return lorebooks.filter((b) => ids.includes(b.id));
+}
 
 /** Split an entry's key field into individual keywords ("Kaspar, Kaspar Division"). */
 export function entryKeywords(entry: LoreEntry): string[] {

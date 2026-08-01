@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useFableStore } from "@/lib/store";
 import { useInspectedCharacter } from "@/lib/hooks/useInspectedCharacter";
-import { Brain, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import { Brain, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Section } from "./Section";
 import type { CoreMemory } from "@/lib/db/models";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -52,32 +53,6 @@ function StatBar({ label, value }: { label: string; value: number }) {
         <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${pct}%` }} />
       </div>
       <span className="text-[10px] tabular-nums text-[var(--muted-fg)] w-8 text-right">{Math.round(pct)}</span>
-    </div>
-  );
-}
-
-function Section({
-  title,
-  children,
-  defaultOpen = true,
-}: {
-  title: string;
-  children: React.ReactNode;
-  defaultOpen?: boolean;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div className="border border-[var(--border)] rounded-lg overflow-hidden">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-3 py-2 bg-white hover:bg-[var(--muted)] transition-colors"
-      >
-        <span className="text-[11px] font-semibold text-[var(--foreground)]">{title}</span>
-        {open
-          ? <ChevronUp className="h-3 w-3 text-[var(--muted-fg)]" />
-          : <ChevronDown className="h-3 w-3 text-[var(--muted-fg)]" />}
-      </button>
-      {open && <div className="px-3 pb-3 pt-1 space-y-1.5 bg-white">{children}</div>}
     </div>
   );
 }
@@ -232,14 +207,7 @@ export function CoreMemoryTab() {
       {cm && (
         <div className="space-y-2">
 
-          {/* Mood */}
-          <Section title="Mood (VAD)">
-            <MoodBar label="Valence"   value={cm.mood.valence}   min={-1} max={1} />
-            <MoodBar label="Arousal"   value={cm.mood.arousal}   min={0}  max={1} />
-            <MoodBar label="Dominance" value={cm.mood.dominance} min={0}  max={1} />
-          </Section>
-
-          {/* Relationship */}
+          {/* Tracked stats lead; prose folds below them */}
           <Section title="Relationship with User">
             <StatBar label="Affection"  value={cm.relationship_with_user.affection} />
             <StatBar label="Trust"      value={cm.relationship_with_user.trust} />
@@ -248,8 +216,15 @@ export function CoreMemoryTab() {
             <StatBar label="Mood"       value={cm.relationship_with_user.mood} />
           </Section>
 
+          {/* Mood */}
+          <Section title="Mood (VAD)">
+            <MoodBar label="Valence"   value={cm.mood.valence}   min={-1} max={1} />
+            <MoodBar label="Arousal"   value={cm.mood.arousal}   min={0}  max={1} />
+            <MoodBar label="Dominance" value={cm.mood.dominance} min={0}  max={1} />
+          </Section>
+
           {/* Persona */}
-          <Section title="Persona">
+          <Section title="Self-Image" defaultOpen={false}>
             <p className="text-[11px] text-[var(--foreground)] leading-relaxed">
               {cm.persona || <span className="text-[var(--muted-fg)] italic">No persona set.</span>}
             </p>

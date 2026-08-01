@@ -5,18 +5,19 @@ import { useInspectedCharacter } from "@/lib/hooks/useInspectedCharacter";
 import { CharacterTab } from "./CharacterTab";
 import { MemoryTab } from "./MemoryTab";
 import { GraphTab } from "./GraphTab";
-import { SummaryTab } from "./SummaryTab";
 import { LoreTab } from "./LoreTab";
 import { ImageStudioTab } from "./ImageStudioTab";
 import { CoreMemoryTab } from "./CoreMemoryTab";
 import { cn } from "@/lib/utils";
 
+// The old Summary tab duplicated Memory (facts/relationships) and Core Mem
+// (commitments) and was dropped; a persisted "summary" selection falls back
+// to Character below.
 const TABS: { id: InspectorTab; label: string }[] = [
   { id: "character",    label: "Character" },
   { id: "core-memory",  label: "Core Mem" },
   { id: "memory",       label: "Memory" },
   { id: "graph",        label: "Web" },
-  { id: "summary",      label: "Summary" },
   { id: "lore",         label: "Lore" },
   { id: "image-studio", label: "Image Studio" },
 ];
@@ -27,6 +28,9 @@ export function InspectorPanel() {
   const { chat, character, isGroup } = useInspectedCharacter();
 
   if (!inspectorOpen) return null;
+
+  // Persisted selections may reference removed tabs
+  const activeTab = TABS.some((t) => t.id === inspectorTab) ? inspectorTab : "character";
 
   return (
     <aside className="flex flex-col h-full w-[280px] flex-shrink-0 border-l border-[var(--border)] bg-[var(--sidebar-bg)]">
@@ -66,7 +70,7 @@ export function InspectorPanel() {
             onClick={() => setInspectorTab(tab.id)}
             className={cn(
               "px-2.5 py-1.5 text-xs rounded-t-lg transition-colors cursor-pointer whitespace-nowrap",
-              inspectorTab === tab.id
+              activeTab === tab.id
                 ? "bg-[var(--purple-light)] text-[var(--purple-fg)] font-semibold"
                 : "text-[var(--muted-fg)] hover:text-[var(--foreground)] hover:bg-[var(--muted)]"
             )}
@@ -77,14 +81,13 @@ export function InspectorPanel() {
       </div>
 
       {/* Tab content — the graph manages its own height, others scroll */}
-      <div className={cn("flex-1", inspectorTab === "graph" ? "min-h-0" : "overflow-y-auto")}>
-        {inspectorTab === "character"    && <CharacterTab />}
-        {inspectorTab === "core-memory"  && <CoreMemoryTab />}
-        {inspectorTab === "memory"       && <MemoryTab />}
-        {inspectorTab === "graph"        && <GraphTab />}
-        {inspectorTab === "summary"      && <SummaryTab />}
-        {inspectorTab === "lore"         && <LoreTab />}
-        {inspectorTab === "image-studio" && <ImageStudioTab />}
+      <div className={cn("flex-1", activeTab === "graph" ? "min-h-0" : "overflow-y-auto")}>
+        {activeTab === "character"    && <CharacterTab />}
+        {activeTab === "core-memory"  && <CoreMemoryTab />}
+        {activeTab === "memory"       && <MemoryTab />}
+        {activeTab === "graph"        && <GraphTab />}
+        {activeTab === "lore"         && <LoreTab />}
+        {activeTab === "image-studio" && <ImageStudioTab />}
       </div>
     </aside>
   );

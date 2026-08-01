@@ -75,6 +75,9 @@ export interface Chat {
   contextMax?: number;
   /** Per-chat generation parameters; provider defaults apply when unset */
   settings?: Partial<ChatSettings>;
+  /** Which lorebooks (worlds) apply to this chat. Undefined = all books
+   *  (legacy behavior); [] = none; otherwise only the listed books inject. */
+  lorebookIds?: string[];
 }
 
 export interface LoreEntry {

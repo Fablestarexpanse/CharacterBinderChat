@@ -42,7 +42,9 @@ export type SidebarSection =
 
 // ─── Inspector Panel ──────────────────────────────────────────────────────────
 
-export type InspectorTab = "character" | "memory" | "graph" | "summary" | "lore" | "image-studio" | "core-memory";
+// "summary" was removed (duplicated Memory + Core Mem); persisted selections
+// of it fall back to "character" in InspectorPanel.
+export type InspectorTab = "character" | "memory" | "graph" | "lore" | "image-studio" | "core-memory";
 
 // ─── Default Image Settings ───────────────────────────────────────────────────
 
@@ -230,6 +232,8 @@ interface FableStore {
   setMessageImageJob: (chatId: string, messageId: string, jobId: string) => void;
   /** Update which model / provider a chat uses */
   setChatModel: (chatId: string, modelId: string, providerId: string) => void;
+  /** Choose which lorebooks (worlds) apply to a chat; undefined = all */
+  setChatLorebooks: (chatId: string, lorebookIds: string[] | undefined) => void;
   /** Update the real token accounting shown by the header context meter */
   setChatContext: (chatId: string, contextUsed: number, contextMax: number) => void;
   /** Merge per-chat generation settings (temperature, maxTokens, topP…) */
@@ -540,6 +544,20 @@ export const useFableStore = create<FableStore>()(
                 }
               : c
           ),
+        }));
+      },
+
+      setChatLorebooks: (chatId, lorebookIds) => {
+        set((state) => ({
+          chats: state.chats.map((c) => {
+            if (c.id !== chatId) return c;
+            if (lorebookIds === undefined) {
+              const rest = { ...c };
+              delete rest.lorebookIds;
+              return rest;
+            }
+            return { ...c, lorebookIds };
+          }),
         }));
       },
 
