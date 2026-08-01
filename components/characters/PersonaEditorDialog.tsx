@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
+import { AvatarPicker } from "@/components/ui/AvatarPicker";
 import { Trash2 } from "lucide-react";
 
 // ─── Field wrapper ────────────────────────────────────────────────────────────
@@ -71,9 +72,7 @@ function EditorForm({
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Kira" autoFocus />
         </Field>
 
-        <Field label="Avatar URL" hint="optional — initials are shown without one">
-          <Input value={avatar} onChange={(e) => setAvatar(e.target.value)} placeholder="/avatars/me.png or https://…" />
-        </Field>
+        <AvatarPicker name={name} value={avatar} onChange={setAvatar} />
 
         <Field label="Description" hint="who you are in the story — appearance, role, backstory">
           <Textarea

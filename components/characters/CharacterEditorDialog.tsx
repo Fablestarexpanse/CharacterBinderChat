@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
+import { AvatarPicker } from "@/components/ui/AvatarPicker";
 import { Trash2 } from "lucide-react";
 
 // ─── Form state ───────────────────────────────────────────────────────────────
@@ -96,9 +97,11 @@ function EditorForm({ editing, draft }: { editing: Character | null; draft: Part
           <Input value={form.name} onChange={set("name")} placeholder="Ronan" autoFocus />
         </Field>
 
-        <Field label="Avatar URL" hint="optional — initials are shown without one">
-          <Input value={form.avatar} onChange={set("avatar")} placeholder="/avatars/ronan.png or https://…" />
-        </Field>
+        <AvatarPicker
+          name={form.name}
+          value={form.avatar}
+          onChange={(avatar) => setForm((f) => ({ ...f, avatar }))}
+        />
 
         <Field label="Tags" hint="comma-separated">
           <Input value={form.tags} onChange={set("tags")} placeholder="cyberpunk, mercenary, male" />
