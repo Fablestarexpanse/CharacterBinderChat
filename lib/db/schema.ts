@@ -133,5 +133,16 @@ CREATE TABLE IF NOT EXISTS app_scenarios (
   data TEXT    NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS app_presets (
+  id   TEXT    PRIMARY KEY,
+  seq  INTEGER NOT NULL,
+  data TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS app_kv (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_app_messages_chat ON app_messages(chat_id, seq);
 `;

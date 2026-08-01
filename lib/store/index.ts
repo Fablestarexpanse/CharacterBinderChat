@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { normalizeForbiddenWords } from "@/lib/chat/settings";
 import type {
   Character,
   Chat,
@@ -13,6 +14,8 @@ import type {
   ModelInfo,
   Persona,
   Scenario,
+  Preset,
+  PromptInstructions,
   ProviderSettings,
   ProviderStatus,
   ProviderId,
@@ -111,6 +114,23 @@ interface FableStore {
   updateScenario: (id: string, updates: Partial<Omit<Scenario, "id" | "createdAt">>) => void;
   deleteScenario: (id: string) => void;
 
+  // Presets — named bundles of sampler params + standing prompts
+  presets: Preset[];
+  /** Applied to any chat that hasn't picked one of its own */
+  defaultPresetId: string | null;
+  /** Standing instructions that apply to every chat regardless of preset */
+  globalInstructions: PromptInstructions;
+  addPreset: (name?: string) => string;
+  updatePreset: (id: string, updates: Partial<Omit<Preset, "id" | "createdAt">>) => void;
+  deletePreset: (id: string) => void;
+  duplicatePreset: (id: string) => string | null;
+  setDefaultPreset: (id: string | null) => void;
+  setGlobalInstructions: (patch: Partial<PromptInstructions>) => void;
+  /** Point a chat at a preset; undefined falls back to defaultPresetId */
+  setChatPreset: (chatId: string, presetId: string | undefined) => void;
+  /** Drop this chat's per-chat overrides so the preset shows through again */
+  resetChatOverrides: (chatId: string) => void;
+
   // New-chat builder dialog
   chatBuilderOpen: boolean;
   setChatBuilderOpen: (v: boolean) => void;
@@ -128,8 +148,18 @@ interface FableStore {
   chats: Chat[];
   activeChatId: string | null;
   setActiveChatId: (id: string | null) => void;
-  /** Replace characters + chats + personas + lorebooks + scenarios with the durable SQLite copy (on app load) */
-  hydrateFromServer: (characters: Character[], chats: Chat[], personas: Persona[], lorebooks?: Lorebook[], scenarios?: Scenario[]) => void;
+  /** Replace the local collections with the durable SQLite copy (on app load).
+   *  Object-shaped: the positional list had grown past readability. */
+  hydrateFromServer: (data: {
+    characters: Character[];
+    chats: Chat[];
+    personas: Persona[];
+    lorebooks?: Lorebook[];
+    scenarios?: Scenario[];
+    presets?: Preset[];
+    defaultPresetId?: string | null;
+    globalInstructions?: PromptInstructions;
+  }) => void;
   /** Adds a message and returns its generated ID */
   addMessage: (chatId: string, message: Omit<Message, "id" | "timestamp">) => string;
   /** Insert a message directly after another (per-message image generation) */
@@ -338,6 +368,102 @@ export const useFableStore = create<FableStore>()(
         set((s) => ({ scenarios: s.scenarios.filter((sc) => sc.id !== id) }));
       },
 
+      // ── Presets ─────────────────────────────────────────────────────────
+      presets: [],
+      defaultPresetId: null,
+      globalInstructions: {},
+
+      addPreset: (name) => {
+        const id = `preset-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const now = new Date().toISOString();
+        set((s) => ({
+          presets: [
+            ...s.presets,
+            { id, name: name ?? `Preset ${s.presets.length + 1}`, params: {}, createdAt: now, updatedAt: now },
+          ],
+          // The first preset someone makes is almost certainly the one they
+          // want everywhere; without this it silently applies to nothing.
+          defaultPresetId: s.defaultPresetId ?? id,
+        }));
+        return id;
+      },
+
+      updatePreset: (id, updates) => {
+        set((s) => ({
+          presets: s.presets.map((p) => {
+            if (p.id !== id) return p;
+            const next = { ...p, ...updates, id, updatedAt: new Date().toISOString() };
+            // Cap and de-dupe here rather than only in the input, so no call
+            // path can store an over-long or repetitive ban list.
+            if (next.forbiddenWords) next.forbiddenWords = normalizeForbiddenWords(next.forbiddenWords);
+            return next;
+          }),
+        }));
+      },
+
+      deletePreset: (id) => {
+        set((s) => ({
+          presets: s.presets.filter((p) => p.id !== id),
+          // Chats pointing at a deleted preset fall back to the default
+          defaultPresetId: s.defaultPresetId === id ? null : s.defaultPresetId,
+          chats: s.chats.map((c) => {
+            if (c.presetId !== id) return c;
+            const rest = { ...c };
+            delete rest.presetId;
+            return rest;
+          }),
+        }));
+      },
+
+      duplicatePreset: (id) => {
+        const source = get().presets.find((p) => p.id === id);
+        if (!source) return null;
+        const newId = `preset-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const now = new Date().toISOString();
+        set((s) => ({
+          presets: [
+            ...s.presets,
+            { ...source, id: newId, name: `${source.name} copy`, createdAt: now, updatedAt: now },
+          ],
+        }));
+        return newId;
+      },
+
+      setDefaultPreset: (id) => set({ defaultPresetId: id }),
+
+      setGlobalInstructions: (patch) => {
+        set((s) => {
+          const next = { ...s.globalInstructions, ...patch };
+          if (next.forbiddenWords) next.forbiddenWords = normalizeForbiddenWords(next.forbiddenWords);
+          return { globalInstructions: next };
+        });
+      },
+
+      setChatPreset: (chatId, presetId) => {
+        set((s) => ({
+          chats: s.chats.map((c) => {
+            if (c.id !== chatId) return c;
+            if (presetId === undefined) {
+              const rest = { ...c };
+              delete rest.presetId;
+              return rest;
+            }
+            return { ...c, presetId };
+          }),
+        }));
+      },
+
+      resetChatOverrides: (chatId) => {
+        set((s) => ({
+          chats: s.chats.map((c) => {
+            if (c.id !== chatId) return c;
+            const rest = { ...c };
+            delete rest.settings;
+            return rest;
+          }),
+        }));
+      },
+
       chatBuilderOpen: false,
       setChatBuilderOpen: (v) => set({ chatBuilderOpen: v }),
 
@@ -353,7 +479,10 @@ export const useFableStore = create<FableStore>()(
       activeChatId: null,
       setActiveChatId: (id) => set({ activeChatId: id }),
 
-      hydrateFromServer: (characters, chats, personas, lorebooks, scenarios) => {
+      hydrateFromServer: ({
+        characters, chats, personas, lorebooks, scenarios,
+        presets, defaultPresetId, globalInstructions,
+      }) => {
         set((s) => ({
           characters,
           chats,
@@ -363,6 +492,9 @@ export const useFableStore = create<FableStore>()(
           // (the localStorage seed re-pushed them after a cache clear).
           lorebooks: lorebooks ?? s.lorebooks,
           scenarios: scenarios ?? s.scenarios,
+          presets: presets ?? s.presets,
+          defaultPresetId: defaultPresetId !== undefined ? defaultPresetId : s.defaultPresetId,
+          globalInstructions: globalInstructions ?? s.globalInstructions,
           activeChatId: chats.some((c) => c.id === s.activeChatId)
             ? s.activeChatId
             : chats[0]?.id ?? null,
@@ -851,6 +983,9 @@ export const useFableStore = create<FableStore>()(
         customModels: state.customModels,
         lorebooks: state.lorebooks,
         scenarios: state.scenarios,
+        presets: state.presets,
+        defaultPresetId: state.defaultPresetId,
+        globalInstructions: state.globalInstructions,
         imageJobs: state.imageJobs,
       }),
       // The polling loop that drives queued/generating jobs dies with the

@@ -35,22 +35,37 @@ export async function GET(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const body = await req.json() as { characters?: unknown; chats?: unknown; personas?: unknown; lorebooks?: unknown; scenarios?: unknown };
+    const body = await req.json() as {
+      characters?: unknown; chats?: unknown; personas?: unknown;
+      lorebooks?: unknown; scenarios?: unknown; presets?: unknown;
+      defaultPresetId?: unknown; globalInstructions?: unknown;
+    };
     const characters = Array.isArray(body.characters) ? body.characters as Array<{ id: string }> : null;
     const chats      = Array.isArray(body.chats)      ? body.chats      as Array<{ id: string; messages?: Array<{ id: string }> }> : null;
     const personas   = Array.isArray(body.personas)   ? body.personas   as Array<{ id: string }> : [];
     const lorebooks  = Array.isArray(body.lorebooks)  ? body.lorebooks  as Array<{ id: string }> : [];
     const scenarios  = Array.isArray(body.scenarios)  ? body.scenarios  as Array<{ id: string }> : [];
+    const presets    = Array.isArray(body.presets)    ? body.presets    as Array<{ id: string }> : [];
 
     if (!characters || !chats) {
       return Response.json({ error: "characters and chats arrays are required" }, { status: 400 });
     }
     if (
       characters.some((c) => !c?.id) || chats.some((c) => !c?.id) ||
-      personas.some((p) => !p?.id) || lorebooks.some((l) => !l?.id) || scenarios.some((s) => !s?.id)
+      personas.some((p) => !p?.id) || lorebooks.some((l) => !l?.id) ||
+      scenarios.some((s) => !s?.id) || presets.some((p) => !p?.id)
     ) {
-      return Response.json({ error: "every character, chat, persona, lorebook and scenario needs an id" }, { status: 400 });
+      return Response.json({ error: "every character, chat, persona, lorebook, scenario and preset needs an id" }, { status: 400 });
     }
+    // Singletons: absent means "leave alone", so distinguish undefined from null
+    const defaultPresetId =
+      body.defaultPresetId === undefined ? undefined
+      : typeof body.defaultPresetId === "string" ? body.defaultPresetId
+      : null;
+    const globalInstructions =
+      body.globalInstructions !== undefined && typeof body.globalInstructions === "object" && body.globalInstructions !== null
+        ? body.globalInstructions
+        : undefined;
 
     const store = getStore();
 
@@ -67,6 +82,7 @@ export async function PUT(req: NextRequest) {
         ["personas", personas.length, existing.personas.length],
         ["lorebooks", lorebooks.length, existing.lorebooks.length],
         ["scenarios", scenarios.length, existing.scenarios.length],
+        ["presets", presets.length, existing.presets.length],
       ] as Array<[string, number, number]>
     ).find(([, incoming, current]) => incoming === 0 && current >= 3);
     if (suspicious) {
@@ -79,7 +95,10 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    store.replaceAppState(characters, chats, personas, lorebooks, scenarios);
+    store.replaceAppState({
+      characters, chats, personas, lorebooks, scenarios, presets,
+      defaultPresetId, globalInstructions,
+    });
     // Deleting a chat must also delete its memory — orphaned drawer rows would
     // otherwise linger forever and resurface in "continue with memories" lists.
     const purged = store.purgeOrphanedChatMemory();
@@ -90,6 +109,7 @@ export async function PUT(req: NextRequest) {
       personas: personas.length,
       lorebooks: lorebooks.length,
       scenarios: scenarios.length,
+      presets: presets.length,
       ...(purged.length > 0 ? { purgedChatMemory: purged } : {}),
     });
   } catch (err) {

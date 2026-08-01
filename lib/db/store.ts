@@ -969,7 +969,26 @@ export class FableStore {
   // `seq` preserves array order. Full-replace semantics: the client sends its
   // complete state and the transaction rewrites the mirror atomically.
 
-  getAppState(): { characters: unknown[]; chats: unknown[]; personas: unknown[]; lorebooks: unknown[]; scenarios: unknown[] } {
+  /** Small singleton values that aren't collections (default preset, global
+   *  instructions). Upserted rather than wiped so a client that omits one
+   *  doesn't null it. */
+  private getKv<T>(key: string, fallback: T): T {
+    const row = this.db.prepare("SELECT value FROM app_kv WHERE key = ?").get(key) as
+      | { value: string }
+      | undefined;
+    if (!row) return fallback;
+    try {
+      return JSON.parse(row.value) as T;
+    } catch {
+      return fallback;
+    }
+  }
+
+  getAppState(): {
+    characters: unknown[]; chats: unknown[]; personas: unknown[];
+    lorebooks: unknown[]; scenarios: unknown[]; presets: unknown[];
+    defaultPresetId: string | null; globalInstructions: Record<string, unknown>;
+  } {
     const characters = (this.db
       .prepare("SELECT data FROM app_characters ORDER BY seq")
       .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
@@ -986,6 +1005,10 @@ export class FableStore {
       .prepare("SELECT data FROM app_scenarios ORDER BY seq")
       .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
 
+    const presets = (this.db
+      .prepare("SELECT data FROM app_presets ORDER BY seq")
+      .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
+
     const chatRows = this.db
       .prepare("SELECT id, data FROM app_chats ORDER BY seq")
       .all() as Array<{ id: string; data: string }>;
@@ -998,16 +1021,30 @@ export class FableStore {
       messages: (msgStmt.all(row.id) as Array<{ data: string }>).map((m) => JSON.parse(m.data)),
     }));
 
-    return { characters, chats, personas, lorebooks, scenarios };
+    return {
+      characters, chats, personas, lorebooks, scenarios, presets,
+      defaultPresetId:    this.getKv<string | null>("defaultPresetId", null),
+      globalInstructions: this.getKv<Record<string, unknown>>("globalInstructions", {}),
+    };
   }
 
-  replaceAppState(
-    characters: Array<{ id: string }>,
-    chats:      Array<{ id: string; messages?: Array<{ id: string }> }>,
-    personas:   Array<{ id: string }> = [],
-    lorebooks:  Array<{ id: string }> = [],
-    scenarios:  Array<{ id: string }> = []
-  ): void {
+  replaceAppState(state: {
+    characters: Array<{ id: string }>;
+    chats:      Array<{ id: string; messages?: Array<{ id: string }> }>;
+    personas?:  Array<{ id: string }>;
+    lorebooks?: Array<{ id: string }>;
+    scenarios?: Array<{ id: string }>;
+    presets?:   Array<{ id: string }>;
+    /** Omitted (undefined) means "leave as-is"; null means "clear". */
+    defaultPresetId?:    string | null;
+    globalInstructions?: unknown;
+  }): void {
+    const {
+      characters, chats,
+      personas = [], lorebooks = [], scenarios = [], presets = [],
+      defaultPresetId, globalInstructions,
+    } = state;
+
     const tx = this.db.transaction(() => {
       this.db.prepare("DELETE FROM app_characters").run();
       this.db.prepare("DELETE FROM app_chats").run();
@@ -1015,6 +1052,20 @@ export class FableStore {
       this.db.prepare("DELETE FROM app_personas").run();
       this.db.prepare("DELETE FROM app_lorebooks").run();
       this.db.prepare("DELETE FROM app_scenarios").run();
+      this.db.prepare("DELETE FROM app_presets").run();
+
+      const insPreset = this.db.prepare(
+        "INSERT OR REPLACE INTO app_presets (id, seq, data) VALUES (?, ?, ?)"
+      );
+      presets.forEach((p, i) => insPreset.run(p.id, i, JSON.stringify(p)));
+
+      // app_kv is upserted, never cleared — an older client that doesn't send
+      // these fields must not wipe them.
+      const insKv = this.db.prepare(
+        "INSERT OR REPLACE INTO app_kv (key, value) VALUES (?, ?)"
+      );
+      if (defaultPresetId !== undefined) insKv.run("defaultPresetId", JSON.stringify(defaultPresetId));
+      if (globalInstructions !== undefined) insKv.run("globalInstructions", JSON.stringify(globalInstructions));
 
       const insChar = this.db.prepare(
         "INSERT OR REPLACE INTO app_characters (id, seq, data) VALUES (?, ?, ?)"

@@ -16,7 +16,9 @@
 
 import { useEffect, useRef } from "react";
 import { useFableStore } from "@/lib/store";
-import type { Character, Chat, Persona, Lorebook, Scenario } from "@/lib/types";
+import type {
+  Character, Chat, Persona, Lorebook, Scenario, Preset, PromptInstructions,
+} from "@/lib/types";
 
 const DEBOUNCE_MS = 800;   // trailing quiet-period before a save
 const MAX_WAIT_MS = 5000;  // during constant streaming, save at least this often
@@ -34,12 +36,18 @@ export function StateSync() {
 
     const save = async () => {
       lastSaveAt = Date.now();
-      const { characters, chats, personas, lorebooks, scenarios } = useFableStore.getState();
+      const {
+        characters, chats, personas, lorebooks, scenarios,
+        presets, defaultPresetId, globalInstructions,
+      } = useFableStore.getState();
       try {
         const res = await fetch("/api/state", {
           method:  "PUT",
           headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ characters, chats, personas, lorebooks, scenarios }),
+          body:    JSON.stringify({
+            characters, chats, personas, lorebooks, scenarios,
+            presets, defaultPresetId, globalInstructions,
+          }),
         });
         if (!res.ok) {
           const data = await res.json().catch(() => null);
@@ -60,17 +68,30 @@ export function StateSync() {
       try {
         const res  = await fetch("/api/state", { cache: "no-store" });
         const data = (await res.json()) as {
-          characters?: Character[]; chats?: Chat[]; personas?: Persona[]; lorebooks?: Lorebook[]; scenarios?: Scenario[];
+          characters?: Character[]; chats?: Chat[]; personas?: Persona[];
+          lorebooks?: Lorebook[]; scenarios?: Scenario[]; presets?: Preset[];
+          defaultPresetId?: string | null; globalInstructions?: PromptInstructions;
         };
+        // Presets count too: they're often the first thing configured, and a
+        // durable copy holding only presets would otherwise be treated as
+        // empty and overwritten by local state.
         const serverHasData =
           (data.characters?.length ?? 0) > 0 ||
           (data.chats?.length ?? 0) > 0 ||
-          (data.personas?.length ?? 0) > 0;
+          (data.personas?.length ?? 0) > 0 ||
+          (data.presets?.length ?? 0) > 0;
 
         if (serverHasData) {
-          useFableStore.getState().hydrateFromServer(
-            data.characters ?? [], data.chats ?? [], data.personas ?? [], data.lorebooks ?? [], data.scenarios ?? []
-          );
+          useFableStore.getState().hydrateFromServer({
+            characters: data.characters ?? [],
+            chats:      data.chats ?? [],
+            personas:   data.personas ?? [],
+            lorebooks:  data.lorebooks ?? [],
+            scenarios:  data.scenarios ?? [],
+            presets:    data.presets ?? [],
+            defaultPresetId:    data.defaultPresetId ?? null,
+            globalInstructions: data.globalInstructions ?? {},
+          });
         } else {
           // First run: seed the durable copy from local state
           await save();
@@ -86,7 +107,10 @@ export function StateSync() {
           state.chats !== prev.chats ||
           state.personas !== prev.personas ||
           state.lorebooks !== prev.lorebooks ||
-          state.scenarios !== prev.scenarios
+          state.scenarios !== prev.scenarios ||
+          state.presets !== prev.presets ||
+          state.defaultPresetId !== prev.defaultPresetId ||
+          state.globalInstructions !== prev.globalInstructions
         ) {
           schedule();
         }
