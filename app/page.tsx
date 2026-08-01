@@ -9,6 +9,8 @@ import { CharactersView } from "@/components/sections/CharactersView";
 import { LorebooksView } from "@/components/sections/LorebooksView";
 import { ScenariosView } from "@/components/sections/ScenariosView";
 import { ImageStudioView } from "@/components/sections/ImageStudioView";
+import { GalleryView } from "@/components/sections/GalleryView";
+import { WorkflowsView } from "@/components/sections/WorkflowsView";
 import { GroupsView } from "@/components/sections/GroupsView";
 import { CharacterEditorDialog } from "@/components/characters/CharacterEditorDialog";
 import { NewChatDialog } from "@/components/chat/NewChatDialog";
@@ -16,11 +18,7 @@ import { StateSync } from "@/components/StateSync";
 import { DropImport } from "@/components/DropImport";
 import { PlaceholderView } from "@/components/sections/PlaceholderView";
 import { useHydrated } from "@/lib/hooks/useHydrated";
-import {
-  Sliders,
-  GalleryHorizontal,
-  GitBranch,
-} from "lucide-react";
+import { Sliders } from "lucide-react";
 
 export default function Home() {
   const { activeSection } = useFableStore();
@@ -53,20 +51,8 @@ export default function Home() {
           />
         )}
         {activeSection === "image-studio" && <ImageStudioView />}
-        {activeSection === "gallery" && (
-          <PlaceholderView
-            icon={GalleryHorizontal}
-            title="Gallery"
-            description="Browse all generated images from your sessions."
-          />
-        )}
-        {activeSection === "workflows" && (
-          <PlaceholderView
-            icon={GitBranch}
-            title="Workflows"
-            description="Manage and edit ComfyUI workflow templates."
-          />
-        )}
+        {activeSection === "gallery" && <GalleryView />}
+        {activeSection === "workflows" && <WorkflowsView />}
 
         {showInspector && <InspectorPanel />}
       </main>

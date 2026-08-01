@@ -20,14 +20,6 @@ import {
 } from "lucide-react";
 import type { AspectRatio } from "@/lib/types";
 
-// Must match the template files in workflows/*.json
-const WORKFLOWS = [
-  { value: "krea2-lora-pipeline", label: "Krea2 LoRA Pipeline" },
-  { value: "flux-cinematic", label: "Flux Dev - Cinematic" },
-  { value: "sdxl-portrait", label: "SDXL Portrait" },
-  { value: "anime-character-card", label: "Anime Character Card" },
-];
-
 const SAMPLERS = ["euler", "euler_a", "dpmpp_2m", "dpmpp_2m_karras", "ddim", "lcm"];
 const ASPECT_RATIOS: AspectRatio[] = ["1:1", "16:9", "9:16", "4:3", "3:4", "2:1", "custom"];
 
@@ -50,6 +42,20 @@ export function ImageStudioTab() {
     });
     return () => { cancelled = true; };
   }, [comfyBase]);
+
+  // Templates actually present in workflows/ — a hardcoded list here meant a
+  // template you added never appeared and a deleted one stayed selectable.
+  const [workflows, setWorkflows] = useState<Array<{ slug: string; title: string }>>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/workflows", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { workflows?: Array<{ slug: string; title: string; error?: string }> }) => {
+        if (!cancelled) setWorkflows((d.workflows ?? []).filter((w) => !w.error));
+      })
+      .catch(() => {/* picker falls back to the saved slug below */});
+    return () => { cancelled = true; };
+  }, []);
 
   const handleGenerate = () => {
     // startImageJob returns immediately; connection check, queueing and
@@ -100,8 +106,13 @@ export function ImageStudioTab() {
             value={imageSettings.workflow}
             onChange={(e) => setImageSettings({ workflow: e.target.value })}
           >
-            {WORKFLOWS.map((w) => (
-              <option key={w.value} value={w.value}>{w.label}</option>
+            {/* Keep the saved slug selectable even if the file is missing, so
+                the picker shows what will actually be sent */}
+            {!workflows.some((w) => w.slug === imageSettings.workflow) && (
+              <option value={imageSettings.workflow}>{imageSettings.workflow}</option>
+            )}
+            {workflows.map((w) => (
+              <option key={w.slug} value={w.slug}>{w.title}</option>
             ))}
           </Select>
         </div>

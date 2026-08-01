@@ -201,6 +201,8 @@ interface FableStore {
   imageJobs: ImageJob[];
   addImageJob: (job: ImageJob) => void;
   updateImageJob: (id: string, updates: Partial<ImageJob>) => void;
+  /** Drop a render from the gallery (jobs otherwise accumulate forever) */
+  removeImageJob: (id: string) => void;
 
   // Image Settings (Image Studio panel)
   imageSettings: ImageGenerationSettings;
@@ -771,6 +773,9 @@ export const useFableStore = create<FableStore>()(
       addImageJob: (job) => set((s) => ({ imageJobs: [job, ...s.imageJobs] })),
       updateImageJob: (id, updates) =>
         set((s) => ({ imageJobs: s.imageJobs.map((j) => (j.id === id ? { ...j, ...updates } : j)) })),
+
+      removeImageJob: (id) =>
+        set((s) => ({ imageJobs: s.imageJobs.filter((j) => j.id !== id) })),
 
       imageSettings: defaultImageSettings,
       setImageSettings: (s) =>
