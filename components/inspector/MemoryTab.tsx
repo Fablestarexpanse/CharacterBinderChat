@@ -12,8 +12,8 @@ import { EntitiesView }      from "./memory/EntitiesView";
 type KGTab = "facts" | "relationships" | "entities";
 
 const KG_TABS: { id: KGTab; label: string }[] = [
-  { id: "facts",         label: "Facts" },
   { id: "relationships", label: "Relationships" },
+  { id: "facts",         label: "Facts" },
   { id: "entities",      label: "Entities" },
 ];
 
@@ -21,7 +21,7 @@ export function MemoryTab() {
   const { extractionVersion, isExtracting, lastExtractionError } = useFableStore();
   const { chat, character } = useInspectedCharacter();
 
-  const [kgTab, setKgTab] = useState<KGTab>("facts");
+  const [kgTab, setKgTab] = useState<KGTab>("relationships");
 
   if (!character) {
     return (
