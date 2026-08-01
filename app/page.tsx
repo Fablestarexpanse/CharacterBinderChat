@@ -11,14 +11,13 @@ import { ScenariosView } from "@/components/sections/ScenariosView";
 import { ImageStudioView } from "@/components/sections/ImageStudioView";
 import { GalleryView } from "@/components/sections/GalleryView";
 import { WorkflowsView } from "@/components/sections/WorkflowsView";
+import { PresetsView } from "@/components/sections/PresetsView";
 import { GroupsView } from "@/components/sections/GroupsView";
 import { CharacterEditorDialog } from "@/components/characters/CharacterEditorDialog";
 import { NewChatDialog } from "@/components/chat/NewChatDialog";
 import { StateSync } from "@/components/StateSync";
 import { DropImport } from "@/components/DropImport";
-import { PlaceholderView } from "@/components/sections/PlaceholderView";
 import { useHydrated } from "@/lib/hooks/useHydrated";
-import { Sliders } from "lucide-react";
 
 export default function Home() {
   const { activeSection } = useFableStore();
@@ -43,13 +42,7 @@ export default function Home() {
         {activeSection === "groups" && <GroupsView />}
         {activeSection === "lorebooks" && <LorebooksView />}
         {activeSection === "scenarios" && <ScenariosView />}
-        {activeSection === "presets" && (
-          <PlaceholderView
-            icon={Sliders}
-            title="Presets"
-            description="Save and load generation parameter presets."
-          />
-        )}
+        {activeSection === "presets" && <PresetsView />}
         {activeSection === "image-studio" && <ImageStudioView />}
         {activeSection === "gallery" && <GalleryView />}
         {activeSection === "workflows" && <WorkflowsView />}

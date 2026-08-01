@@ -243,6 +243,11 @@ interface FableStore {
   imageSettings: ImageGenerationSettings;
   setImageSettings: (s: Partial<ImageGenerationSettings>) => void;
 
+  /** Models discovered from the providers, published by the chat header so
+   *  other views (Presets) can read capabilities without a second fetch. */
+  availableModels: ModelInfo[];
+  setAvailableModels: (models: ModelInfo[]) => void;
+
   // Custom model IDs the user typed in (e.g. an OpenRouter slug that isn't in
   // the fetched catalogue). Merged into the model selector.
   customModels: ModelInfo[];
@@ -926,6 +931,9 @@ export const useFableStore = create<FableStore>()(
       imageSettings: defaultImageSettings,
       setImageSettings: (s) =>
         set((state) => ({ imageSettings: { ...state.imageSettings, ...s } })),
+
+      availableModels: [],
+      setAvailableModels: (models) => set({ availableModels: models }),
 
       customModels: [],
       addCustomModel: (model) =>

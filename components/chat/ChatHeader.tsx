@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { allChatProviders } from "@/lib/providers/factory";
+import { DEFAULT_GENERATION_PARAMS } from "@/lib/providers/params";
 import { regenerateLastReply } from "@/lib/chat/generation";
 import type { ModelInfo, ProviderId } from "@/lib/types";
 import {
@@ -50,7 +51,10 @@ export function ChatHeader() {
     clearChat, isGenerating,
     customModels, addCustomModel, removeCustomModel,
     updateChatSettings, toggleMemberPresence,
+    presets, defaultPresetId, setChatPreset, resetChatOverrides, setActiveSection,
   } = useFableStore();
+
+  const defaultPreset = presets.find((p) => p.id === defaultPresetId);
 
   const chat      = chats.find((c) => c.id === activeChatId);
   const character = characters.find((c) => c.id === chat?.characterId);
@@ -87,6 +91,9 @@ export function ChatHeader() {
       if (!cancelled) {
         const collected = lists.flat();
         setModels(collected.length > 0 ? collected : FALLBACK_MODELS);
+        // Publish for other views (Presets reads supportedParameters from here
+        // rather than running a second discovery pass).
+        useFableStore.getState().setAvailableModels(collected);
         setLoadingModels(false);
       }
     };
@@ -127,6 +134,13 @@ export function ChatHeader() {
   }, [chat?.id, chat?.modelId, firstAvailable?.id]);
 
   if (!chat) return null;
+
+  // What a slider should show: this chat's override, else the preset's value,
+  // else the shared default — so the dialog never displays a number that isn't
+  // what would actually be sent.
+  const activePreset = presets.find((p) => p.id === (chat.presetId ?? defaultPresetId));
+  const effective = (key: keyof typeof DEFAULT_GENERATION_PARAMS): number =>
+    chat.settings?.[key] ?? activePreset?.params?.[key] ?? DEFAULT_GENERATION_PARAMS[key];
 
   const contextPct = chat.contextMax
     ? Math.round(((chat.contextUsed ?? 0) / chat.contextMax) * 100)
@@ -319,36 +333,62 @@ export function ChatHeader() {
             <DialogTitle>Generation settings — {chat.name}</DialogTitle>
           </div>
           <div className="space-y-5 px-5 py-4">
-            <Slider
-              label={`Temperature — ${(chat.settings?.temperature ?? 0.8) < 0.5 ? "focused" : (chat.settings?.temperature ?? 0.8) > 1.1 ? "wild" : "balanced"}`}
-              value={chat.settings?.temperature ?? 0.8}
-              onChange={(v) => updateChatSettings(chat.id, { temperature: v })}
-              min={0} max={2} step={0.05}
-            />
-            <Slider
-              label="Top P"
-              value={chat.settings?.topP ?? 0.95}
-              onChange={(v) => updateChatSettings(chat.id, { topP: v })}
-              min={0.1} max={1} step={0.05}
-            />
-            <Slider
-              label="Max response tokens"
-              value={chat.settings?.maxTokens ?? 2048}
-              onChange={(v) => updateChatSettings(chat.id, { maxTokens: v })}
-              min={256} max={8192} step={256}
-            />
-            <p className="text-[11px] leading-snug text-[var(--muted-fg)]">
-              Applies to this chat only. Higher temperature means more surprising prose;
-              lower keeps the character precise and consistent.
-            </p>
+            {/* Which preset backs this chat. Values below layer on top of it. */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[var(--foreground)]">Preset</label>
+              <select
+                value={chat.presetId ?? ""}
+                onChange={(e) => setChatPreset(chat.id, e.target.value || undefined)}
+                className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--purple)]"
+              >
+                <option value="">
+                  {defaultPreset ? `Default (${defaultPreset.name})` : "None — built-in defaults"}
+                </option>
+                {presets.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => { setSettingsOpen(false); setActiveSection("presets"); }}
+                className="text-[11px] text-[var(--purple-fg)] hover:underline cursor-pointer"
+              >
+                Edit presets…
+              </button>
+            </div>
+
+            <div className="border-t border-[var(--border)] pt-4 space-y-5">
+              <p className="text-[11px] leading-snug text-[var(--muted-fg)]">
+                These override the preset for this chat only.
+              </p>
+              <Slider
+                label={`Temperature — ${effective("temperature") < 0.5 ? "focused" : effective("temperature") > 1.1 ? "wild" : "balanced"}`}
+                value={effective("temperature")}
+                onChange={(v) => updateChatSettings(chat.id, { temperature: v })}
+                min={0} max={2} step={0.05}
+              />
+              <Slider
+                label="Top P"
+                value={effective("topP")}
+                onChange={(v) => updateChatSettings(chat.id, { topP: v })}
+                min={0.1} max={1} step={0.05}
+              />
+              <Slider
+                label="Max response tokens"
+                value={effective("maxTokens")}
+                onChange={(v) => updateChatSettings(chat.id, { maxTokens: v })}
+                min={256} max={8192} step={256}
+              />
+            </div>
           </div>
           <div className="flex items-center justify-between border-t border-[var(--border)] px-5 py-3">
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => updateChatSettings(chat.id, { temperature: 0.8, topP: 0.95, maxTokens: 2048 })}
+              disabled={!chat.settings || Object.keys(chat.settings).length === 0}
+              title="Drop this chat's overrides so the preset shows through again"
+              onClick={() => resetChatOverrides(chat.id)}
             >
-              Reset defaults
+              Clear overrides
             </Button>
             <Button variant="purple" size="sm" onClick={() => setSettingsOpen(false)}>
               Done
