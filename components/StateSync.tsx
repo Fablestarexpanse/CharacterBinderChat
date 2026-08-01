@@ -16,7 +16,7 @@
 
 import { useEffect, useRef } from "react";
 import { useFableStore } from "@/lib/store";
-import type { Character, Chat, Persona, Lorebook } from "@/lib/types";
+import type { Character, Chat, Persona, Lorebook, Scenario } from "@/lib/types";
 
 const DEBOUNCE_MS = 800;   // trailing quiet-period before a save
 const MAX_WAIT_MS = 5000;  // during constant streaming, save at least this often
@@ -34,12 +34,12 @@ export function StateSync() {
 
     const save = async () => {
       lastSaveAt = Date.now();
-      const { characters, chats, personas, lorebooks } = useFableStore.getState();
+      const { characters, chats, personas, lorebooks, scenarios } = useFableStore.getState();
       try {
         const res = await fetch("/api/state", {
           method:  "PUT",
           headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ characters, chats, personas, lorebooks }),
+          body:    JSON.stringify({ characters, chats, personas, lorebooks, scenarios }),
         });
         if (!res.ok) {
           const data = await res.json().catch(() => null);
@@ -60,7 +60,7 @@ export function StateSync() {
       try {
         const res  = await fetch("/api/state", { cache: "no-store" });
         const data = (await res.json()) as {
-          characters?: Character[]; chats?: Chat[]; personas?: Persona[]; lorebooks?: Lorebook[];
+          characters?: Character[]; chats?: Chat[]; personas?: Persona[]; lorebooks?: Lorebook[]; scenarios?: Scenario[];
         };
         const serverHasData =
           (data.characters?.length ?? 0) > 0 ||
@@ -69,7 +69,7 @@ export function StateSync() {
 
         if (serverHasData) {
           useFableStore.getState().hydrateFromServer(
-            data.characters ?? [], data.chats ?? [], data.personas ?? [], data.lorebooks ?? []
+            data.characters ?? [], data.chats ?? [], data.personas ?? [], data.lorebooks ?? [], data.scenarios ?? []
           );
         } else {
           // First run: seed the durable copy from local state
@@ -85,7 +85,8 @@ export function StateSync() {
           state.characters !== prev.characters ||
           state.chats !== prev.chats ||
           state.personas !== prev.personas ||
-          state.lorebooks !== prev.lorebooks
+          state.lorebooks !== prev.lorebooks ||
+          state.scenarios !== prev.scenarios
         ) {
           schedule();
         }

@@ -168,7 +168,11 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
     // subject was raised.
     const loreScanText = chat.messages.slice(-6).map((m) => m.content).join("\n");
     const lore = matchLoreEntries(booksForChat(store.lorebooks, chat), loreScanText);
-    let systemPrompt = buildSystemPrompt(character, coreMemory, knownFacts, persona, episodes, insights, lore, bits);
+    // A chat-builder scenario snapshot overrides the character sheet's own
+    const promptCharacter = character && chat.scenarioText
+      ? { ...character, scenario: chat.scenarioText }
+      : character;
+    let systemPrompt = buildSystemPrompt(promptCharacter, coreMemory, knownFacts, persona, episodes, insights, lore, bits);
 
     // ── Group scene block ───────────────────────────────────────────────────
     // The speaker needs to know who else is in the room, and that other

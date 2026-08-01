@@ -25,6 +25,7 @@ import {
   Sparkles,
   Pencil,
   Trash2,
+  Clapperboard,
 } from "lucide-react";
 
 const NAV_ITEMS: { id: SidebarSection; label: string; icon: React.ElementType }[] = [
@@ -32,6 +33,7 @@ const NAV_ITEMS: { id: SidebarSection; label: string; icon: React.ElementType }[
   { id: "chats", label: "Chats", icon: MessageSquare },
   { id: "groups", label: "Groups", icon: Group },
   { id: "lorebooks", label: "Lorebooks", icon: BookOpen },
+  { id: "scenarios", label: "Scenarios", icon: Clapperboard },
   { id: "presets", label: "Presets", icon: Sliders },
   { id: "image-studio", label: "Image Studio", icon: ImageIcon },
   { id: "gallery", label: "Gallery", icon: GalleryHorizontal },
@@ -41,7 +43,7 @@ const NAV_ITEMS: { id: SidebarSection; label: string; icon: React.ElementType }[
 ];
 
 export function Sidebar() {
-  const { activeSection, setActiveSection, chats, characters, activeChatId, createChat } =
+  const { activeSection, setActiveSection, chats, characters, activeChatId, setChatBuilderOpen } =
     useFableStore();
 
   // All chats, newest first. This list is the only way to open a chat, so it
@@ -71,7 +73,7 @@ export function Sidebar() {
           variant="purple"
           size="sm"
           className="w-full justify-start gap-2"
-          onClick={() => { createChat(); setActiveSection("chats"); }}
+          onClick={() => setChatBuilderOpen(true)}
         >
           <Plus className="h-3.5 w-3.5" />
           New Chat

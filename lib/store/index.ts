@@ -12,6 +12,7 @@ import type {
   ImageGenerationSettings,
   ModelInfo,
   Persona,
+  Scenario,
   ProviderSettings,
   ProviderStatus,
   ProviderId,
@@ -33,6 +34,7 @@ export type SidebarSection =
   | "chats"
   | "groups"
   | "lorebooks"
+  | "scenarios"
   | "presets"
   | "image-studio"
   | "gallery"
@@ -201,6 +203,16 @@ interface FableStore {
   updatePersona: (id: string, updates: Partial<Omit<Persona, "id" | "createdAt">>) => void;
   deletePersona: (id: string) => void;
 
+  // Scenarios — saved scene setups picked in the chat builder
+  scenarios: Scenario[];
+  addScenario: (data: Omit<Scenario, "id" | "createdAt" | "updatedAt">) => string;
+  updateScenario: (id: string, updates: Partial<Omit<Scenario, "id" | "createdAt">>) => void;
+  deleteScenario: (id: string) => void;
+
+  // New-chat builder dialog
+  chatBuilderOpen: boolean;
+  setChatBuilderOpen: (v: boolean) => void;
+
   // Character editor dialog (global — opened from CharactersView or the inspector)
   characterEditorOpen: boolean;
   /** id of the character being edited, or null when creating a new one */
@@ -214,8 +226,8 @@ interface FableStore {
   chats: Chat[];
   activeChatId: string | null;
   setActiveChatId: (id: string | null) => void;
-  /** Replace characters + chats + personas + lorebooks with the durable SQLite copy (on app load) */
-  hydrateFromServer: (characters: Character[], chats: Chat[], personas: Persona[], lorebooks?: Lorebook[]) => void;
+  /** Replace characters + chats + personas + lorebooks + scenarios with the durable SQLite copy (on app load) */
+  hydrateFromServer: (characters: Character[], chats: Chat[], personas: Persona[], lorebooks?: Lorebook[], scenarios?: Scenario[]) => void;
   /** Adds a message and returns its generated ID */
   addMessage: (chatId: string, message: Omit<Message, "id" | "timestamp">) => string;
   /** Insert a message directly after another (per-message image generation) */
@@ -239,6 +251,18 @@ interface FableStore {
   /** Merge per-chat generation settings (temperature, maxTokens, topP…) */
   updateChatSettings: (chatId: string, settings: Partial<ChatSettings>) => void;
   createChat: (characterId?: string) => string;
+  /** Chat-builder create: character + persona + worlds + scenario override in one shot */
+  createChatFromBuilder: (config: {
+    characterId: string;
+    personaId?: string | null;
+    /** undefined = all worlds */
+    lorebookIds?: string[];
+    /** Overrides the character sheet's scenario text in the prompt */
+    scenarioText?: string;
+    /** Overrides the character's greeting */
+    firstMessage?: string;
+    name?: string;
+  }) => string;
   /** Group chat with 2+ characters; returns null if fewer than 2 resolve */
   createGroupChat: (characterIds: string[]) => string | null;
   /** Toggle a group member in/out of the scene (absent = silent + unwitnessing) */
@@ -385,6 +409,27 @@ export const useFableStore = create<FableStore>()(
         }));
       },
 
+      scenarios: [],
+      addScenario: (data) => {
+        const id = `scenario-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const now = new Date().toISOString();
+        set((s) => ({ scenarios: [...s.scenarios, { ...data, id, createdAt: now, updatedAt: now }] }));
+        return id;
+      },
+      updateScenario: (id, updates) => {
+        set((s) => ({
+          scenarios: s.scenarios.map((sc) =>
+            sc.id === id ? { ...sc, ...updates, id, updatedAt: new Date().toISOString() } : sc
+          ),
+        }));
+      },
+      deleteScenario: (id) => {
+        set((s) => ({ scenarios: s.scenarios.filter((sc) => sc.id !== id) }));
+      },
+
+      chatBuilderOpen: false,
+      setChatBuilderOpen: (v) => set({ chatBuilderOpen: v }),
+
       characterEditorOpen:  false,
       characterEditorId:    null,
       characterEditorDraft: null,
@@ -397,7 +442,7 @@ export const useFableStore = create<FableStore>()(
       activeChatId: "chat-1",
       setActiveChatId: (id) => set({ activeChatId: id }),
 
-      hydrateFromServer: (characters, chats, personas, lorebooks) => {
+      hydrateFromServer: (characters, chats, personas, lorebooks, scenarios) => {
         set((s) => ({
           characters,
           chats,
@@ -406,6 +451,7 @@ export const useFableStore = create<FableStore>()(
           // server list was empty resurrected deliberately-deleted books
           // (the localStorage seed re-pushed them after a cache clear).
           lorebooks: lorebooks ?? s.lorebooks,
+          scenarios: scenarios ?? s.scenarios,
           activeChatId: chats.some((c) => c.id === s.activeChatId)
             ? s.activeChatId
             : chats[0]?.id ?? null,
@@ -613,6 +659,43 @@ export const useFableStore = create<FableStore>()(
           contextMax: 8192,
         };
         set((state) => ({ chats: [newChat, ...state.chats], activeChatId: id }));
+        return id;
+      },
+
+      createChatFromBuilder: ({ characterId, personaId, lorebookIds, scenarioText, firstMessage, name }) => {
+        const id = `chat-${Date.now()}`;
+        const character = get().characters.find((c) => c.id === characterId);
+
+        // Scenario override wins; otherwise the character's own greeting
+        const opening = (firstMessage ?? character?.firstMessage)?.trim();
+        const messages: Message[] = opening
+          ? [{
+              id:          `msg-${Date.now()}-first`,
+              chatId:      id,
+              role:        "assistant",
+              content:     opening,
+              characterId: character?.id,
+              timestamp:   new Date().toISOString(),
+            }]
+          : [];
+
+        const newChat: Chat = {
+          id,
+          name: name?.trim() || (character ? `Chat with ${character.name}` : "New Chat"),
+          characterId,
+          messages,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          contextUsed: 0,
+          contextMax: 8192,
+          ...(lorebookIds !== undefined ? { lorebookIds } : {}),
+          ...(scenarioText?.trim() ? { scenarioText: scenarioText.trim() } : {}),
+        };
+        set((state) => ({
+          chats: [newChat, ...state.chats],
+          activeChatId: id,
+          ...(personaId !== undefined ? { activePersonaId: personaId } : {}),
+        }));
         return id;
       },
 
@@ -829,6 +912,7 @@ export const useFableStore = create<FableStore>()(
         activePersonaId: state.activePersonaId,
         customModels: state.customModels,
         lorebooks: state.lorebooks,
+        scenarios: state.scenarios,
         imageJobs: state.imageJobs,
       }),
       // The polling loop that drives queued/generating jobs dies with the

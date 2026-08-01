@@ -35,20 +35,21 @@ export async function GET(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const body = await req.json() as { characters?: unknown; chats?: unknown; personas?: unknown; lorebooks?: unknown };
+    const body = await req.json() as { characters?: unknown; chats?: unknown; personas?: unknown; lorebooks?: unknown; scenarios?: unknown };
     const characters = Array.isArray(body.characters) ? body.characters as Array<{ id: string }> : null;
     const chats      = Array.isArray(body.chats)      ? body.chats      as Array<{ id: string; messages?: Array<{ id: string }> }> : null;
     const personas   = Array.isArray(body.personas)   ? body.personas   as Array<{ id: string }> : [];
     const lorebooks  = Array.isArray(body.lorebooks)  ? body.lorebooks  as Array<{ id: string }> : [];
+    const scenarios  = Array.isArray(body.scenarios)  ? body.scenarios  as Array<{ id: string }> : [];
 
     if (!characters || !chats) {
       return Response.json({ error: "characters and chats arrays are required" }, { status: 400 });
     }
     if (
       characters.some((c) => !c?.id) || chats.some((c) => !c?.id) ||
-      personas.some((p) => !p?.id) || lorebooks.some((l) => !l?.id)
+      personas.some((p) => !p?.id) || lorebooks.some((l) => !l?.id) || scenarios.some((s) => !s?.id)
     ) {
-      return Response.json({ error: "every character, chat, persona and lorebook needs an id" }, { status: 400 });
+      return Response.json({ error: "every character, chat, persona, lorebook and scenario needs an id" }, { status: 400 });
     }
 
     const store = getStore();
@@ -65,6 +66,7 @@ export async function PUT(req: NextRequest) {
         ["characters", characters.length, existing.characters.length],
         ["personas", personas.length, existing.personas.length],
         ["lorebooks", lorebooks.length, existing.lorebooks.length],
+        ["scenarios", scenarios.length, existing.scenarios.length],
       ] as Array<[string, number, number]>
     ).find(([, incoming, current]) => incoming === 0 && current >= 3);
     if (suspicious) {
@@ -77,7 +79,7 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    store.replaceAppState(characters, chats, personas, lorebooks);
+    store.replaceAppState(characters, chats, personas, lorebooks, scenarios);
     // Deleting a chat must also delete its memory — orphaned drawer rows would
     // otherwise linger forever and resurface in "continue with memories" lists.
     const purged = store.purgeOrphanedChatMemory();
@@ -87,6 +89,7 @@ export async function PUT(req: NextRequest) {
       chats: chats.length,
       personas: personas.length,
       lorebooks: lorebooks.length,
+      scenarios: scenarios.length,
       ...(purged.length > 0 ? { purgedChatMemory: purged } : {}),
     });
   } catch (err) {

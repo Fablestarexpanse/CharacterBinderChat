@@ -948,7 +948,7 @@ export class FableStore {
   // `seq` preserves array order. Full-replace semantics: the client sends its
   // complete state and the transaction rewrites the mirror atomically.
 
-  getAppState(): { characters: unknown[]; chats: unknown[]; personas: unknown[]; lorebooks: unknown[] } {
+  getAppState(): { characters: unknown[]; chats: unknown[]; personas: unknown[]; lorebooks: unknown[]; scenarios: unknown[] } {
     const characters = (this.db
       .prepare("SELECT data FROM app_characters ORDER BY seq")
       .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
@@ -959,6 +959,10 @@ export class FableStore {
 
     const lorebooks = (this.db
       .prepare("SELECT data FROM app_lorebooks ORDER BY seq")
+      .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
+
+    const scenarios = (this.db
+      .prepare("SELECT data FROM app_scenarios ORDER BY seq")
       .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
 
     const chatRows = this.db
@@ -973,14 +977,15 @@ export class FableStore {
       messages: (msgStmt.all(row.id) as Array<{ data: string }>).map((m) => JSON.parse(m.data)),
     }));
 
-    return { characters, chats, personas, lorebooks };
+    return { characters, chats, personas, lorebooks, scenarios };
   }
 
   replaceAppState(
     characters: Array<{ id: string }>,
     chats:      Array<{ id: string; messages?: Array<{ id: string }> }>,
     personas:   Array<{ id: string }> = [],
-    lorebooks:  Array<{ id: string }> = []
+    lorebooks:  Array<{ id: string }> = [],
+    scenarios:  Array<{ id: string }> = []
   ): void {
     const tx = this.db.transaction(() => {
       this.db.prepare("DELETE FROM app_characters").run();
@@ -988,6 +993,7 @@ export class FableStore {
       this.db.prepare("DELETE FROM app_messages").run();
       this.db.prepare("DELETE FROM app_personas").run();
       this.db.prepare("DELETE FROM app_lorebooks").run();
+      this.db.prepare("DELETE FROM app_scenarios").run();
 
       const insChar = this.db.prepare(
         "INSERT OR REPLACE INTO app_characters (id, seq, data) VALUES (?, ?, ?)"
@@ -1003,6 +1009,11 @@ export class FableStore {
         "INSERT OR REPLACE INTO app_lorebooks (id, seq, data) VALUES (?, ?, ?)"
       );
       lorebooks.forEach((l, i) => insLorebook.run(l.id, i, JSON.stringify(l)));
+
+      const insScenario = this.db.prepare(
+        "INSERT OR REPLACE INTO app_scenarios (id, seq, data) VALUES (?, ?, ?)"
+      );
+      scenarios.forEach((s, i) => insScenario.run(s.id, i, JSON.stringify(s)));
 
       const insChat = this.db.prepare(
         "INSERT OR REPLACE INTO app_chats (id, seq, data) VALUES (?, ?, ?)"

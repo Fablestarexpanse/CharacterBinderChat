@@ -15,6 +15,22 @@ export interface Character {
   updatedAt: string;
 }
 
+/**
+ * A saved scene setup: standing scenario text plus an opening message.
+ * Picked in the chat builder to override the character sheet's own
+ * scenario/first message — one character, many stories.
+ */
+export interface Scenario {
+  id: string;
+  name: string;
+  /** Standing story context injected into the prompt ("Current scenario: …") */
+  scenario: string;
+  /** Opening assistant message; falls back to the character's own when empty */
+  firstMessage?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** The user's identity in the roleplay — like a Character, but for the player */
 export interface Persona {
   id: string;
@@ -78,6 +94,9 @@ export interface Chat {
   /** Which lorebooks (worlds) apply to this chat. Undefined = all books
    *  (legacy behavior); [] = none; otherwise only the listed books inject. */
   lorebookIds?: string[];
+  /** Scenario override chosen in the chat builder — snapshot taken at chat
+   *  creation, replaces the character sheet's own scenario in the prompt. */
+  scenarioText?: string;
 }
 
 export interface LoreEntry {

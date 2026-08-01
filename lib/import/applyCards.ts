@@ -119,15 +119,20 @@ async function applyCard(
     }
 
     case "scenario": {
-      const n = importBook(card.book);
-      store.setActiveSection("lorebooks");
-      const firstMes = card.firstMessage
-        ? " Its opening message wasn't imported — scenarios inject as always-on lore."
-        : "";
+      // Scenarios used to be flattened into always-on lorebooks; now they land
+      // in the Scenarios library where the chat builder can pick them (and the
+      // opening message survives the import).
+      const text = card.book.entries.map((e) => e.value.trim()).filter(Boolean).join("\n\n");
+      store.addScenario({
+        name: card.name,
+        scenario: text,
+        firstMessage: card.firstMessage,
+      });
+      store.setActiveSection("scenarios");
       return {
         file: file.name,
         ok: true,
-        message: `scenario "${card.name}" imported as always-on lorebook (${n} entr${n === 1 ? "y" : "ies"}).${firstMes}`,
+        message: `scenario "${card.name}" imported${card.firstMessage ? " with its opening message" : ""} — pick it when building a chat.`,
       };
     }
 

@@ -7,8 +7,10 @@ import { InspectorPanel } from "@/components/inspector/InspectorPanel";
 import { SettingsView } from "@/components/sections/SettingsView";
 import { CharactersView } from "@/components/sections/CharactersView";
 import { LorebooksView } from "@/components/sections/LorebooksView";
+import { ScenariosView } from "@/components/sections/ScenariosView";
 import { GroupsView } from "@/components/sections/GroupsView";
 import { CharacterEditorDialog } from "@/components/characters/CharacterEditorDialog";
+import { NewChatDialog } from "@/components/chat/NewChatDialog";
 import { StateSync } from "@/components/StateSync";
 import { DropImport } from "@/components/DropImport";
 import { PlaceholderView } from "@/components/sections/PlaceholderView";
@@ -43,6 +45,7 @@ export default function Home() {
         {activeSection === "settings" && <SettingsView />}
         {activeSection === "groups" && <GroupsView />}
         {activeSection === "lorebooks" && <LorebooksView />}
+        {activeSection === "scenarios" && <ScenariosView />}
         {activeSection === "presets" && (
           <PlaceholderView
             icon={Sliders}
@@ -84,6 +87,9 @@ export default function Home() {
 
       {/* Global — openable from CharactersView and the inspector */}
       <CharacterEditorDialog />
+
+      {/* New-chat builder — opened by the sidebar's New Chat button */}
+      <NewChatDialog />
 
       {/* Hydrates from SQLite on load, then mirrors edits back (debounced) */}
       <StateSync />
