@@ -17,8 +17,8 @@ const TABS: { id: InspectorTab; label: string }[] = [
   { id: "character",    label: "Character" },
   { id: "core-memory",  label: "Core Mem" },
   { id: "memory",       label: "Memory" },
-  { id: "graph",        label: "Web" },
   { id: "lore",         label: "Lore" },
+  { id: "graph",        label: "Web" },
   { id: "image-studio", label: "Image Studio" },
 ];
 
