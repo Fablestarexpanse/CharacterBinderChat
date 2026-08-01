@@ -136,7 +136,34 @@ export async function POST(req: NextRequest) {
       store.supersedeFact(old.id, factId);
     }
 
-    return Response.json({ factId, superseded: toSupersede.map((o) => o.id) });
+    return Response.json({ ok: true, factId, superseded: toSupersede.map((o) => o.id) });
+  } catch (err) {
+    return Response.json({ error: String(err) }, { status: 500 });
+  }
+}
+
+// DELETE /api/drawer/facts?chat=<id>&id=<factId>
+// Removes a fact the extractor got wrong. Hard delete, not a retraction:
+// these were never true, so keeping them as closed history would be a lie of
+// a different shape. Predecessors this fact superseded come back.
+export async function DELETE(req: NextRequest) {
+  try {
+    const params = req.nextUrl.searchParams;
+    const chatId = params.get("chat");
+    const idRaw  = params.get("id");
+    if (!chatId || !idRaw) {
+      return Response.json({ error: "chat and id params required" }, { status: 400 });
+    }
+    const factId = Number(idRaw);
+    if (!Number.isInteger(factId)) {
+      return Response.json({ error: "id must be an integer fact id" }, { status: 400 });
+    }
+
+    const result = getStore().deleteFact(chatId, factId);
+    if (!result.deleted) {
+      return Response.json({ error: `fact ${factId} not found in this chat` }, { status: 404 });
+    }
+    return Response.json({ ok: true, revived: result.revived });
   } catch (err) {
     return Response.json({ error: String(err) }, { status: 500 });
   }

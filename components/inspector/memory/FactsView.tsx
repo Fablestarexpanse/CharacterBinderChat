@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useFableStore } from "@/lib/store";
+import { Loader2, Trash2, Plus, X } from "lucide-react";
 import { formatRelativeTime, formatAbsTime } from "./utils";
 
 interface EnrichedFact {
@@ -23,7 +26,14 @@ interface Props {
 }
 
 export function FactsView({ chatId, characterId, extractionVersion, isExtracting }: Props) {
+  const bumpExtraction = useFableStore((s) => s.bumpExtraction);
   const [showHistory, setShowHistory] = useState(false);
+  // Curation state: which fact is armed for deletion, and the add-fact draft
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState({ predicate: "", object: "" });
+  const [writeError, setWriteError] = useState<string | null>(null);
   // Result keyed by what was fetched; `loading` is derived so the effect
   // never calls setState synchronously (react-hooks/set-state-in-effect).
   const [result, setResult] = useState<{ key: string; facts: EnrichedFact[]; error: string | null } | null>(null);
@@ -49,6 +59,56 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
   const loading = result?.key !== fetchKey;
   const facts   = result?.facts ?? [];
   const error   = result?.error ?? null;
+
+  // bumpExtraction is the app-wide "memory changed" signal — every inspector
+  // view keys its fetch off it, so one bump refreshes the graph and stats too.
+  const handleDelete = async (factId: number) => {
+    setBusyId(factId);
+    setWriteError(null);
+    try {
+      const res = await fetch(
+        `/api/drawer/facts?chat=${encodeURIComponent(chatId)}&id=${factId}`,
+        { method: "DELETE" }
+      );
+      const data = await res.json().catch(() => null) as { error?: string } | null;
+      if (!res.ok) setWriteError(data?.error ?? `delete failed (HTTP ${res.status})`);
+      else bumpExtraction();
+    } catch (e) {
+      setWriteError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyId(null);
+      setConfirmDelete(null);
+    }
+  };
+
+  const handleAdd = async () => {
+    const predicate = draft.predicate.trim();
+    const object    = draft.object.trim();
+    if (!predicate || !object) return;
+    setWriteError(null);
+    try {
+      const res = await fetch("/api/drawer/facts", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chatId,
+          subjectId:     characterId,
+          predicate,
+          objectLiteral: object,
+        }),
+      });
+      const data = await res.json().catch(() => null) as { error?: string } | null;
+      if (!res.ok) {
+        setWriteError(data?.error ?? `couldn't add fact (HTTP ${res.status})`);
+        return;
+      }
+      setDraft({ predicate: "", object: "" });
+      setAdding(false);
+      bumpExtraction();
+    } catch (e) {
+      setWriteError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   // Separate live from superseded for the history view
   const liveFacts       = facts.filter((f) => f.tValidEnd === null);
@@ -90,6 +150,61 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
       )}
 
       {error && <div className="text-[10px] text-red-500 bg-red-50 rounded p-2">{error}</div>}
+      {writeError && (
+        <div className="flex items-start gap-1.5 text-[10px] text-red-600 bg-red-50 rounded p-2">
+          <span className="flex-1">{writeError}</span>
+          <button onClick={() => setWriteError(null)} className="cursor-pointer flex-shrink-0">
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+
+      {/* Add a fact by hand — extraction misses things, and corrections need
+          to outrank incidental output (the route stores them at high importance). */}
+      {adding ? (
+        <div className="rounded-lg border border-[var(--purple)] bg-white p-2 space-y-1.5">
+          <Input
+            value={draft.predicate}
+            onChange={(e) => setDraft((d) => ({ ...d, predicate: e.target.value }))}
+            placeholder="predicate — e.g. works_at, fears, sibling_of"
+            className="h-7 text-[11px]"
+            autoFocus
+          />
+          <Input
+            value={draft.object}
+            onChange={(e) => setDraft((d) => ({ ...d, object: e.target.value }))}
+            onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
+            placeholder="value — e.g. the dive coffee shop"
+            className="h-7 text-[11px]"
+          />
+          <div className="flex items-center gap-1.5">
+            <Button
+              size="sm"
+              className="h-6 text-[10px]"
+              onClick={handleAdd}
+              disabled={!draft.predicate.trim() || !draft.object.trim()}
+            >
+              Add fact
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 text-[10px]"
+              onClick={() => { setAdding(false); setDraft({ predicate: "", object: "" }); }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setAdding(true)}
+          className="w-full flex items-center justify-center gap-1 rounded-lg border border-dashed border-[var(--border)] py-1.5 text-[10px] text-[var(--muted-fg)] hover:border-[var(--purple)] hover:text-[var(--purple-fg)] transition-colors cursor-pointer"
+        >
+          <Plus className="h-3 w-3" />
+          Add a fact
+        </button>
+      )}
 
       {isExtracting && facts.length === 0 && (
         <div className="text-[11px] text-[var(--purple-fg)] italic flex items-center gap-1.5 py-1">
@@ -108,12 +223,29 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
       {liveFacts.length > 0 && (
         <div className="space-y-1.5">
           {liveFacts.map((f) => (
-            <div key={f.id} className="rounded-lg border border-[var(--border)] bg-white p-2.5">
-              <p className="text-[11px] text-[var(--foreground)] leading-snug">
-                <span className="font-medium text-[var(--purple-fg)]">{f.predicate}</span>
-                {" "}
-                <span>{f.objectDisplay}</span>
-              </p>
+            <div key={f.id} className="group rounded-lg border border-[var(--border)] bg-white p-2.5">
+              <div className="flex items-start gap-1.5">
+                <p className="flex-1 min-w-0 text-[11px] text-[var(--foreground)] leading-snug">
+                  <span className="font-medium text-[var(--purple-fg)]">{f.predicate}</span>
+                  {" "}
+                  <span>{f.objectDisplay}</span>
+                </p>
+                <button
+                  onClick={() => (confirmDelete === f.id ? handleDelete(f.id) : setConfirmDelete(f.id))}
+                  onBlur={() => setConfirmDelete((v) => (v === f.id ? null : v))}
+                  disabled={busyId === f.id}
+                  title={confirmDelete === f.id ? "Click again to delete this fact" : "Delete — the character forgets this"}
+                  className={`flex-shrink-0 rounded p-1 transition-all cursor-pointer ${
+                    confirmDelete === f.id
+                      ? "text-red-500 bg-red-50 opacity-100"
+                      : "text-[var(--muted-fg)] opacity-0 group-hover:opacity-100 hover:text-red-500"
+                  }`}
+                >
+                  {busyId === f.id
+                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                    : <Trash2 className="h-3 w-3" />}
+                </button>
+              </div>
               <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                 {f.confidence < 1.0 && (
                   <Badge variant="default">{Math.round(f.confidence * 100)}%</Badge>

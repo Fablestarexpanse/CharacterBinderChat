@@ -420,6 +420,31 @@ export class FableStore {
       .run(t, newId, oldId);
   }
 
+  /**
+   * Hard-delete a fact the user rejected. This is for extraction mistakes —
+   * things that were never true — so the row goes rather than being closed.
+   * Anything this fact superseded is revived: the successor that closed it no
+   * longer exists, and leaving the predecessor closed would erase both
+   * versions of the truth and dangle superseded_by.
+   */
+  deleteFact(chatId: string, factId: number): { deleted: boolean; revived: number } {
+    const exists = this.db
+      .prepare("SELECT id FROM facts WHERE id = ? AND chat_id = ?")
+      .get(factId, chatId);
+    if (!exists) return { deleted: false, revived: 0 };
+
+    const tx = this.db.transaction(() => {
+      const revived = this.db
+        .prepare(
+          "UPDATE facts SET t_valid_end = NULL, superseded_by = NULL WHERE superseded_by = ? AND chat_id = ?"
+        )
+        .run(factId, chatId).changes;
+      this.db.prepare("DELETE FROM facts WHERE id = ? AND chat_id = ?").run(factId, chatId);
+      return revived;
+    });
+    return { deleted: true, revived: tx() };
+  }
+
 
   // ── Relationship Stats ────────────────────────────────────────────────────
 
