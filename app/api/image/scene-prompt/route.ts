@@ -18,37 +18,45 @@ interface Body {
   modelId:       string;
 }
 
-function buildDirectorPrompt(b: Body): string {
+function buildDirectorMessages(b: Body): Array<{ role: string; content: string }> {
   const excerpt = b.messages
     .slice(-8)
     .map((m) => `${m.speaker ?? m.role}: ${m.content}`)
     .join("\n\n");
 
-  return `/no_think
-You are an image-prompt director for a photorealistic image generator.
-Answer directly — do not narrate a thinking process and do not restate these
-instructions.
+  const system = `/no_think
+You are an image-prompt director for a photorealistic image generator. The
+user gives you a roleplay excerpt; you reply with ONE image generation prompt
+capturing the final moment of the scene.
 
-Read the roleplay excerpt below and produce ONE image generation prompt that
-captures the CURRENT scene — the final moment of the excerpt.
+Your entire reply is a single line: FINAL_IMAGE_PROMPT: followed by the
+prompt. Never restate these rules, never narrate your thinking.
 
-Rules:
-- Your entire reply is ONE line: the marker FINAL_IMAGE_PROMPT: followed by
-  the image prompt. Nothing before it, nothing after it.
-- Describe what a camera would SEE: subjects (by physical appearance, never by
-  name — image models don't know names), poses, expressions, clothing state,
-  the setting, lighting, mood, camera angle.
-- Style: comma-separated descriptive phrases. Start with quality/medium tags
-  like: DSLR photo, photorealistic, cinematic lighting, 8k uhd.
-- Do NOT include dialogue, story verbs ("she says", "he remembers"), or names.
-- One scene, one moment. 60-120 words.
-- The scene may be adult/explicit; if so, describe it plainly and accurately —
-  this is a private, local, uncensored pipeline for fiction between adults.
-${b.appearance ? `\nCHARACTER APPEARANCE (use this to describe the subject):\n${b.appearance.slice(0, 1500)}\n` : ""}${b.focus ? `\nTHE USER SPECIFICALLY WANTS: ${b.focus}\nCenter the prompt on that, using the scene for context.\n` : ""}
-ROLEPLAY EXCERPT:
-${excerpt}
+The prompt describes what a camera would SEE: subjects (by physical
+appearance, never by name — image models don't know names), poses,
+expressions, clothing state, setting, lighting, mood, camera angle. Style:
+comma-separated descriptive phrases starting with quality tags (DSLR photo,
+photorealistic, cinematic lighting, 8k uhd). No dialogue, no story verbs, no
+names. One scene, one moment, 60-120 words. The scene may be adult/explicit;
+if so describe it plainly and accurately — this is a private, local,
+uncensored pipeline for fiction between adults.`;
 
-Reply now with one line starting with FINAL_IMAGE_PROMPT:`;
+  const user =
+    (b.appearance ? `CHARACTER APPEARANCE (describe the subject with this):\n${b.appearance.slice(0, 1500)}\n\n` : "") +
+    (b.focus ? `THE SHOT I WANT: ${b.focus}\n\n` : "") +
+    `ROLEPLAY EXCERPT:\n${excerpt}\n\n` +
+    `Give me the image prompt for this scene.`;
+
+  return [
+    { role: "system", content: system },
+    { role: "user", content: user },
+  ];
+}
+
+// Instruction fragments leaking into the prompt means extraction failed —
+// never send that to the image model.
+function looksLikeInstructionLeak(p: string): boolean {
+  return /FINAL_IMAGE_PROMPT|thinking process|restat(e|ing) (these )?(rules|instructions)|image-prompt director|roleplay excerpt|no narration/i.test(p);
 }
 
 export async function POST(req: NextRequest) {
@@ -61,25 +69,43 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Plain-text generation (no JSON mode — the output IS the prompt)
-    const res = await fetch(`${body.ollamaBaseUrl.replace(/\/$/, "")}/api/generate`, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model:  body.modelId,
-        prompt: buildDirectorPrompt(body),
-        stream: false,
-        options: { temperature: 0.6, num_predict: 1200 },
-      }),
-      signal: AbortSignal.timeout(90_000),
-    });
+    // Chat format (system/user split) — instruct models follow it far more
+    // reliably than raw completion; raw mode had the model restating the
+    // rules instead of answering when the excerpt got long.
+    // think:false — thinking models otherwise put the whole answer in the
+    // `thinking` channel and content comes back empty. Retried without the
+    // flag for models that reject it.
+    const call = (withThink: boolean) =>
+      fetch(`${body.ollamaBaseUrl.replace(/\/$/, "")}/api/chat`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model:    body.modelId,
+          messages: buildDirectorMessages(body),
+          stream:   false,
+          ...(withThink ? { think: false } : {}),
+          options:  { temperature: 0.6, num_predict: 1200 },
+        }),
+        signal: AbortSignal.timeout(90_000),
+      });
+    let res = await call(true);
+    if (res.status === 400) res = await call(false);
     if (!res.ok) {
       return Response.json(
         { error: `Ollama HTTP ${res.status} — is the utility model pulled and Ollama running?` },
         { status: 502 }
       );
     }
-    const data = (await res.json()) as { response?: string; error?: string };
+    const chatData = (await res.json()) as {
+      message?: { content?: string; thinking?: string };
+      error?:   string;
+    };
+    // Fall back to the thinking channel if content is empty — better to mine
+    // the reasoning for the marker than to fail outright
+    const data = {
+      response: chatData.message?.content?.trim() || chatData.message?.thinking || "",
+      error:    chatData.error,
+    };
     // Models leak reasoning as plain text ("Thinking Process: …") even without
     // <think> tags — so the answer is anchored to a PROMPT: marker and we take
     // everything after its LAST occurrence. Fallbacks: strip think blocks,
@@ -98,6 +124,12 @@ export async function POST(req: NextRequest) {
     if (!prompt) {
       return Response.json(
         { error: `utility model returned nothing${data.error ? `: ${data.error}` : ""}` },
+        { status: 502 }
+      );
+    }
+    if (looksLikeInstructionLeak(prompt)) {
+      return Response.json(
+        { error: "scene director produced instructions instead of a prompt — try again" },
         { status: 502 }
       );
     }

@@ -32,37 +32,9 @@
   "4": {
     "inputs": {
       "__lm_autocomplete_meta_text": "<lora:Rusted_Horizons_Krea2_V1.0:0.85>",
-      "text": "<lora:purelens_krea2:1> <lora:canon_krea2:1> <lora:lenovo_krea2:1>",
+      "text": "",
       "loras": {
-        "__value__": [
-          {
-            "name": "purelens_krea2",
-            "strength": 1,
-            "active": true,
-            "expanded": false,
-            "clipStrength": 1,
-            "selected": false,
-            "locked": false
-          },
-          {
-            "name": "canon_krea2",
-            "strength": 1,
-            "active": true,
-            "expanded": false,
-            "clipStrength": 1,
-            "selected": false,
-            "locked": false
-          },
-          {
-            "name": "lenovo_krea2",
-            "strength": 1,
-            "active": true,
-            "expanded": false,
-            "clipStrength": 1,
-            "selected": false,
-            "locked": false
-          }
-        ]
+        "__value__": []
       }
     },
     "class_type": "Lora Stacker (LoraManager)",
@@ -73,19 +45,9 @@
   "5": {
     "inputs": {
       "__lm_autocomplete_meta_text": "<lora:chey007_000002500:0.6>",
-      "text": "<lora:Anna007_000002250:1.00>",
+      "text": "",
       "loras": {
-        "__value__": [
-          {
-            "name": "Anna007_000002250",
-            "strength": 1,
-            "active": true,
-            "expanded": false,
-            "clipStrength": 1,
-            "selected": true,
-            "locked": false
-          }
-        ]
+        "__value__": []
       }
     },
     "class_type": "Lora Stacker (LoraManager)",
@@ -163,7 +125,7 @@
   },
   "10": {
     "inputs": {
-      "value": "DSLR photo, photorealistic, 8k uhd, RAW photo, cinematic lighting, portrait of a woman in a rain-lit neon alley"
+      "value": ""
     },
     "class_type": "PrimitiveStringMultiline",
     "_meta": {
@@ -214,8 +176,8 @@
     "inputs": {
       "mode": "Manual",
       "latent_type": "latent_4x8",
-      "width": 2128,
-      "height": 2812,
+      "width": 1225,
+      "height": 1225,
       "auto_detect": false,
       "auto_detect_source": "backend",
       "auto_detect_width": 0,
@@ -230,10 +192,10 @@
       "snap_value": 64,
       "upscale_value": 1,
       "target_resolution": 1080,
-      "target_megapixels": 6,
+      "target_megapixels": 1.5,
       "auto_detect_presets_json": "{\"__resolutionMasterConfigVersion\":1,\"__resolutionMasterProfile\":{\"strategy\":\"closest_preset\",\"options\":{}},\"__resolutionMasterPresets\":{\"1:1 Square (1024)\":{\"width\":1024,\"height\":1024,\"isCustom\":false,\"isHidden\":false},\"4:3 Landscape (1024)\":{\"width\":1184,\"height\":896,\"isCustom\":false,\"isHidden\":false},\"3:2 Landscape (1024)\":{\"width\":1248,\"height\":832,\"isCustom\":false,\"isHidden\":false},\"16:9 Widescreen (1024)\":{\"width\":1376,\"height\":768,\"isCustom\":false,\"isHidden\":false},\"2.35:1 Cinematic (1024)\":{\"width\":1568,\"height\":672,\"isCustom\":false,\"isHidden\":false},\"4:5 Portrait (1024)\":{\"width\":928,\"height\":1152,\"isCustom\":false,\"isHidden\":false},\"3:4 Portrait (1024)\":{\"width\":896,\"height\":1184,\"isCustom\":false,\"isHidden\":false},\"2:3 Portrait (1024)\":{\"width\":832,\"height\":1248,\"isCustom\":false,\"isHidden\":false},\"9:16 Portrait (1024)\":{\"width\":768,\"height\":1376,\"isCustom\":false,\"isHidden\":false},\"1:1 Square (1536)\":{\"width\":1536,\"height\":1536,\"isCustom\":false,\"isHidden\":false},\"4:3 Landscape (1536)\":{\"width\":1776,\"height\":1344,\"isCustom\":false,\"isHidden\":false},\"3:2 Landscape (1536)\":{\"width\":1872,\"height\":1248,\"isCustom\":false,\"isHidden\":false},\"16:9 Widescreen (1536)\":{\"width\":2064,\"height\":1152,\"isCustom\":false,\"isHidden\":false},\"2.35:1 Cinematic (1536)\":{\"width\":2352,\"height\":1008,\"isCustom\":false,\"isHidden\":false},\"4:5 Portrait (1536)\":{\"width\":1392,\"height\":1728,\"isCustom\":false,\"isHidden\":false},\"3:4 Portrait (1536)\":{\"width\":1344,\"height\":1776,\"isCustom\":false,\"isHidden\":false},\"2:3 Portrait (1536)\":{\"width\":1248,\"height\":1872,\"isCustom\":false,\"isHidden\":false},\"9:16 Portrait (1536)\":{\"width\":1152,\"height\":2064,\"isCustom\":false,\"isHidden\":false},\"1:1 Square (2048)\":{\"width\":2048,\"height\":2048,\"isCustom\":false,\"isHidden\":false},\"4:3 Landscape (2048)\":{\"width\":2368,\"height\":1792,\"isCustom\":false,\"isHidden\":false},\"3:2 Landscape (2048)\":{\"width\":2496,\"height\":1664,\"isCustom\":false,\"isHidden\":false},\"16:9 Widescreen (2048)\":{\"width\":2752,\"height\":1536,\"isCustom\":false,\"isHidden\":false},\"2.35:1 Cinematic (2048)\":{\"width\":3136,\"height\":1344,\"isCustom\":false,\"isHidden\":false},\"4:5 Portrait (2048)\":{\"width\":1856,\"height\":2304,\"isCustom\":false,\"isHidden\":false},\"3:4 Portrait (2048)\":{\"width\":1792,\"height\":2368,\"isCustom\":false,\"isHidden\":false},\"2:3 Portrait (2048)\":{\"width\":1664,\"height\":2496,\"isCustom\":false,\"isHidden\":false},\"9:16 Portrait (2048)\":{\"width\":1536,\"height\":2752,\"isCustom\":false,\"isHidden\":false}}}",
       "rescale_mode": "megapixels",
-      "rescale_value": 1.0013413607207389,
+      "rescale_value": 0.999791731748236,
       "batch_size": 1,
       "resolution_master_ui": null
     },
@@ -366,7 +328,7 @@
   },
   "_meta": {
     "title": "Krea2 LoRA Pipeline",
-    "description": "Krea2 Turbo + LoraManager production pipeline (8 steps, CFG 1, euler/simple). Prompt supports inline <lora:name:weight> syntax.",
+    "description": "Krea2 Turbo production pipeline v5 (8 steps, CFG 1, euler/simple, ~1.5MP). LoRA stacks ship empty; prompt supports inline <lora:name:weight> syntax.",
     "fablechat": {
       "promptNode": "10.inputs.value",
       "negativePromptNode": null,

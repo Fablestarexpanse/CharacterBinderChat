@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useFableStore } from "@/lib/store";
 import { regenerateLastReply } from "@/lib/chat/generation";
+import { startImageJob } from "@/lib/providers/comfyui";
+import { generateSceneImage } from "@/lib/chat/imageGen";
+import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { formatTime } from "@/lib/utils";
 import type { Message, MemoryTrace } from "@/lib/types";
 import {
@@ -14,11 +17,14 @@ import {
   RefreshCw,
   ThumbsUp,
   ThumbsDown,
-  MoreHorizontal,
   Check,
+  X,
   ImageIcon,
+  ImagePlus,
   Brain,
   Clock,
+  Download,
+  Loader2,
 } from "lucide-react";
 
 interface MessageItemProps {
@@ -40,10 +46,12 @@ function renderContent(content: string) {
 }
 
 export function MessageItem({ message }: MessageItemProps) {
-  const { characters, chats, isGenerating } = useFableStore();
+  const { characters, chats, isGenerating, rateMessage, updateMessageContent } = useFableStore();
   const [copied, setCopied] = useState(false);
-  const [liked, setLiked] = useState<"up" | "down" | null>(null);
   const [traceOpen, setTraceOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [imagining, setImagining] = useState(false);
 
   const isUser = message.role === "user";
   const character = characters.find((c) => c.id === message.characterId);
@@ -58,6 +66,30 @@ export function MessageItem({ message }: MessageItemProps) {
     await navigator.clipboard.writeText(message.content);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  const startEdit = () => {
+    setDraft(message.content);
+    setEditing(true);
+  };
+  const saveEdit = () => {
+    const next = draft.trim();
+    if (next && next !== message.content) {
+      updateMessageContent(message.chatId, message.id, next);
+    }
+    setEditing(false);
+  };
+
+  // "Generate image of this scene" — director runs on the story up to THIS
+  // message; the card lands directly after it even mid-history.
+  const handleSceneImage = async () => {
+    if (imagining) return;
+    setImagining(true);
+    try {
+      await generateSceneImage(message.chatId, { uptoMessageId: message.id });
+    } finally {
+      setImagining(false);
+    }
   };
 
   // Image card message
@@ -79,6 +111,32 @@ export function MessageItem({ message }: MessageItemProps) {
           <span className="text-[10px] text-[var(--muted-fg)]">{formatTime(message.timestamp)}</span>
         </div>
 
+        {editing ? (
+          <div className="w-full max-w-2xl space-y-1.5">
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveEdit();
+                if (e.key === "Escape") setEditing(false);
+              }}
+              rows={Math.min(12, Math.max(3, draft.split("\n").length + 1))}
+              autoFocus
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--purple)] resize-y"
+            />
+            <div className="flex items-center gap-1.5">
+              <Button size="sm" className="h-7 text-[11px]" onClick={saveEdit} disabled={!draft.trim()}>
+                <Check className="h-3 w-3 mr-1" />
+                Save
+              </Button>
+              <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={() => setEditing(false)}>
+                <X className="h-3 w-3 mr-1" />
+                Cancel
+              </Button>
+              <span className="text-[10px] text-[var(--muted-fg)]">Ctrl+Enter to save · Esc to cancel</span>
+            </div>
+          </div>
+        ) : (
         <div
           className={`prose-chat text-sm text-[var(--foreground)] max-w-2xl ${
             isUser
@@ -99,13 +157,15 @@ export function MessageItem({ message }: MessageItemProps) {
             ))
           )}
         </div>
+        )}
 
         {/* Action buttons — visible on hover */}
+        {!editing && (
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleCopy} title="Copy">
             {copied ? <Check className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3" />}
           </Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6" title="Edit">
+          <Button variant="ghost" size="icon" className="h-6 w-6" title="Edit message" onClick={startEdit}>
             <Pencil className="h-3 w-3" />
           </Button>
           {!isUser && isLastMessage && (
@@ -134,8 +194,8 @@ export function MessageItem({ message }: MessageItemProps) {
           <Button
             variant="ghost"
             size="icon"
-            className={`h-6 w-6 ${liked === "up" ? "text-green-600" : ""}`}
-            onClick={() => setLiked(liked === "up" ? null : "up")}
+            className={`h-6 w-6 ${message.rating === "up" ? "text-green-600" : ""}`}
+            onClick={() => rateMessage(message.chatId, message.id, message.rating === "up" ? undefined : "up")}
             title="Good response"
           >
             <ThumbsUp className="h-3 w-3" />
@@ -143,16 +203,28 @@ export function MessageItem({ message }: MessageItemProps) {
           <Button
             variant="ghost"
             size="icon"
-            className={`h-6 w-6 ${liked === "down" ? "text-red-500" : ""}`}
-            onClick={() => setLiked(liked === "down" ? null : "down")}
+            className={`h-6 w-6 ${message.rating === "down" ? "text-red-500" : ""}`}
+            onClick={() => rateMessage(message.chatId, message.id, message.rating === "down" ? undefined : "down")}
             title="Bad response"
           >
             <ThumbsDown className="h-3 w-3" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6" title="More options">
-            <MoreHorizontal className="h-3 w-3" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            title="Generate an image of this scene (placed right after this message)"
+            disabled={imagining}
+            onClick={handleSceneImage}
+          >
+            {imagining ? (
+              <Loader2 className="h-3 w-3 animate-spin text-[var(--purple-fg)]" />
+            ) : (
+              <ImagePlus className="h-3 w-3" />
+            )}
           </Button>
         </div>
+        )}
       </div>
 
       {message.memoryTrace && (
@@ -225,8 +297,62 @@ function MemoryTraceDialog({
 }
 
 function ImageCard({ message }: { message: Message }) {
-  const { imageJobs } = useFableStore();
+  const { imageJobs, providerSettings, addImageJob, updateImageJob, setMessageImageJob, updateMessageContent } =
+    useFableStore();
   const job = imageJobs.find((j) => j.id === message.imageJobId);
+
+  // Edit-prompt mode: tweak the prompt and regenerate in place — the new
+  // render replaces this card's image (the message keeps its spot in the chat)
+  const [editingPrompt, setEditingPrompt] = useState(false);
+  const [promptDraft, setPromptDraft] = useState("");
+
+  const runWithSettings = (settings: NonNullable<typeof job>["settings"]) => {
+    const newJob = startImageJob(
+      providerSettings.comfyui.baseUrl,
+      settings,
+      message.chatId,
+      updateImageJob
+    );
+    addImageJob(newJob);
+    setMessageImageJob(message.chatId, message.id, newJob.id);
+  };
+
+  // Failed → exact retry with the same settings. Complete → re-roll with a
+  // fresh random seed for a new take on the same prompt.
+  const handleRetry = () => {
+    if (!job) return;
+    runWithSettings(job.status === "complete" ? { ...job.settings, seed: -1 } : job.settings);
+  };
+
+  const handleEditedRun = () => {
+    if (!job) return;
+    const prompt = promptDraft.trim();
+    if (!prompt) return;
+    runWithSettings({ ...job.settings, prompt, seed: -1 });
+    // Keep the message's durable copy of the prompt in step with what's shown
+    updateMessageContent(message.chatId, message.id, prompt);
+    setEditingPrompt(false);
+  };
+
+  // Save through a blob so the browser downloads instead of navigating —
+  // the proxied /api/comfyui/view URL is same-origin, so this always works.
+  const handleDownload = async (url: string, index = 0) => {
+    try {
+      const blob = await fetch(url).then((r) => r.blob());
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `fablechat-${(job?.id ?? "image").slice(0, 8)}${index > 0 ? `-${index + 1}` : ""}.png`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      window.open(url, "_blank"); // fall back to opening it
+    }
+  };
+
+  const busy = job?.status === "queued" || job?.status === "generating" || job?.status === "pending";
+
+  // In-app viewer — clicking an image must never navigate away from the chat
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
 
   return (
     <div className="px-4 py-3 mx-2">
@@ -244,8 +370,8 @@ function ImageCard({ message }: { message: Message }) {
                   src={job.outputUrls[0]}
                   alt={job.prompt.slice(0, 80)}
                   className="w-full h-full object-cover cursor-pointer"
-                  onClick={() => window.open(job.outputUrls[0], "_blank")}
-                  title="Open full size"
+                  onClick={() => setViewerUrl(job.outputUrls[0])}
+                  title="View full size"
                 />
               ) : job?.status === "failed" ? (
                 <div className="flex flex-col items-center gap-2 px-4 text-center">
@@ -283,13 +409,38 @@ function ImageCard({ message }: { message: Message }) {
                     src={url}
                     alt="Batch output"
                     className="w-full aspect-square object-cover rounded cursor-pointer"
-                    onClick={() => window.open(url, "_blank")}
+                    onClick={() => setViewerUrl(url)}
                   />
                 ))}
               </div>
             )}
             <div className="p-3 border-t border-[var(--border)]">
-              <div className="text-xs text-[var(--foreground)] line-clamp-2">{job?.prompt ?? message.content}</div>
+              {editingPrompt && job ? (
+                <div className="space-y-1.5">
+                  <textarea
+                    value={promptDraft}
+                    onChange={(e) => setPromptDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleEditedRun();
+                      if (e.key === "Escape") setEditingPrompt(false);
+                    }}
+                    rows={5}
+                    autoFocus
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--purple)] resize-y"
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <Button size="sm" className="h-7 text-[11px]" onClick={handleEditedRun} disabled={!promptDraft.trim()}>
+                      <ImageIcon className="h-3 w-3 mr-1" />
+                      Generate
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={() => setEditingPrompt(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-[var(--foreground)] line-clamp-2">{job?.prompt ?? message.content}</div>
+              )}
               <div className="flex items-center gap-2 mt-2">
                 <span className="text-[10px] text-[var(--muted-fg)]">
                   {job?.settings.workflow ?? "flux-cinematic"}
@@ -310,10 +461,55 @@ function ImageCard({ message }: { message: Message }) {
                   {job?.status ?? "pending"}
                 </span>
               </div>
+              {job && !busy && !editingPrompt && (
+                <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-[var(--border)]">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[11px]"
+                    onClick={handleRetry}
+                    title={job.status === "failed" ? "Run this generation again" : "Generate a new take (fresh seed)"}
+                  >
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                    {job.status === "failed" ? "Try again" : "Re-roll"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[11px]"
+                    onClick={() => {
+                      setPromptDraft(job.prompt);
+                      setEditingPrompt(true);
+                    }}
+                    title="Tweak the prompt and regenerate — replaces this image"
+                  >
+                    <Pencil className="h-3 w-3 mr-1" />
+                    Edit prompt
+                  </Button>
+                  {job.status === "complete" && job.outputUrls.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-[11px]"
+                      onClick={() => job.outputUrls.forEach((u, i) => handleDownload(u, i))}
+                      title="Save image to your computer"
+                    >
+                      <Download className="h-3 w-3 mr-1" />
+                      Download
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      <ImageLightbox
+        url={viewerUrl}
+        filename={`fablechat-${(job?.id ?? "image").slice(0, 8)}.png`}
+        onClose={() => setViewerUrl(null)}
+      />
     </div>
   );
 }

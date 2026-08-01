@@ -1,10 +1,10 @@
 "use client";
 
 import { useRef, useEffect, useState, type KeyboardEvent } from "react";
-import { useFableStore, DEFAULT_UTILITY_MODEL } from "@/lib/store";
+import { useFableStore } from "@/lib/store";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { startImageJob } from "@/lib/providers/comfyui";
+import { generateSceneImage } from "@/lib/chat/imageGen";
 import { generateAssistantReply, stopGeneration, presentMemberIds } from "@/lib/chat/generation";
 import {
   Paperclip,
@@ -21,8 +21,6 @@ export function ChatInput() {
     activeChatId, chats, characters,
     inputValue, setInputValue,
     addMessage,
-    addImageJob, updateImageJob, imageSettings,
-    providerSettings,
     isGenerating,
     setActiveSection,
   } = useFableStore();
@@ -86,76 +84,21 @@ export function ChatInput() {
   };
 
   // ── Image generation ──────────────────────────────────────────────────────
+  // Scene director + ComfyUI queueing live in lib/chat/imageGen.ts (shared
+  // with the per-message generate button). Any text after /image steers the
+  // shot; failures are logged, not silently swallowed into an empty render.
 
   const handleImageGeneration = async (focus: string) => {
     if (!activeChatId || !chat) return;
-
-    // ── Scene director ───────────────────────────────────────────────────
-    // Distill WHAT THE SCENE LOOKS LIKE from the recent messages into a
-    // visual prompt (never conversation text), on the local uncensored
-    // utility model. Any text after /image steers the shot.
-    const store = useFableStore.getState();
-    const character = store.characters.find((c) => c.id === chat.characterId);
-    const sceneMessages = chat.messages
-      .filter((m) => !m.error && !m.imageJobId && m.content.trim())
-      .slice(-8)
-      .map((m) => ({
-        role: m.role,
-        content: m.content,
-        speaker: m.role === "user"
-          ? store.personas.find((p) => p.id === store.activePersonaId)?.name ?? "User"
-          : store.characters.find((c) => c.id === m.characterId)?.name ?? character?.name ?? "Character",
-      }));
-
-    let prompt = focus;
-    if (sceneMessages.length > 0) {
-      setDirecting(true);
-      try {
-        const res = await fetch("/api/image/scene-prompt", {
-          method:  "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messages:      sceneMessages,
-            focus:         focus || undefined,
-            appearance:    character
-              ? [character.name + ":", character.description, character.personality].filter(Boolean).join("\n")
-              : undefined,
-            ollamaBaseUrl: providerSettings.ollama.baseUrl,
-            modelId:       providerSettings.ollama.utilityModel ?? DEFAULT_UTILITY_MODEL,
-          }),
-        });
-        const data = await res.json().catch(() => null) as { ok?: boolean; prompt?: string; error?: string } | null;
-        if (res.ok && data?.prompt) {
-          prompt = data.prompt;
-        } else if (!focus) {
-          // No scene prompt and nothing typed — surface the failure instead
-          // of silently generating from an empty prompt
-          console.warn("[/image] scene director failed:", data?.error);
-        }
-      } catch (e) {
-        console.warn("[/image] scene director failed:", e);
-      } finally {
-        setDirecting(false);
-      }
+    try {
+      const result = await generateSceneImage(activeChatId, {
+        focus: focus || undefined,
+        onPhase: (phase) => setDirecting(phase === "directing"),
+      });
+      if (!result.ok) console.warn("[/image] scene director failed:", result.error);
+    } finally {
+      setDirecting(false);
     }
-    if (!prompt.trim()) return;
-
-    const settings = { ...imageSettings, prompt };
-    // Queues to ComfyUI and streams status back into the job via the store —
-    // the ImageCard in the message list re-renders as the job progresses.
-    const job = startImageJob(
-      providerSettings.comfyui.baseUrl,
-      settings,
-      activeChatId,
-      updateImageJob
-    );
-    addImageJob(job);
-    addMessage(activeChatId, {
-      chatId:      activeChatId,
-      role:        "assistant",
-      content:     prompt,
-      imageJobId:  job.id,
-    });
   };
 
   // ── Keyboard / resize ─────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { startImageJob } from "@/lib/providers/comfyui";
+import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { useState } from "react";
 import {
   Zap,
@@ -36,6 +37,8 @@ export function ImageStudioTab() {
   const { imageSettings, setImageSettings, imageJobs, addImageJob, updateImageJob, providerSettings, activeChatId } =
     useFableStore();
   const [newLora, setNewLora] = useState("");
+  // In-app viewer — never navigate away to view an output
+  const [viewer, setViewer] = useState<{ url: string; id: string } | null>(null);
 
   const handleGenerate = () => {
     // startImageJob returns immediately; connection check, queueing and
@@ -354,7 +357,7 @@ export function ImageStudioTab() {
                       src={job.outputUrls[0]}
                       alt={job.prompt.slice(0, 60)}
                       className="w-full h-full object-cover"
-                      onClick={() => window.open(job.outputUrls[0], "_blank")}
+                      onClick={() => setViewer({ url: job.outputUrls[0], id: job.id })}
                     />
                   ) : job.status === "failed" ? (
                     <X className="h-5 w-5 text-red-500" />
@@ -376,6 +379,12 @@ export function ImageStudioTab() {
           </div>
         )}
       </div>
+
+      <ImageLightbox
+        url={viewer?.url ?? null}
+        filename={`fablechat-${(viewer?.id ?? "image").slice(0, 8)}.png`}
+        onClose={() => setViewer(null)}
+      />
     </div>
   );
 }

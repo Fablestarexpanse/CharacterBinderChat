@@ -37,6 +37,8 @@ export interface Message {
   tokens?: number;
   /** Memory injected into the prompt that produced this reply (assistant only) */
   memoryTrace?: MemoryTrace;
+  /** User feedback on this reply (thumbs up/down in the hover actions) */
+  rating?: "up" | "down";
   /** True when this is a provider-failure notice, not real dialogue — such
    *  messages are excluded from prompts, extraction, and cadence counts */
   error?: boolean;

@@ -46,16 +46,19 @@ export type InspectorTab = "character" | "memory" | "graph" | "summary" | "lore"
 
 // ─── Default Image Settings ───────────────────────────────────────────────────
 
+// Defaults match the Krea2 Turbo pipeline (the workflow whose models are
+// actually installed on this machine): 8 steps, CFG 1, euler/simple.
 const defaultImageSettings: ImageGenerationSettings = {
   provider: "comfyui",
-  workflow: "flux-cinematic",
+  workflow: "krea2-lora-pipeline",
   prompt: "",
   negativePrompt: "blurry, deformed, low quality, watermark",
   aspectRatio: "1:1" as AspectRatio,
-  width: 1024,
-  height: 1024,
-  steps: 28,
-  cfg: 7,
+  // 1225×1225 ≈ 1.5MP — the Krea2 v5 pipeline's speed/quality sweet spot
+  width: 1225,
+  height: 1225,
+  steps: 8,
+  cfg: 1,
   sampler: "euler",
   seed: -1,
   batchCount: 1,
@@ -213,12 +216,18 @@ interface FableStore {
   hydrateFromServer: (characters: Character[], chats: Chat[], personas: Persona[], lorebooks?: Lorebook[]) => void;
   /** Adds a message and returns its generated ID */
   addMessage: (chatId: string, message: Omit<Message, "id" | "timestamp">) => string;
+  /** Insert a message directly after another (per-message image generation) */
+  insertMessageAfter: (chatId: string, afterMessageId: string, message: Omit<Message, "id" | "timestamp">) => string;
+  /** Thumbs up/down on a reply; passing the current rating clears it */
+  rateMessage: (chatId: string, messageId: string, rating: "up" | "down" | undefined) => void;
   /** Stream partial assistant content into an existing message */
   updateMessageContent: (chatId: string, messageId: string, content: string) => void;
   /** Record which memory shaped a reply (provenance for the memory inspector) */
   setMessageMemoryTrace: (chatId: string, messageId: string, trace: MemoryTrace) => void;
   /** Flag a message as a provider-failure notice (excluded from prompts) */
   markMessageError: (chatId: string, messageId: string) => void;
+  /** Repoint an image-card message at a new job (retry / re-roll) */
+  setMessageImageJob: (chatId: string, messageId: string, jobId: string) => void;
   /** Update which model / provider a chat uses */
   setChatModel: (chatId: string, modelId: string, providerId: string) => void;
   /** Update the real token accounting shown by the header context meter */
@@ -419,6 +428,48 @@ export const useFableStore = create<FableStore>()(
         return id;
       },
 
+      insertMessageAfter: (chatId, afterMessageId, msg) => {
+        const id = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const message: Message = {
+          ...msg,
+          id,
+          timestamp: new Date().toISOString(),
+        };
+        set((state) => ({
+          chats: state.chats.map((c) => {
+            if (c.id !== chatId) return c;
+            const idx = c.messages.findIndex((m) => m.id === afterMessageId);
+            const messages =
+              idx === -1
+                ? [...c.messages, message]
+                : [...c.messages.slice(0, idx + 1), message, ...c.messages.slice(idx + 1)];
+            return { ...c, messages, updatedAt: new Date().toISOString() };
+          }),
+        }));
+        return id;
+      },
+
+      rateMessage: (chatId, messageId, rating) => {
+        set((state) => ({
+          chats: state.chats.map((c) =>
+            c.id === chatId
+              ? {
+                  ...c,
+                  messages: c.messages.map((m) => {
+                    if (m.id !== messageId) return m;
+                    if (rating === undefined) {
+                      const rest = { ...m };
+                      delete rest.rating;
+                      return rest;
+                    }
+                    return { ...m, rating };
+                  }),
+                }
+              : c
+          ),
+        }));
+      },
+
       updateMessageContent: (chatId, messageId, content) => {
         set((state) => ({
           chats: state.chats.map((c) =>
@@ -470,6 +521,21 @@ export const useFableStore = create<FableStore>()(
                   ...c,
                   messages: c.messages.map((m) =>
                     m.id === messageId ? { ...m, error: true } : m
+                  ),
+                }
+              : c
+          ),
+        }));
+      },
+
+      setMessageImageJob: (chatId, messageId, jobId) => {
+        set((state) => ({
+          chats: state.chats.map((c) =>
+            c.id === chatId
+              ? {
+                  ...c,
+                  messages: c.messages.map((m) =>
+                    m.id === messageId ? { ...m, imageJobId: jobId } : m
                   ),
                 }
               : c
