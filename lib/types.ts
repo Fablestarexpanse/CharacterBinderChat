@@ -91,8 +91,12 @@ export interface Chat {
   updatedAt: string;
   contextUsed?: number;
   contextMax?: number;
-  /** Per-chat generation parameters; provider defaults apply when unset */
-  settings?: Partial<ChatSettings>;
+  /** Which preset applies. Unset falls back to the store's defaultPresetId,
+   *  resolved at read time so old chats pick up the default too. */
+  presetId?: string;
+  /** Per-chat overrides layered on top of the preset. Field name kept from the
+   *  old ChatSettings so persisted chats round-trip without a migration. */
+  settings?: Partial<GenerationParams>;
   /** Which lorebooks (worlds) apply to this chat. Undefined = all books
    *  (legacy behavior); [] = none; otherwise only the listed books inject. */
   lorebookIds?: string[];
@@ -175,6 +179,9 @@ export interface ModelInfo {
   contextLength?: number;
   parameters?: string;
   providerId: ProviderId;
+  /** OpenRouter only: sampler params this model's providers actually honour.
+   *  Drives which advanced controls are worth showing. */
+  supportedParameters?: string[];
 }
 
 export interface ProviderSettings {
@@ -197,13 +204,59 @@ export interface ProviderStatus {
   modelLabel?: string;
 }
 
-export interface ChatSettings {
+// ─── Generation Parameters ───────────────────────────────────────────────────
+// Provider-neutral sampler knobs. Every backend spells these differently (see
+// PARAM_MAP in lib/providers/factory.ts) and supports a different subset, so
+// nothing here is sent verbatim — the mapping layer translates and drops.
+
+export interface GenerationParams {
   temperature: number;
   maxTokens: number;
+  /** History budget in tokens. Client-side everywhere; also Ollama's num_ctx. */
+  contextSize: number;
   topP: number;
+  topK: number;
+  repetitionPenalty: number;
   frequencyPenalty: number;
   presencePenalty: number;
-  systemPrompt?: string;
+}
+
+export type ParamKey = keyof GenerationParams;
+
+/** Standing instructions that apply to every chat, set once in Presets. */
+export interface PromptInstructions {
+  /** Injected just below the character identity line of every system prompt */
+  globalPrompt?: string;
+  /** Forces the reply to begin with this text */
+  prefill?: string;
+  /** Max 10. Added as an instruction — not enforceable at the API level. */
+  forbiddenWords?: string[];
+}
+
+/** A named, reusable bundle of parameters and standing prompts. */
+export interface Preset {
+  id: string;
+  name: string;
+  /** Sparse: only what the user actually set. Unset keys fall through to
+   *  DEFAULT_GENERATION_PARAMS and are not sent at all beyond the core three. */
+  params: Partial<GenerationParams>;
+  /** Sent only while this preset is active, below the global prompt */
+  customPrompt?: string;
+  /** Override the global prefill / forbidden words when set */
+  prefill?: string;
+  forbiddenWords?: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** What generation.ts consumes after global → preset → chat merging. */
+export interface ResolvedGeneration {
+  params: Partial<GenerationParams>;
+  globalPrompt?: string;
+  customPrompt?: string;
+  prefill: string;
+  forbiddenWords: string[];
+  presetId: string | null;
 }
 
 // ─── Unified Chat Provider Interface ─────────────────────────────────────────
@@ -216,7 +269,7 @@ export interface ChatProvider {
   streamChat(
     messages: Array<{ role: MessageRole; content: string }>,
     modelId: string,
-    settings?: Partial<ChatSettings>,
+    params?: Partial<GenerationParams>,
     signal?: AbortSignal
   ): AsyncIterable<string>;
 }

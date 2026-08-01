@@ -4,7 +4,8 @@
  * the SSE stream format matches OpenAI exactly.
  */
 
-import type { ChatProvider, ChatSettings, MessageRole, ModelInfo } from "@/lib/types";
+import type { ChatProvider, GenerationParams, MessageRole, ModelInfo } from "@/lib/types";
+import { buildRequestParams } from "./params";
 
 export class LMStudioProvider implements ChatProvider {
   id = "lmstudio" as const;
@@ -44,16 +45,15 @@ export class LMStudioProvider implements ChatProvider {
   async *streamChat(
     messages: Array<{ role: MessageRole; content: string }>,
     modelId: string,
-    settings?: Partial<ChatSettings>,
+    params?: Partial<GenerationParams>,
     signal?: AbortSignal
   ): AsyncIterable<string> {
+    const { root } = buildRequestParams("lmstudio", params ?? {});
     const body = {
       model: modelId,
       messages,
       stream: true,
-      temperature: settings?.temperature ?? 0.8,
-      max_tokens: settings?.maxTokens ?? 2048,
-      top_p: settings?.topP ?? 0.95,
+      ...root,
     };
 
     const res = await fetch(`${this.baseUrl}/v1/chat/completions`, {

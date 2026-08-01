@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 import type {
   Character,
   Chat,
-  ChatSettings,
+  GenerationParams,
   Message,
   MemoryTrace,
   Lorebook,
@@ -153,7 +153,7 @@ interface FableStore {
   /** Update the real token accounting shown by the header context meter */
   setChatContext: (chatId: string, contextUsed: number, contextMax: number) => void;
   /** Merge per-chat generation settings (temperature, maxTokens, topP…) */
-  updateChatSettings: (chatId: string, settings: Partial<ChatSettings>) => void;
+  updateChatSettings: (chatId: string, settings: Partial<GenerationParams>) => void;
   createChat: (characterId?: string) => string;
   /** Chat-builder create: character + persona + worlds + scenario override in one shot */
   createChatFromBuilder: (config: {

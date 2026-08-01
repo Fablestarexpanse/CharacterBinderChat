@@ -3,7 +3,8 @@
  * Ollama API docs: https://github.com/ollama/ollama/blob/main/docs/api.md
  */
 
-import type { ChatProvider, ChatSettings, MessageRole, ModelInfo } from "@/lib/types";
+import type { ChatProvider, GenerationParams, MessageRole, ModelInfo } from "@/lib/types";
+import { buildRequestParams } from "./params";
 
 export class OllamaProvider implements ChatProvider {
   id = "ollama" as const;
@@ -41,18 +42,15 @@ export class OllamaProvider implements ChatProvider {
   async *streamChat(
     messages: Array<{ role: MessageRole; content: string }>,
     modelId: string,
-    settings?: Partial<ChatSettings>,
+    params?: Partial<GenerationParams>,
     signal?: AbortSignal
   ): AsyncIterable<string> {
+    const { options } = buildRequestParams("ollama", params ?? {});
     const body = {
       model: modelId,
       messages,
       stream: true,
-      options: {
-        temperature: settings?.temperature ?? 0.8,
-        num_predict: settings?.maxTokens ?? 2048,
-        top_p:       settings?.topP ?? 0.95,
-      },
+      options,
     };
 
     const res = await fetch(`${this.baseUrl}/api/chat`, {
