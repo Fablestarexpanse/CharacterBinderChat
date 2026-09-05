@@ -6,6 +6,21 @@ import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * What the GET returns. Declared here rather than at each call site: it was
+ * hand-typed twice on the client with different field sets, so a change to the
+ * route only ever broke one of them.
+ */
+export interface CoreMemoryGetResponse {
+  coreMemory: CoreMemory;
+  version:    number;
+  updatedAt:  number;
+  knownFacts: string[];
+  episodes:   string[];
+  insights:   string[];
+  bits:       string[];
+}
+
 // ─── GET /api/chat/core-memory ───────────────────────────────────────────────
 // ?chatId=X&characterId=Y&name=Z&context=<recent text, optional>
 // Returns the Core Memory Block for a character, creating defaults if needed.
@@ -39,10 +54,11 @@ export async function GET(req: NextRequest) {
       .slice(0, 2).map((c) => c.content);
     // Shared language: nicknames / running jokes / rituals, strongest first
     const bits = store.listBondCards(chatId, 6).map((c) => c.content);
-    return Response.json({
-      ok: true, coreMemory: cm.data, version: cm.version, updatedAt: cm.updatedAt,
+    const body: CoreMemoryGetResponse = {
+      coreMemory: cm.data, version: cm.version, updatedAt: cm.updatedAt,
       knownFacts, episodes, insights, bits,
-    });
+    };
+    return Response.json(body);
   } catch (err) {
     return routeError("[core-memory GET]", err);
   }

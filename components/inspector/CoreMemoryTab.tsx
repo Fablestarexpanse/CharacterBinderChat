@@ -7,6 +7,7 @@ import { Brain, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Section } from "./Section";
 import type { CoreMemory } from "@/lib/db/models";
+import type { CoreMemoryGetResponse } from "@/app/api/chat/core-memory/route";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -93,9 +94,7 @@ export function CoreMemoryTab() {
         const res  = await fetch(
           `/api/chat/core-memory?chatId=${encodeURIComponent(chatId)}&characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}`
         );
-        const data = await res.json() as {
-          coreMemory: CoreMemory; version: number; updatedAt: number; error?: string;
-        };
+        const data = await res.json() as CoreMemoryGetResponse & { error?: string };
         if (cancelled) return;
         if (res.ok) {
           const relAge = data.updatedAt

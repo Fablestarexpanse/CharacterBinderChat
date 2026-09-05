@@ -12,6 +12,7 @@ import { resolveGeneration } from "./settings";
 import { fitHistoryToBudget } from "./tokenBudget";
 import type { Chat, Character, MessageRole, ExtractionRequest } from "@/lib/types";
 import type { CoreMemory } from "@/lib/db/models";
+import type { CoreMemoryGetResponse } from "@/app/api/chat/core-memory/route";
 
 let abortController: AbortController | null = null;
 
@@ -44,10 +45,7 @@ async function fetchCoreMemory(
       { cache: "no-store" }
     );
     if (!res.ok) return { coreMemory: null, knownFacts: [], episodes: [], insights: [], bits: [] };
-    const data = (await res.json()) as {
-      coreMemory: CoreMemory | null; knownFacts?: string[]; episodes?: string[];
-      insights?: string[]; bits?: string[];
-    };
+    const data = (await res.json()) as CoreMemoryGetResponse;
     return {
       coreMemory: data.coreMemory ?? null,
       knownFacts: data.knownFacts ?? [],

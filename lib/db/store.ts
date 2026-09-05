@@ -372,7 +372,7 @@ export class FableStore {
   }
 
   /** Raw embedding blob for a fact (null when never embedded) */
-  private factEmbedding(factId: number): Float32Array | null {
+  private _factEmbedding(factId: number): Float32Array | null {
     const row = this.db.prepare("SELECT embedding FROM facts WHERE id = ?").get(factId) as
       { embedding: Buffer | null } | undefined;
     return bufferToVec(row?.embedding ?? null);
@@ -396,7 +396,7 @@ export class FableStore {
     const family = predicateFamily(predicate);
     for (const f of this.queryFacts(chatId, subjectId)) {
       if (excludeIds.has(f.id)) continue;
-      const other = this.factEmbedding(f.id);
+      const other = this._factEmbedding(f.id);
       if (!other) continue;
       const sim = cosine(vec, other);
       const bar = predicateFamily(f.predicate) === family ? threshold : 0.97;
@@ -1333,7 +1333,7 @@ export class FableStore {
     );
     const relevanceOf = (f: DbFact): number => {
       if (queryEmbedding) {
-        const v = this.factEmbedding(f.id);
+        const v = this._factEmbedding(f.id);
         // Rescale cosine (~0.3..0.9 in practice) onto roughly the same 0..1
         // band lexical overlap produces, so mixed corpora rank sanely
         if (v) return Math.max(0, (cosine(queryEmbedding, v) - 0.3) / 0.6);

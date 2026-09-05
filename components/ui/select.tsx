@@ -1,5 +1,3 @@
-"use client";
-
 import { cn } from "@/lib/utils";
 import { ChevronDown } from "lucide-react";
 import { type SelectHTMLAttributes, forwardRef } from "react";
