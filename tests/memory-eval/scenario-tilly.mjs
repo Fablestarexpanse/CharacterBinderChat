@@ -18,7 +18,7 @@ const APP_ROOT = path.resolve(HERE, "../..");
 export async function load() {
   // Pull the card text from the live app DB (readonly — safe alongside a
   // running dev server). Fails loudly if the character/persona are missing.
-  const Database = require(path.join(APP_ROOT, "node_modules/better-sqlite3"));
+  const Database = require("better-sqlite3");
   const dbPath = path.join(APP_ROOT, "data", "fablestore.db");
   if (!fs.existsSync(dbPath)) throw new Error(`main app DB not found at ${dbPath}`);
   const db = new Database(dbPath, { readonly: true });
