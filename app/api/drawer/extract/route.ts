@@ -1,12 +1,11 @@
 import { NextRequest } from "next/server";
-import type { ExtractionRequest } from "@/lib/types";
 import { getStore } from "@/lib/db";
 import { normPredicate, predicateFamily, isSingleValued } from "@/lib/db/predicates";
-import { PROVIDER_TYPES, callOllama, callOpenAICompat, isProviderType, parseLLMJson, parseProviderBase } from "@/lib/llm/callers";
+import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
 import { embedTexts, vecToBuffer } from "@/lib/llm/embeddings";
 import { syncStatsToCore, syncCommitmentsToCore } from "@/lib/chat/coreMemoryStore";
 import type { EntityType, StatName } from "@/lib/db/models";
-import { routeError } from "@/lib/api";
+import { parseMemoryTaskRequest, routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -232,41 +231,12 @@ class EntityResolver {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const task = parseMemoryTaskRequest(await req.json());
+    if (!task.ok) return task.response;
     const {
-      messages,
-      chatId,
-      characterId,
-      characterName,
-      personaName,
-      providerType,
-      providerBaseUrl,
-      modelId,
-      apiKey,
-      participants,
-    } = body as Pick<ExtractionRequest,
-      "messages" | "chatId" | "characterId" | "characterName" | "personaName" |
-      "providerType" | "providerBaseUrl" | "modelId" | "apiKey" | "participants">;
-
-    if (!messages?.length || !chatId || !characterId || !providerBaseUrl || !modelId) {
-      return Response.json(
-        { ok: false, error: "messages, chatId, characterId, providerBaseUrl and modelId are required" },
-        { status: 400 }
-      );
-    }
-    if (!isProviderType(providerType)) {
-      return Response.json(
-        { ok: false, error: `providerType must be one of: ${PROVIDER_TYPES.join(", ")}` },
-        { status: 400 }
-      );
-    }
-    const baseUrl = parseProviderBase(providerBaseUrl);
-    if (!baseUrl) {
-      return Response.json(
-        { ok: false, error: "providerBaseUrl must be an http(s) URL" },
-        { status: 400 }
-      );
-    }
+      messages, chatId, characterId, characterName, personaName,
+      providerType, providerBaseUrl, modelId, apiKey, participants,
+    } = task.value;
 
     // ── Build prompt with known entity roster (prevents ID drift) ────────────
 
@@ -316,9 +286,9 @@ export async function POST(req: NextRequest) {
     let rawText: string;
 
     if (providerType === "ollama") {
-      rawText = await callOllama(baseUrl, modelId, prompt);
+      rawText = await callOllama(providerBaseUrl, modelId, prompt);
     } else {
-      rawText = await callOpenAICompat(baseUrl, modelId, prompt, apiKey);
+      rawText = await callOpenAICompat(providerBaseUrl, modelId, prompt, apiKey);
     }
 
     // Parse failure must be distinguishable from "nothing to extract" — an

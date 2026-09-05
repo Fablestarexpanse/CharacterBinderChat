@@ -1,9 +1,8 @@
 import { NextRequest } from "next/server";
-import type { ExtractionRequest } from "@/lib/types";
 import { getStore } from "@/lib/db";
-import { PROVIDER_TYPES, callOllama, callOpenAICompat, isProviderType, parseLLMJson, parseProviderBase } from "@/lib/llm/callers";
+import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
 import { embedText, vecToBuffer } from "@/lib/llm/embeddings";
-import { routeError } from "@/lib/api";
+import { parseMemoryTaskRequest, routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -78,34 +77,13 @@ ${episodes.map((e) => `- ${e}`).join("\n") || "(none)"}`;
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json() as Pick<ExtractionRequest,
-      "chatId" | "characterId" | "characterName" | "personaName" | "mode" |
-      "messages" | "providerType" | "providerBaseUrl" | "modelId" | "apiKey">;
+    const task = parseMemoryTaskRequest(await req.json(), { requireMessages: false });
+    if (!task.ok) return task.response;
     const {
-      chatId, characterId, characterName, personaName,
+      chatId, characterId, characterName, personaName, messages,
       providerType, providerBaseUrl, modelId, apiKey,
-    } = body;
-    const mode = body.mode ?? "episode";
-
-    if (!chatId || !characterId || !providerBaseUrl || !modelId) {
-      return Response.json(
-        { ok: false, error: "chatId, characterId, providerBaseUrl and modelId are required" },
-        { status: 400 }
-      );
-    }
-    if (!isProviderType(providerType)) {
-      return Response.json(
-        { ok: false, error: `providerType must be one of: ${PROVIDER_TYPES.join(", ")}` },
-        { status: 400 }
-      );
-    }
-    const baseUrl = parseProviderBase(providerBaseUrl);
-    if (!baseUrl) {
-      return Response.json(
-        { ok: false, error: "providerBaseUrl must be an http(s) URL" },
-        { status: 400 }
-      );
-    }
+    } = task.value;
+    const mode = task.value.mode ?? "episode";
 
     const store = getStore();
     const userLabel = personaName ?? "the user";
@@ -119,10 +97,10 @@ export async function POST(req: NextRequest) {
         .map((c) => `${c.title}: ${c.content}`);
       prompt = reflectPrompt(facts, episodes, characterName ?? characterId, userLabel);
     } else {
-      if (!body.messages?.length) {
+      if (!messages?.length) {
         return Response.json({ ok: false, error: "messages required for episode mode" }, { status: 400 });
       }
-      const conversation = body.messages
+      const conversation = messages
         .slice(-16)
         .map((m) => `${m.role === "user" ? userLabel : characterName}: ${m.content}`)
         .join("\n\n");
@@ -131,8 +109,8 @@ export async function POST(req: NextRequest) {
     }
 
     const rawText = providerType === "ollama"
-      ? await callOllama(baseUrl, modelId, prompt)
-      : await callOpenAICompat(baseUrl, modelId, prompt, apiKey);
+      ? await callOllama(providerBaseUrl, modelId, prompt)
+      : await callOpenAICompat(providerBaseUrl, modelId, prompt, apiKey);
 
     if (mode === "reflect") {
       const parsed = parseLLMJson<{ insights?: Array<{ title?: string; content?: string; importance?: number }> } | null>(rawText, null);

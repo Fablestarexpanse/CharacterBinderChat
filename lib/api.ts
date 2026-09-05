@@ -12,3 +12,52 @@ export function routeError(tag: string, err: unknown): Response {
   console.error(tag, err);
   return Response.json({ ok: false, error: String(err) }, { status: 500 });
 }
+
+// ─── Memory-task request validation ──────────────────────────────────────────
+
+import type { MemoryTaskRequest } from "@/lib/types";
+import { PROVIDER_TYPES, isProviderType, parseProviderBase } from "@/lib/llm/callers";
+
+/** A validated body, or the 400 to return instead. */
+export type Parsed<T> =
+  | { ok: true;  value: T }
+  | { ok: false; response: Response };
+
+function badRequest(error: string): { ok: false; response: Response } {
+  return { ok: false, response: Response.json({ ok: false, error }, { status: 400 }) };
+}
+
+/**
+ * Validate the envelope the three memory-task routes share.
+ *
+ * They were each re-declaring and re-checking it, which is how one route ended
+ * up whitelisting `providerType` while its two siblings accepted anything. The
+ * returned `providerBaseUrl` is the parsed, trailing-slash-free form, so
+ * callers never touch the raw string.
+ *
+ * `requireMessages` is false for /api/drawer/episode, which can write a card
+ * from stored state alone.
+ */
+export function parseMemoryTaskRequest(
+  raw: unknown,
+  { requireMessages = true }: { requireMessages?: boolean } = {}
+): Parsed<MemoryTaskRequest & { providerType: NonNullable<MemoryTaskRequest["providerType"]> }> {
+  const body = (raw ?? {}) as MemoryTaskRequest;
+  const { chatId, characterId, messages, providerType, providerBaseUrl, modelId } = body;
+
+  if (!chatId || !characterId || !providerBaseUrl || !modelId || (requireMessages && !messages?.length)) {
+    return badRequest(
+      requireMessages
+        ? "chatId, characterId, messages, providerBaseUrl and modelId are required"
+        : "chatId, characterId, providerBaseUrl and modelId are required"
+    );
+  }
+  if (!isProviderType(providerType)) {
+    return badRequest(`providerType must be one of: ${PROVIDER_TYPES.join(", ")}`);
+  }
+  const baseUrl = parseProviderBase(providerBaseUrl);
+  if (!baseUrl) {
+    return badRequest("providerBaseUrl must be an http(s) URL");
+  }
+  return { ok: true, value: { ...body, providerType, providerBaseUrl: baseUrl } };
+}

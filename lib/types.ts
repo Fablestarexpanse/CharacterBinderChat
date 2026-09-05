@@ -237,6 +237,17 @@ export interface ExtractionRequest {
   mode?:           "episode" | "reflect";
 }
 
+/**
+ * What the client sends to the three memory-task routes (extract, episode and
+ * core-memory/refresh). All three take the same envelope from the same builder
+ * in lib/chat/generation.ts; `parseMemoryTaskRequest` in lib/api.ts is the one
+ * place it is validated.
+ */
+export type MemoryTaskRequest = Pick<ExtractionRequest,
+  "chatId" | "characterId" | "characterName" | "personaName" | "characterAnchor" |
+  "messages" | "participants" | "providerType" | "providerBaseUrl" | "modelId" |
+  "apiKey" | "mode">;
+
 // ─── Generation Parameters ───────────────────────────────────────────────────
 // Provider-neutral sampler knobs. Every backend spells these differently (see
 // PARAM_MAP in lib/providers/params.ts) and supports a different subset, so
