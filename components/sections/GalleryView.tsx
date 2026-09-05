@@ -21,6 +21,7 @@ import {
   ChevronLeft, CheckSquare, Square, ImageIcon, AlertTriangle,
 } from "lucide-react";
 import type { ImageJob } from "@/lib/types";
+import { downloadFromUrl } from "@/lib/utils";
 
 const STUDIO_KEY = "__studio__";
 
@@ -64,18 +65,8 @@ export function GalleryView() {
     setSelected(new Set());
   };
 
-  const download = async (url: string, id: string) => {
-    try {
-      const blob = await fetch(url).then((r) => r.blob());
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `fablechat-${id.slice(0, 8)}.png`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    } catch {
-      window.open(url, "_blank");
-    }
-  };
+  const download = (url: string, id: string) =>
+    downloadFromUrl(url, `fablechat-${id.slice(0, 8)}.png`);
 
   // ── Album grid ────────────────────────────────────────────────────────────
   if (!album) {

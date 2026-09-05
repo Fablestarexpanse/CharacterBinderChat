@@ -38,3 +38,29 @@ export function getInitials(name: string): string {
     .join("")
     .toUpperCase();
 }
+
+// ─── Downloads ────────────────────────────────────────────────────────────────
+// Browser-only. Saving through a blob makes the browser download rather than
+// navigate — the app's image URLs are same-origin proxies, so a plain link
+// would open them in place and lose the chat.
+
+/** Save an in-memory blob under a filename. */
+export function saveBlob(blob: Blob, filename: string): void {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/**
+ * Fetch a URL and save it. Falls back to opening the URL when the fetch or
+ * the blob save fails, so the user still reaches the file.
+ */
+export async function downloadFromUrl(url: string, filename: string): Promise<void> {
+  try {
+    saveBlob(await fetch(url).then((r) => r.blob()), filename);
+  } catch {
+    window.open(url, "_blank");
+  }
+}

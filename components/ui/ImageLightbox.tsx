@@ -9,6 +9,7 @@
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
+import { downloadFromUrl } from "@/lib/utils";
 
 export function ImageLightbox({
   url,
@@ -19,18 +20,9 @@ export function ImageLightbox({
   filename: string;
   onClose: () => void;
 }) {
-  const handleDownload = async () => {
+  const handleDownload = () => {
     if (!url) return;
-    try {
-      const blob = await fetch(url).then((r) => r.blob());
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    } catch {
-      window.open(url, "_blank");
-    }
+    downloadFromUrl(url, filename);
   };
 
   return (

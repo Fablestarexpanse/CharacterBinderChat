@@ -9,7 +9,7 @@ import { regenerateLastReply } from "@/lib/chat/generation";
 import { startImageJob } from "@/lib/providers/comfyui";
 import { generateSceneImage } from "@/lib/chat/imageGen";
 import { ImageLightbox } from "@/components/ui/ImageLightbox";
-import { formatTime } from "@/lib/utils";
+import { formatTime, downloadFromUrl } from "@/lib/utils";
 import type { Message, MemoryTrace } from "@/lib/types";
 import {
   Copy,
@@ -343,20 +343,12 @@ function ImageCard({ message }: { message: Message }) {
     setEditingPrompt(false);
   };
 
-  // Save through a blob so the browser downloads instead of navigating —
-  // the proxied /api/comfyui/view URL is same-origin, so this always works.
-  const handleDownload = async (url: string, index = 0) => {
-    try {
-      const blob = await fetch(url).then((r) => r.blob());
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `fablechat-${(job?.id ?? "image").slice(0, 8)}${index > 0 ? `-${index + 1}` : ""}.png`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    } catch {
-      window.open(url, "_blank"); // fall back to opening it
-    }
-  };
+  // Batch outputs get a -2, -3 suffix so they don't overwrite each other
+  const handleDownload = (url: string, index = 0) =>
+    downloadFromUrl(
+      url,
+      `fablechat-${(job?.id ?? "image").slice(0, 8)}${index > 0 ? `-${index + 1}` : ""}.png`
+    );
 
   const busy = job?.status === "queued" || job?.status === "generating" || job?.status === "pending";
 

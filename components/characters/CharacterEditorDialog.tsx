@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { AvatarPicker } from "@/components/ui/AvatarPicker";
 import { Trash2 } from "lucide-react";
+import { Field } from "@/components/ui/field";
 
 // ─── Form state ───────────────────────────────────────────────────────────────
 
@@ -33,20 +34,6 @@ function toFormState(source: Partial<Character> | null): FormState {
     scenario:     source?.scenario ?? "",
     firstMessage: source?.firstMessage ?? "",
   };
-}
-
-// ─── Field wrapper ────────────────────────────────────────────────────────────
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <label className="text-xs font-medium text-[var(--foreground)]">
-        {label}
-        {hint && <span className="ml-1.5 font-normal text-[var(--muted-fg)]">{hint}</span>}
-      </label>
-      {children}
-    </div>
-  );
 }
 
 // ─── Inner form ───────────────────────────────────────────────────────────────

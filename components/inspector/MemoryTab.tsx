@@ -8,6 +8,7 @@ import { useState } from "react";
 import { FactsView }         from "./memory/FactsView";
 import { RelationshipsView } from "./memory/RelationshipsView";
 import { EntitiesView }      from "./memory/EntitiesView";
+import { saveBlob } from "@/lib/utils";
 
 type KGTab = "facts" | "relationships" | "entities";
 
@@ -106,15 +107,10 @@ export function MemoryTab() {
           onClick={() => {
             fetch(`/api/drawer/entities?chat=${encodeURIComponent(chat.id)}`)
               .then((r) => r.json())
-              .then((d) => {
-                const blob = new Blob([JSON.stringify(d, null, 2)], { type: "application/json" });
-                const url  = URL.createObjectURL(blob);
-                const a    = document.createElement("a");
-                a.href     = url;
-                a.download = "fablestore-export.json";
-                a.click();
-                URL.revokeObjectURL(url);
-              })
+              .then((d) => saveBlob(
+                new Blob([JSON.stringify(d, null, 2)], { type: "application/json" }),
+                "fablestore-export.json"
+              ))
               .catch(console.error);
           }}
         >
