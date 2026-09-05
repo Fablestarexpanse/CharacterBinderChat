@@ -3,6 +3,7 @@ import { getStore } from "@/lib/db";
 import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
 import { embedText, vecToBuffer } from "@/lib/llm/embeddings";
 import { parseMemoryTaskRequest, routeError } from "@/lib/api";
+import { retrieveFactsForPrompt } from "@/lib/server/retrieval";
 
 export const dynamic = "force-dynamic";
 
@@ -90,7 +91,7 @@ export async function POST(req: NextRequest) {
     let prompt: string;
 
     if (mode === "reflect") {
-      const facts = store.retrieveFactsForPrompt(chatId, characterId, 24);
+      const facts = retrieveFactsForPrompt(store, chatId, characterId, { limit: 24 });
       const episodes = store.listMemoryCards(chatId)
         .filter((c) => c.tags.includes("episode"))
         .slice(0, 10)

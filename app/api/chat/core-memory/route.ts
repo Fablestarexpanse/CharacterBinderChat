@@ -3,6 +3,7 @@ import { getStore } from "@/lib/db";
 import { embedText } from "@/lib/llm/embeddings";
 import type { CoreMemory } from "@/lib/db/models";
 import { routeError } from "@/lib/api";
+import { retrieveEpisodesForPrompt, retrieveFactsForPrompt } from "@/lib/server/retrieval";
 
 export const dynamic = "force-dynamic";
 
@@ -44,10 +45,10 @@ export async function GET(req: NextRequest) {
     // Semantic query vector for retrieval — null when Ollama embeddings are
     // unavailable, in which case ranking falls back to keyword overlap
     const queryVec   = context ? await embedText(context) : null;
-    const knownFacts = store.retrieveFactsForPrompt(chatId, characterId, 20, context, queryVec);
+    const knownFacts = retrieveFactsForPrompt(store, chatId, characterId, { limit: 20, context, queryEmbedding: queryVec });
     // Episodic layer: scenes remembered as events, and reflective insights.
     // Kept separate from facts because they read differently in the prompt.
-    const cards    = store.retrieveEpisodesForPrompt(chatId, 5, context, queryVec);
+    const cards    = retrieveEpisodesForPrompt(store, chatId, { limit: 5, context, queryEmbedding: queryVec });
     const episodes = cards.filter((c) => c.tags.includes("episode"))
       .slice(0, 3).map((c) => `${c.title} — ${c.content}`);
     const insights = cards.filter((c) => c.tags.includes("reflection"))

@@ -1,4 +1,3 @@
-import type { PersistedAppState } from "@/lib/types";
 // ─── FableStore (TypeScript) ──────────────────────────────────────────────────
 // TypeScript port of fable_drawer2/db.py using better-sqlite3.
 // All operations are synchronous (better-sqlite3 is sync-first).
@@ -7,8 +6,9 @@ import Database, { type Database as DB } from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 import { CREATE_TABLES_SQL } from "./schema";
-import { isDurableFact, isIdentityCoreFact, predicateFamily } from "./predicates";
+import { predicateFamily } from "./predicates";
 import { bufferToVec, cosine } from "@/lib/llm/embeddings";
+import type { PersistedAppState } from "@/lib/types";
 import type {
   DbEntity,
   DbFact,
@@ -368,12 +368,31 @@ export class FableStore {
     this.db.prepare("UPDATE facts SET embedding = ? WHERE id = ?").run(embedding, factId);
   }
 
+  /** Raw embedding blob for a memory card (null when never embedded) */
+  cardEmbedding(cardId: number): Float32Array | null {
+    const row = this.db.prepare("SELECT embedding FROM memory_cards WHERE id = ?").get(cardId) as
+      { embedding: Buffer | null } | undefined;
+    return bufferToVec(row?.embedding ?? null);
+  }
+
+  /** Entities by id, in one query — retrieval renders many facts at once. */
+  getEntities(chatId: string, ids: string[]): Map<string, DbEntity> {
+    const map = new Map<string, DbEntity>();
+    if (ids.length === 0) return map;
+    const placeholders = ids.map(() => "?").join(",");
+    const rows = this.db
+      .prepare(`SELECT * FROM entities WHERE chat_id = ? AND id IN (${placeholders})`)
+      .all(chatId, ...ids) as Array<{ id: string }>;
+    for (const row of rows) map.set(row.id, rowToEntity(row));
+    return map;
+  }
+
   setCardEmbedding(cardId: number, embedding: Buffer): void {
     this.db.prepare("UPDATE memory_cards SET embedding = ? WHERE id = ?").run(embedding, cardId);
   }
 
   /** Raw embedding blob for a fact (null when never embedded) */
-  private _factEmbedding(factId: number): Float32Array | null {
+  factEmbedding(factId: number): Float32Array | null {
     const row = this.db.prepare("SELECT embedding FROM facts WHERE id = ?").get(factId) as
       { embedding: Buffer | null } | undefined;
     return bufferToVec(row?.embedding ?? null);
@@ -397,7 +416,7 @@ export class FableStore {
     const family = predicateFamily(predicate);
     for (const f of this.queryFacts(chatId, subjectId)) {
       if (excludeIds.has(f.id)) continue;
-      const other = this._factEmbedding(f.id);
+      const other = this.factEmbedding(f.id);
       if (!other) continue;
       const sim = cosine(vec, other);
       const bar = predicateFamily(f.predicate) === family ? threshold : 0.97;
@@ -711,46 +730,6 @@ export class FableStore {
       .map(rowToMemoryCard);
     if (!entityId) return rows;
     return rows.filter((c) => c.entityIds.includes(entityId));
-  }
-
-  /**
-   * Episodic memories to inject into the prompt: scene cards and reflections,
-   * ranked by importance with a recency tiebreak, optionally boosted by
-   * relevance to the current conversation.
-   */
-  retrieveEpisodesForPrompt(
-    chatId: string,
-    limit = 3,
-    context = "",
-    queryEmbedding: Float32Array | null = null
-  ): DbMemoryCard[] {
-    // Bond cards (shared language) have their own retrieval path
-    const cards = this.listMemoryCards(chatId).filter((c) => !c.tags.includes("bond"));
-    if (cards.length === 0) return [];
-    const contextWords = new Set(
-      context.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3)
-    );
-    const cardVec = (id: number): Float32Array | null => {
-      const row = this.db.prepare("SELECT embedding FROM memory_cards WHERE id = ?").get(id) as
-        { embedding: Buffer | null } | undefined;
-      return bufferToVec(row?.embedding ?? null);
-    };
-    const relevance = (c: DbMemoryCard): number => {
-      if (queryEmbedding) {
-        const v = cardVec(c.id);
-        if (v) return Math.max(0, (cosine(queryEmbedding, v) - 0.3) / 0.6);
-      }
-      if (contextWords.size === 0) return 0;
-      const words = `${c.title} ${c.content}`.toLowerCase()
-        .replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3);
-      if (words.length === 0) return 0;
-      return words.filter((w) => contextWords.has(w)).length / words.length;
-    };
-    return [...cards]
-      .sort((a, b) =>
-        (b.importance + relevance(b)) - (a.importance + relevance(a)) ||
-        b.createdAt - a.createdAt)
-      .slice(0, limit);
   }
 
   // ── Commitments ───────────────────────────────────────────────────────────
@@ -1273,146 +1252,5 @@ export class FableStore {
     return fact.objectLiteral ? `"${fact.objectLiteral}"` : "";
   }
 
-  /**
-   * Retrieve the currently-valid facts to inject into the system prompt.
-   *
-   * Two failure modes shaped this, both caught by tests/memory-eval:
-   *
-   * 1. It used to consider ONLY facts whose subject or object was the character.
-   *    Everything the player says about themselves is stored under the `player`
-   *    entity, so none of it was ever retrievable — the character could not
-   *    remember your sister, your fear, or what you promised. For roleplay that
-   *    is the wrong half of the graph. Facts about the player are now a
-   *    first-class group with their own guaranteed share of the window.
-   *
-   * 2. Ranking by confidence-then-recency alone does not survive a long story.
-   *    Every exchange adds facts, so anything learned early is pushed out within
-   *    a handful of turns. Durable facts (identity, kinship, fears, promises,
-   *    location) are therefore ranked ahead of incidental ones inside each group.
-   *
-   * Facts about neither participant — world knowledge picked up along the way —
-   * compete for the remaining slots on relevance to the current conversation.
-   *
-   * `context` is recent conversation text; without it relevance is 0 everywhere
-   * and ordering falls back to durable-then-confidence-then-recency.
-   */
-  retrieveFactsForPrompt(
-    chatId: string,
-    characterId: string,
-    limit = 20,
-    context = "",
-    queryEmbedding: Float32Array | null = null
-  ): string[] {
-    // The player's entity id is fixed app-wide; facts are stored against it
-    // literally, so there is nothing for a caller to vary here.
-    const playerId = "player";
-    // Witness filter: known_to = [] means public (every 1:1 fact); a
-    // non-empty list restricts the fact to characters who were present when
-    // it was established. A group member who was out of the scene must not
-    // "remember" what happened without them.
-    const all = this.queryAllLiveFacts(chatId).filter(
-      (f) => f.knownTo.length === 0 || f.knownTo.includes(characterId)
-    );
-
-    // Relevance: cosine similarity against the current exchange when both
-    // sides have embeddings (semantic — "the crossing" matches "afraid of deep
-    // water"), keyword overlap otherwise (lexical fallback).
-    const contextWords = new Set(
-      context.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3)
-    );
-    const relevanceOf = (f: DbFact): number => {
-      if (queryEmbedding) {
-        const v = this._factEmbedding(f.id);
-        // Rescale cosine (~0.3..0.9 in practice) onto roughly the same 0..1
-        // band lexical overlap produces, so mixed corpora rank sanely
-        if (v) return Math.max(0, (cosine(queryEmbedding, v) - 0.3) / 0.6);
-      }
-      if (contextWords.size === 0) return 0;
-      const text = `${f.predicate} ${f.objectId ?? ""} ${f.objectLiteral ?? ""}`.toLowerCase();
-      const words = text.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3);
-      if (words.length === 0) return 0;
-      return words.filter((w) => contextWords.has(w)).length / words.length;
-    };
-
-    // Importance first (with the durable-predicate heuristic as a floor, so a
-    // model that under-scores kinship/fear/promise facts can't age them out),
-    // then relevance to the current exchange, then confidence, then recency.
-    const importanceOf = (f: DbFact): number =>
-      Math.max(f.importance, isDurableFact(f.predicate) ? 0.75 : 0);
-    const rank = (a: DbFact, b: DbFact) =>
-      (importanceOf(b) - importanceOf(a)) ||
-      (relevanceOf(b) - relevanceOf(a)) ||
-      (b.confidence - a.confidence) ||
-      (b.tValidStart - a.tValidStart);
-
-    const involves = (f: DbFact, id: string) => f.subjectId === id || f.objectId === id;
-
-    // ── Pinned identity-core facts ────────────────────────────────────────
-    // Family, fears, obligations, self-definition about either participant
-    // bypass relevance ranking entirely. At 120 live facts vs a 20-slot
-    // window, "sister Lila" fell out of the ranked pool late in the Tilly
-    // soak and the model confabulated the opposite ("you're an only child")
-    // rather than saying it didn't know. The cost of a miss here is
-    // confident fiction, so these facts don't compete — they're always in.
-    const PIN_CAP = Math.max(2, Math.floor(limit * 0.4));
-    const pinned = all
-      .filter((f) => (involves(f, characterId) || involves(f, playerId)) && isIdentityCoreFact(f.predicate))
-      .sort(rank)
-      .slice(0, PIN_CAP);
-    const isPinned = new Set(pinned.map((f) => f.id));
-
-    const aboutCharacter = all.filter((f) => !isPinned.has(f.id) && involves(f, characterId)).sort(rank);
-    const aboutPlayer    = all.filter((f) => !isPinned.has(f.id) && !involves(f, characterId) && involves(f, playerId)).sort(rank);
-    const world          = all.filter((f) => !isPinned.has(f.id) && !involves(f, characterId) && !involves(f, playerId)).sort(rank);
-
-    // Each participant gets a guaranteed share of the remaining room so
-    // neither can be crowded out. Take quotas first, then backfill any unused
-    // room in group order, so a sparse group never wastes slots.
-    const room = Math.max(0, limit - pinned.length);
-    const quota = Math.max(1, Math.floor(room * 0.4));
-    const groups = [aboutCharacter, aboutPlayer, world];
-    const topFacts: DbFact[] = [
-      ...pinned,
-      ...aboutCharacter.slice(0, quota),
-      ...aboutPlayer.slice(0, quota),
-    ];
-    for (const group of groups) {
-      for (const f of group) {
-        if (topFacts.length >= limit) break;
-        if (!topFacts.includes(f)) topFacts.push(f);
-      }
-    }
-    topFacts.length = Math.min(topFacts.length, limit);
-
-    // Batch-fetch all referenced entities in one query (avoids N+1 per fact)
-    const entityIds = new Set<string>();
-    for (const f of topFacts) {
-      entityIds.add(f.subjectId);
-      if (f.objectId) entityIds.add(f.objectId);
-    }
-    const entityMap = new Map<string, DbEntity>();
-    if (entityIds.size > 0) {
-      const ids          = Array.from(entityIds);
-      const placeholders = ids.map(() => "?").join(",");
-      const fetched = this.db
-        .prepare(`SELECT * FROM entities WHERE chat_id = ? AND id IN (${placeholders})`)
-        .all(chatId, ...ids) as Array<{ id: string }>;
-      for (const row of fetched) entityMap.set(row.id, rowToEntity(row));
-    }
-
-    return topFacts.map((f) => {
-      const subj = entityMap.get(f.subjectId)?.name ?? f.subjectId;
-      let obj: string;
-      if (f.objectId) {
-        const e = entityMap.get(f.objectId);
-        obj = e
-          ? e.name + (f.objectLiteral ? ` / "${f.objectLiteral}"` : "")
-          : f.objectId;
-      } else {
-        obj = f.objectLiteral ? `"${f.objectLiteral}"` : "";
-      }
-      return `${subj} ${f.predicate} ${obj}`;
-    });
-  }
 
 }
