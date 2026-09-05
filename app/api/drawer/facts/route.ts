@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
     store.ensureEntity(chatId, subjectId, "character", subjectId);
     if (objectId && !store.getEntity(chatId, objectId)) {
       return Response.json(
-        { error: `objectId "${objectId}" does not exist — create the entity first or pass objectLiteral` },
+        { ok: false, error: `objectId "${objectId}" does not exist — create the entity first or pass objectLiteral` },
         { status: 400 }
       );
     }

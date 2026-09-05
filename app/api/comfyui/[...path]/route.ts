@@ -52,7 +52,7 @@ async function proxy(
     });
   } catch (err) {
     return Response.json(
-      { error: `ComfyUI unreachable at ${base}: ${err instanceof Error ? err.message : String(err)}` },
+      { ok: false, error: `ComfyUI unreachable at ${base}: ${err instanceof Error ? err.message : String(err)}` },
       { status: 502 }
     );
   }

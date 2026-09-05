@@ -250,7 +250,7 @@ export async function POST(req: NextRequest) {
 
     if (!messages?.length || !chatId || !characterId || !providerBaseUrl || !modelId) {
       return Response.json(
-        { error: "messages, chatId, characterId, providerBaseUrl and modelId are required" },
+        { ok: false, error: "messages, chatId, characterId, providerBaseUrl and modelId are required" },
         { status: 400 }
       );
     }

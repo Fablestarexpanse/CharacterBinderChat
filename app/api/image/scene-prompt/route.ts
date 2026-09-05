@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as Body;
     if (!body.messages?.length || !body.ollamaBaseUrl || !body.modelId) {
       return Response.json(
-        { error: "messages, ollamaBaseUrl and modelId are required" },
+        { ok: false, error: "messages, ollamaBaseUrl and modelId are required" },
         { status: 400 }
       );
     }
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
     if (res.status === 400) res = await call(false);
     if (!res.ok) {
       return Response.json(
-        { error: `Ollama HTTP ${res.status} — is the utility model pulled and Ollama running?` },
+        { ok: false, error: `Ollama HTTP ${res.status} — is the utility model pulled and Ollama running?` },
         { status: 502 }
       );
     }
@@ -128,13 +128,13 @@ export async function POST(req: NextRequest) {
     const prompt = raw.replace(/^["'`\s]+|["'`\s]+$/g, "").replace(/\s+/g, " ").slice(0, 1500);
     if (!prompt) {
       return Response.json(
-        { error: `utility model returned nothing${data.error ? `: ${data.error}` : ""}` },
+        { ok: false, error: `utility model returned nothing${data.error ? `: ${data.error}` : ""}` },
         { status: 502 }
       );
     }
     if (looksLikeInstructionLeak(prompt)) {
       return Response.json(
-        { error: "scene director produced instructions instead of a prompt — try again" },
+        { ok: false, error: "scene director produced instructions instead of a prompt — try again" },
         { status: 502 }
       );
     }

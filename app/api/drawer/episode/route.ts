@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
 
     if (!chatId || !characterId || !providerBaseUrl || !modelId) {
       return Response.json(
-        { error: "chatId, characterId, providerBaseUrl and modelId are required" },
+        { ok: false, error: "chatId, characterId, providerBaseUrl and modelId are required" },
         { status: 400 }
       );
     }

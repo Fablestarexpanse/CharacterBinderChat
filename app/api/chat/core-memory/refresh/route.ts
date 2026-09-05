@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     const validProviders = new Set(["ollama", "lmstudio", "openrouter"]);
     if (!chatId || !characterId || !messages?.length || !providerBaseUrl || !modelId || !validProviders.has(providerType)) {
       return Response.json(
-        { error: "chatId, characterId, messages, providerBaseUrl and modelId are required" },
+        { ok: false, error: "chatId, characterId, messages, providerBaseUrl and modelId are required" },
         { status: 400 }
       );
     }
@@ -52,7 +52,9 @@ export async function POST(req: NextRequest) {
       apiKey,
     });
 
-    return Response.json(result);
+    // Match the sibling extraction routes: an upstream model failure is a 502,
+    // not a 200 with a false flag.
+    return Response.json(result, { status: result.ok ? 200 : 502 });
   } catch (err) {
     return routeError("[core-memory/refresh]", err);
   }
