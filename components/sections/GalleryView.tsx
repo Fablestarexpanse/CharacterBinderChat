@@ -22,11 +22,13 @@ import {
 } from "lucide-react";
 import type { ImageJob } from "@/lib/types";
 import { downloadFromUrl } from "@/lib/utils";
+import { useUiStore } from "@/lib/store/ui";
 
 const STUDIO_KEY = "__studio__";
 
 export function GalleryView() {
-  const { imageJobs, chats, deleteRenders, setActiveSection, setActiveChatId } = useFableStore();
+  const { imageJobs, chats, deleteRenders, setActiveChatId } = useFableStore();
+  const { setActiveSection } = useUiStore();
 
   const [openAlbum, setOpenAlbum]   = useState<string | null>(null);
   const [query, setQuery]           = useState("");

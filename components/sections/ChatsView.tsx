@@ -16,11 +16,11 @@ import { Input } from "@/components/ui/input";
 import { useHydrated } from "@/lib/hooks/useHydrated";
 import { formatRelative, truncate } from "@/lib/utils";
 import { MessageSquare, Search, Plus, Users, ImageIcon } from "lucide-react";
+import { useUiStore } from "@/lib/store/ui";
 
 export function ChatsView() {
-  const {
-    chats, characters, setActiveChatId, setChatBuilderOpen,
-  } = useFableStore();
+  const { chats, characters, setActiveChatId } = useFableStore();
+  const { setChatBuilderOpen } = useUiStore();
   const [query, setQuery] = useState("");
   // Relative times depend on the clock, so they can't render during SSR
   const hydrated = useHydrated();

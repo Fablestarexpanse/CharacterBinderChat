@@ -19,9 +19,11 @@ import { NewChatDialog } from "@/components/chat/NewChatDialog";
 import { StateSync } from "@/components/StateSync";
 import { DropImport } from "@/components/DropImport";
 import { useHydrated } from "@/lib/hooks/useHydrated";
+import { useUiStore } from "@/lib/store/ui";
 
 export default function Home() {
-  const { activeSection, activeChatId } = useFableStore();
+  const { activeChatId } = useFableStore();
+  const { activeSection } = useUiStore();
   // The persisted store rehydrates from localStorage before React's first
   // client render, so any returning user's state differs from the SSR HTML
   // (which only knows the seeds) — a guaranteed hydration mismatch. This is

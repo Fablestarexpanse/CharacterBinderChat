@@ -18,16 +18,11 @@ import {
   Square,
   Wand2,
 } from "lucide-react";
+import { useUiStore } from "@/lib/store/ui";
 
 export function ChatInput() {
-  const {
-    activeChatId, chats, characters,
-    personas, activePersonaId, setActivePersona,
-    inputValue, setInputValue,
-    addMessage,
-    isGenerating,
-    setActiveSection,
-  } = useFableStore();
+  const { activeChatId, chats, characters, personas, activePersonaId, setActivePersona, addMessage, isGenerating } = useFableStore();
+  const { inputValue, setInputValue, setActiveSection } = useUiStore();
 
   const activePersona = personas.find((p) => p.id === activePersonaId);
   const textareaRef = useRef<HTMLTextAreaElement>(null);

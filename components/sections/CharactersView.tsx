@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { PersonaEditorDialog } from "@/components/characters/PersonaEditorDialog";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Plus, MessageSquare, UserCircle2, Check, Sparkles, History } from "lucide-react";
+import { useUiStore } from "@/lib/store/ui";
 
 // A chat that holds memories involving a character — offered as a source when
 // starting a new chat, because memory never carries over implicitly.
@@ -23,10 +24,8 @@ interface MemorySource {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CharactersView() {
-  const {
-    characters, createChat, setActiveChatId, setActiveSection, openCharacterEditor,
-    personas, activePersonaId, setActivePersona,
-  } = useFableStore();
+  const { characters, createChat, setActiveChatId, personas, activePersonaId, setActivePersona } = useFableStore();
+  const { setActiveSection, openCharacterEditor } = useUiStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState<string | null>(null);

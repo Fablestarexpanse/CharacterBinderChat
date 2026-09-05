@@ -9,6 +9,7 @@ import { LoreTab } from "./LoreTab";
 import { ImageStudioTab } from "./ImageStudioTab";
 import { CoreMemoryTab } from "./CoreMemoryTab";
 import { cn } from "@/lib/utils";
+import { useUiStore } from "@/lib/store/ui";
 
 // The old Summary tab duplicated Memory (facts/relationships) and Core Mem
 // (commitments) and was dropped; a persisted "summary" selection falls back
@@ -23,8 +24,8 @@ const TABS: { id: InspectorTab; label: string }[] = [
 ];
 
 export function InspectorPanel() {
-  const { inspectorTab, setInspectorTab, inspectorOpen, setInspectorMemberId, characters } =
-    useFableStore();
+  const { characters } = useFableStore();
+  const { inspectorTab, setInspectorTab, inspectorOpen, setInspectorMemberId } = useUiStore();
   const { chat, character, isGroup } = useInspectedCharacter();
 
   if (!inspectorOpen) return null;

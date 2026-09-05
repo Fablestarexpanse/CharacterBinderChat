@@ -21,6 +21,7 @@ import {
   X,
   ChevronLeft,
 } from "lucide-react";
+import { useUiStore } from "@/lib/store/ui";
 
 // ─── Fallback static list (shown before dynamic load or when offline) ─────────
 
@@ -45,16 +46,8 @@ const PROVIDER_LABELS: Record<string, string> = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ChatHeader() {
-  const {
-    activeChatId, chats, characters,
-    inspectorOpen, setInspectorOpen,
-    setChatModel, providerSettings, providerStatuses,
-    clearChat, isGenerating,
-    customModels, addCustomModel, removeCustomModel,
-    updateChatSettings, toggleMemberPresence,
-    presets, defaultPresetId, setChatPreset, resetChatOverrides, setActiveSection,
-    setActiveChatId,
-  } = useFableStore();
+  const { activeChatId, chats, characters, setChatModel, providerSettings, providerStatuses, clearChat, isGenerating, customModels, addCustomModel, removeCustomModel, updateChatSettings, toggleMemberPresence, presets, defaultPresetId, setChatPreset, resetChatOverrides, setActiveChatId } = useFableStore();
+  const { inspectorOpen, setInspectorOpen, setActiveSection } = useUiStore();
 
   const defaultPreset = presets.find((p) => p.id === defaultPresetId);
 

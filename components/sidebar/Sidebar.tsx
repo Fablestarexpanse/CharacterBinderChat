@@ -26,6 +26,7 @@ import {
   Trash2,
   Clapperboard,
 } from "lucide-react";
+import { useUiStore } from "@/lib/store/ui";
 
 const NAV_ITEMS: { id: SidebarSection; label: string; icon: React.ElementType }[] = [
   { id: "characters", label: "Characters", icon: Users },
@@ -41,8 +42,8 @@ const NAV_ITEMS: { id: SidebarSection; label: string; icon: React.ElementType }[
 ];
 
 export function Sidebar() {
-  const { activeSection, setActiveSection, setActiveChatId, chats, characters, activeChatId, setChatBuilderOpen } =
-    useFableStore();
+  const { setActiveChatId, chats, characters, activeChatId } = useFableStore();
+  const { activeSection, setActiveSection, setChatBuilderOpen } = useUiStore();
 
   // All chats, newest first. This list is the only way to open a chat, so it
   // must never be capped — a slice(0, 8) here once made older chats
@@ -131,7 +132,8 @@ function ChatRow({
   character?: Character;
   isActive: boolean;
 }) {
-  const { setActiveChatId, setActiveSection, renameChat, deleteChat } = useFableStore();
+  const { setActiveChatId, renameChat, deleteChat } = useFableStore();
+  const { setActiveSection } = useUiStore();
 
   const [renaming,      setRenaming]      = useState(false);
   const [draft,         setDraft]         = useState(chat.name);

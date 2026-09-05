@@ -83,16 +83,6 @@ const defaultImageSettings: ImageGenerationSettings = {
 // ─── Store Shape ──────────────────────────────────────────────────────────────
 
 interface FableStore {
-  // Navigation
-  activeSection: SidebarSection;
-  setActiveSection: (s: SidebarSection) => void;
-
-  // Inspector
-  inspectorTab: InspectorTab;
-  setInspectorTab: (t: InspectorTab) => void;
-  inspectorOpen: boolean;
-  setInspectorOpen: (v: boolean) => void;
-
   // Characters
   characters: Character[];
   /** Create a character; returns the generated id (slug of the name) */
@@ -132,18 +122,6 @@ interface FableStore {
   /** Drop this chat's per-chat overrides so the preset shows through again */
   resetChatOverrides: (chatId: string) => void;
 
-  // New-chat builder dialog
-  chatBuilderOpen: boolean;
-  setChatBuilderOpen: (v: boolean) => void;
-
-  // Character editor dialog (global — opened from CharactersView or the inspector)
-  characterEditorOpen: boolean;
-  /** id of the character being edited, or null when creating a new one */
-  characterEditorId: string | null;
-  /** Prefill values for create mode (e.g. from an imported character card) */
-  characterEditorDraft: Partial<Character> | null;
-  openCharacterEditor: (id?: string | null, draft?: Partial<Character> | null) => void;
-  closeCharacterEditor: () => void;
 
   // Chats
   chats: Chat[];
@@ -193,9 +171,6 @@ interface FableStore {
   createGroupChat: (characterIds: string[]) => string | null;
   /** Toggle a group member in/out of the scene (absent = silent + unwitnessing) */
   toggleMemberPresence: (chatId: string, characterId: string) => void;
-  /** Which group member the inspector panel is examining */
-  inspectorMemberId: string | null;
-  setInspectorMemberId: (id: string | null) => void;
   deleteChat: (chatId: string) => void;
   renameChat: (chatId: string, name: string) => void;
   /** Wipe messages (re-seeds the character's greeting if they have one) */
@@ -206,9 +181,6 @@ interface FableStore {
   isGenerating: boolean;
   setIsGenerating: (v: boolean) => void;
 
-  // Input
-  inputValue: string;
-  setInputValue: (v: string) => void;
 
   // Lorebooks
   lorebooks: Lorebook[];
@@ -273,14 +245,6 @@ interface FableStore {
 export const useFableStore = create<FableStore>()(
   persist(
     (set, get) => ({
-      activeSection: "chats",
-      setActiveSection: (s) => set({ activeSection: s }),
-
-      inspectorTab: "character",
-      setInspectorTab: (t) => set({ inspectorTab: t }),
-      inspectorOpen: true,
-      setInspectorOpen: (v) => set({ inspectorOpen: v }),
-
       characters: [],
 
       addCharacter: (data) => {
@@ -460,17 +424,6 @@ export const useFableStore = create<FableStore>()(
           }),
         }));
       },
-
-      chatBuilderOpen: false,
-      setChatBuilderOpen: (v) => set({ chatBuilderOpen: v }),
-
-      characterEditorOpen:  false,
-      characterEditorId:    null,
-      characterEditorDraft: null,
-      openCharacterEditor: (id = null, draft = null) =>
-        set({ characterEditorOpen: true, characterEditorId: id, characterEditorDraft: draft }),
-      closeCharacterEditor: () =>
-        set({ characterEditorOpen: false, characterEditorId: null, characterEditorDraft: null }),
 
       chats: [],
       activeChatId: null,
@@ -794,9 +747,6 @@ export const useFableStore = create<FableStore>()(
         return id;
       },
 
-      inspectorMemberId: null,
-      setInspectorMemberId: (id) => set({ inspectorMemberId: id }),
-
       toggleMemberPresence: (chatId, characterId) => {
         set((state) => ({
           chats: state.chats.map((c) => {
@@ -862,9 +812,6 @@ export const useFableStore = create<FableStore>()(
 
       isGenerating: false,
       setIsGenerating: (v) => set({ isGenerating: v }),
-
-      inputValue: "",
-      setInputValue: (v) => set({ inputValue: v }),
 
       lorebooks: [],
       addLorebook: (name) => {

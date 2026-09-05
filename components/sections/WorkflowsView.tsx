@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { GitBranch, Check, AlertTriangle, Loader2 } from "lucide-react";
+import { useUiStore } from "@/lib/store/ui";
 
 interface WorkflowSummary {
   slug:        string;
@@ -24,7 +25,8 @@ interface WorkflowSummary {
 }
 
 export function WorkflowsView() {
-  const { imageSettings, setImageSettings, setActiveSection } = useFableStore();
+  const { imageSettings, setImageSettings } = useFableStore();
+  const { setActiveSection } = useUiStore();
   const [result, setResult] = useState<{ list: WorkflowSummary[]; error: string | null } | null>(null);
 
   useEffect(() => {

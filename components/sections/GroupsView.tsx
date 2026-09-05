@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Group, Plus, MessageSquare, Check } from "lucide-react";
+import { useUiStore } from "@/lib/store/ui";
 
 export function GroupsView() {
-  const { chats, characters, createGroupChat, setActiveChatId, setActiveSection } = useFableStore();
+  const { chats, characters, createGroupChat, setActiveChatId } = useFableStore();
+  const { setActiveSection } = useUiStore();
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 

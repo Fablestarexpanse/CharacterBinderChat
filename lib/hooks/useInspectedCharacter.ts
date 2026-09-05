@@ -8,13 +8,15 @@
 
 import { useFableStore } from "@/lib/store";
 import type { Character, Chat } from "@/lib/types";
+import { useUiStore } from "@/lib/store/ui";
 
 export function useInspectedCharacter(): {
   chat:      Chat | undefined;
   character: Character | undefined;
   isGroup:   boolean;
 } {
-  const { activeChatId, chats, characters, inspectorMemberId } = useFableStore();
+  const { activeChatId, chats, characters } = useFableStore();
+  const { inspectorMemberId } = useUiStore();
   const chat = chats.find((c) => c.id === activeChatId);
   const isGroup = (chat?.memberIds?.length ?? 0) >= 2;
   const charId = isGroup

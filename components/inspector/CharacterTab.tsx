@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Section } from "./Section";
 import { ExternalLink, Edit2, Heart, Shield, Flame, Link2, CloudSun, UserRound, ChevronDown, Check } from "lucide-react";
+import { useUiStore } from "@/lib/store/ui";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -70,8 +71,8 @@ function StatBar({ name, value }: { name: string; value: number }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CharacterTab() {
-  const { activeChatId, extractionVersion, openCharacterEditor, setActiveSection, personas, activePersonaId, setActivePersona } =
-    useFableStore();
+  const { activeChatId, extractionVersion, personas, activePersonaId, setActivePersona } = useFableStore();
+  const { openCharacterEditor, setActiveSection } = useUiStore();
   const { character } = useInspectedCharacter();
   const persona = personas.find((p) => p.id === activePersonaId);
   const [personaPickerOpen, setPersonaPickerOpen] = useState(false);
