@@ -43,7 +43,7 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
   useEffect(() => {
     let cancelled = false;
     const key = `${chatId}:${characterId}:${extractionVersion}:${showHistory ? 1 : 0}`;
-    const url = `/api/drawer/facts?chat=${encodeURIComponent(chatId)}&subject=${encodeURIComponent(characterId)}${showHistory ? "&includeSuperseded=1" : ""}`;
+    const url = `/api/drawer/facts?chatId=${encodeURIComponent(chatId)}&subject=${encodeURIComponent(characterId)}${showHistory ? "&includeSuperseded=1" : ""}`;
     fetch(url)
       .then((r) => r.json())
       .then((data: { facts?: EnrichedFact[]; error?: string }) => {
@@ -67,7 +67,7 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
     setWriteError(null);
     try {
       const res = await fetch(
-        `/api/drawer/facts?chat=${encodeURIComponent(chatId)}&id=${factId}`,
+        `/api/drawer/facts?chatId=${encodeURIComponent(chatId)}&factId=${factId}`,
         { method: "DELETE" }
       );
       const data = await res.json().catch(() => null) as { error?: string } | null;

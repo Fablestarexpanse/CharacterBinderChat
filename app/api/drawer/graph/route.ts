@@ -4,7 +4,7 @@ import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-// ─── GET /api/drawer/graph?chat=X&character=Y ────────────────────────────────
+// ─── GET /api/drawer/graph?chatId=X&characterId=Y ────────────────────────────────
 // Everything the mind map needs in one payload: entities as nodes, live facts
 // as edges (literal objects become lightweight text nodes), episodic scene
 // cards and reflections as event nodes linked to their participants, the
@@ -12,10 +12,10 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const chatId      = req.nextUrl.searchParams.get("chat");
-    const characterId = req.nextUrl.searchParams.get("character");
+    const chatId      = req.nextUrl.searchParams.get("chatId");
+    const characterId = req.nextUrl.searchParams.get("characterId");
     if (!chatId) {
-      return Response.json({ error: "chat param required" }, { status: 400 });
+      return Response.json({ error: "chatId param required" }, { status: 400 });
     }
 
     const store = getStore();

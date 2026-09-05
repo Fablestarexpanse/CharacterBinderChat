@@ -186,8 +186,8 @@ export function MemoryGraph({ chatId, characterId, extractionVersion, full = fal
   useEffect(() => {
     let cancelled = false;
     const key = `${chatId}:${characterId}:${extractionVersion}`;
-    const url = `/api/drawer/graph?chat=${encodeURIComponent(chatId)}` +
-      (characterId ? `&character=${encodeURIComponent(characterId)}` : "");
+    const url = `/api/drawer/graph?chatId=${encodeURIComponent(chatId)}` +
+      (characterId ? `&characterId=${encodeURIComponent(characterId)}` : "");
     fetch(url)
       .then((r) => r.json())
       .then((d: GraphPayload) => { if (!cancelled) setPayload({ key, data: d.error ? null : d }); })

@@ -11,10 +11,10 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const params            = req.nextUrl.searchParams;
-    const chatId            = params.get("chat");
+    const chatId            = params.get("chatId");
     const subject           = params.get("subject");
     if (!chatId || !subject) {
-      return Response.json({ error: "chat and subject params required" }, { status: 400 });
+      return Response.json({ error: "chatId and subject params required" }, { status: 400 });
     }
     const asOfRaw           = params.get("asOf");
     const asOf              = asOfRaw ? Number(asOfRaw) : undefined;
@@ -143,21 +143,21 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// DELETE /api/drawer/facts?chat=<id>&id=<factId>
+// DELETE /api/drawer/facts?chatId=<id>&factId=<factId>
 // Removes a fact the extractor got wrong. Hard delete, not a retraction:
 // these were never true, so keeping them as closed history would be a lie of
 // a different shape. Predecessors this fact superseded come back.
 export async function DELETE(req: NextRequest) {
   try {
     const params = req.nextUrl.searchParams;
-    const chatId = params.get("chat");
-    const idRaw  = params.get("id");
+    const chatId = params.get("chatId");
+    const idRaw  = params.get("factId");
     if (!chatId || !idRaw) {
-      return Response.json({ error: "chat and id params required" }, { status: 400 });
+      return Response.json({ error: "chatId and factId params required" }, { status: 400 });
     }
     const factId = Number(idRaw);
     if (!Number.isInteger(factId)) {
-      return Response.json({ error: "id must be an integer fact id" }, { status: 400 });
+      return Response.json({ error: "factId must be an integer fact id" }, { status: 400 });
     }
 
     const result = getStore().deleteFact(chatId, factId);

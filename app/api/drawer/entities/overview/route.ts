@@ -70,13 +70,13 @@ function findDuplicateClusters(entities: DbEntity[]): string[][] {
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
-// GET /api/drawer/entities/overview?chat=<chatId>
+// GET /api/drawer/entities/overview?chatId=<chatId>
 export async function GET(req: NextRequest) {
   try {
     const store  = getStore();
-    const chatId = req.nextUrl.searchParams.get("chat");
+    const chatId = req.nextUrl.searchParams.get("chatId");
     if (!chatId) {
-      return Response.json({ error: "chat param required" }, { status: 400 });
+      return Response.json({ error: "chatId param required" }, { status: 400 });
     }
     const entities = store.listEntities(chatId);
 

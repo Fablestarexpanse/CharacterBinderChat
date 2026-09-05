@@ -44,7 +44,7 @@ export function RelationshipsView({ chatId, characterId, extractionVersion }: Pr
     let cancelled = false;
     const key = `${chatId}:${characterId}:${extractionVersion}`;
     // character → player: how this character feels about the user
-    fetch(`/api/drawer/stats?chat=${encodeURIComponent(chatId)}&observer=${encodeURIComponent(characterId)}&target=player`)
+    fetch(`/api/drawer/stats?chatId=${encodeURIComponent(chatId)}&observer=${encodeURIComponent(characterId)}&target=player`)
       .then((r) => r.json())
       .then((data: { stats?: StatRow[]; error?: string }) => {
         if (data.error) throw new Error(data.error);

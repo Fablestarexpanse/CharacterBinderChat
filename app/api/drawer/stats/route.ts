@@ -9,11 +9,11 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const params   = req.nextUrl.searchParams;
-    const chatId   = params.get("chat");
+    const chatId   = params.get("chatId");
     const observer = params.get("observer");
     const target   = params.get("target");
     if (!chatId || !observer || !target) {
-      return Response.json({ error: "chat, observer and target params required" }, { status: 400 });
+      return Response.json({ error: "chatId, observer and target params required" }, { status: 400 });
     }
     const store = getStore();
     const statsMap = store.queryStats(chatId, observer, target);

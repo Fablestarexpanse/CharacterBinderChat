@@ -5,13 +5,13 @@ import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/drawer/entities?chat=<chatId>&type=character
+// GET /api/drawer/entities?chatId=<chatId>&type=character
 export async function GET(req: NextRequest) {
   try {
     const store  = getStore();
-    const chatId = req.nextUrl.searchParams.get("chat");
+    const chatId = req.nextUrl.searchParams.get("chatId");
     if (!chatId) {
-      return Response.json({ error: "chat param required" }, { status: 400 });
+      return Response.json({ error: "chatId param required" }, { status: 400 });
     }
     const type  = req.nextUrl.searchParams.get("type") as EntityType | null;
     const entities = store.listEntities(chatId, type ?? undefined);

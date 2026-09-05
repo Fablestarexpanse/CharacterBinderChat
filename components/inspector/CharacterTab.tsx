@@ -83,7 +83,7 @@ export function CharacterTab() {
 
   useEffect(() => {
     if (!characterId || !activeChatId) return;
-    const chatParam = `chat=${encodeURIComponent(activeChatId)}`;
+    const chatParam = `chatId=${encodeURIComponent(activeChatId)}`;
     // Cancelled guard: without it, rapid chat switching let the older chat's
     // slower response resolve last and display the wrong chat's stats.
     let cancelled = false;

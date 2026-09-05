@@ -48,7 +48,7 @@ export function EntitiesView({ chatId, extractionVersion }: Props) {
   useEffect(() => {
     let cancelled = false;
     const key = `${chatId}:${extractionVersion}:${refreshTick}`;
-    fetch(`/api/drawer/entities/overview?chat=${encodeURIComponent(chatId)}`)
+    fetch(`/api/drawer/entities/overview?chatId=${encodeURIComponent(chatId)}`)
       .then((r) => r.json())
       .then((d: OverviewResponse) => {
         if (d.error) throw new Error(d.error);

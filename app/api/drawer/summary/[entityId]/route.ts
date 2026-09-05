@@ -4,16 +4,16 @@ import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/drawer/summary/<entityId>?chat=<chatId>
+// GET /api/drawer/summary/<entityId>?chatId=<chatId>
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ entityId: string }> }
 ) {
   try {
     const { entityId } = await params;
-    const chatId = req.nextUrl.searchParams.get("chat");
+    const chatId = req.nextUrl.searchParams.get("chatId");
     if (!chatId) {
-      return Response.json({ error: "chat param required" }, { status: 400 });
+      return Response.json({ error: "chatId param required" }, { status: 400 });
     }
     const store   = getStore();
     const summary = store.characterSummary(chatId, entityId);

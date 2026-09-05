@@ -105,7 +105,7 @@ export function MemoryTab() {
           size="sm"
           className="w-full text-xs"
           onClick={() => {
-            fetch(`/api/drawer/entities?chat=${encodeURIComponent(chat.id)}`)
+            fetch(`/api/drawer/entities?chatId=${encodeURIComponent(chat.id)}`)
               .then((r) => r.json())
               .then((d) => saveBlob(
                 new Blob([JSON.stringify(d, null, 2)], { type: "application/json" }),
