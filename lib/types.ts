@@ -204,9 +204,41 @@ export interface ProviderStatus {
   modelLabel?: string;
 }
 
+// ─── Extraction request ───────────────────────────────────────────────────────
+// One body shape POSTed by triggerExtraction() to /api/drawer/extract,
+// /api/drawer/episode and /api/chat/core-memory/refresh. Each route reads a
+// subset and types its own cast with Pick<> — declaring the union here is what
+// keeps the field names from drifting apart across the three.
+//
+// Deliberately carries NO generation params and no preset/global prompt text:
+// these routes run format:"json" on backend defaults, and a roleplay
+// temperature or instruction would break structured output.
+
+export interface ExtractionRequest {
+  chatId:          string;
+  characterId:     string;
+  characterName:   string;
+  personaName?:    string;
+  /** Recent turns. In groups each carries its speaker's display name, so the
+   *  extractor never attributes one character's line to another. */
+  messages:        Array<{ role: string; content: string; speaker?: string }>;
+  /** Drift anchor for the persona rewrite — character sheet text only */
+  characterAnchor?: string;
+  /** Group chats: everyone present in the scene (characters + player).
+   *  Extracted facts are stamped known_to with these ids, so absent members
+   *  never "remember" what happened without them. */
+  participants?:   Array<{ id: string; name: string }>;
+  providerType:    "ollama" | "lmstudio" | "openrouter";
+  providerBaseUrl: string;
+  modelId:         string;
+  apiKey?:         string;
+  /** /api/drawer/episode only */
+  mode?:           "episode" | "reflect";
+}
+
 // ─── Generation Parameters ───────────────────────────────────────────────────
 // Provider-neutral sampler knobs. Every backend spells these differently (see
-// PARAM_MAP in lib/providers/factory.ts) and supports a different subset, so
+// PARAM_MAP in lib/providers/params.ts) and supports a different subset, so
 // nothing here is sent verbatim — the mapping layer translates and drops.
 
 export interface GenerationParams {

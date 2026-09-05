@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import type { ExtractionRequest } from "@/lib/types";
 import { getStore } from "@/lib/db";
 import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
 import { embedText, vecToBuffer } from "@/lib/llm/embeddings";
@@ -76,18 +77,9 @@ ${episodes.map((e) => `- ${e}`).join("\n") || "(none)"}`;
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json() as {
-      chatId:          string;
-      characterId:     string;
-      characterName:   string;
-      personaName?:    string;
-      mode?:           "episode" | "reflect";
-      messages?:       Array<{ role: string; content: string }>;
-      providerType:    "ollama" | "lmstudio" | "openrouter";
-      providerBaseUrl: string;
-      modelId:         string;
-      apiKey?:         string;
-    };
+    const body = await req.json() as Pick<ExtractionRequest,
+      "chatId" | "characterId" | "characterName" | "personaName" | "mode" |
+      "messages" | "providerType" | "providerBaseUrl" | "modelId" | "apiKey">;
     const {
       chatId, characterId, characterName, personaName,
       providerType, providerBaseUrl, modelId, apiKey,

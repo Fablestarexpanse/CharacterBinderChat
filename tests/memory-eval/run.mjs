@@ -218,7 +218,7 @@ async function runScenario(scenario, model, cfg, db) {
         body: JSON.stringify({
           chatId: `chat-${scenario.characterId}`,
           characterId: scenario.characterId, characterName: scenario.characterName,
-          personaName: scenario.personaName, recentMessages: last,
+          personaName: scenario.personaName, messages: last,
           providerType: cfg.providerType, providerBaseUrl: cfg.baseUrl,
           modelId: model, apiKey: cfg.apiKey,
         }),

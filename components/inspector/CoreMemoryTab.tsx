@@ -140,7 +140,7 @@ export function CoreMemoryTab() {
           chatId:          chat.id,
           characterId:     character.id,
           characterName:   character.name,
-          recentMessages:  chat.messages.slice(-16).map((m) => ({ role: m.role, content: m.content })),
+          messages:        chat.messages.slice(-16).map((m) => ({ role: m.role, content: m.content })),
           providerType,
           providerBaseUrl: baseUrl,
           modelId:         chat.modelId ?? "llama3.2:latest",

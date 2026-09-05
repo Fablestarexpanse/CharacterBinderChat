@@ -10,7 +10,7 @@ import { buildSystemPrompt, estimateTokens } from "./promptBuilder";
 import { matchLoreEntries, booksForChat } from "./lorebook";
 import { resolveGeneration } from "./settings";
 import { fitHistoryToBudget } from "./tokenBudget";
-import type { Chat, Character, MessageRole } from "@/lib/types";
+import type { Chat, Character, MessageRole, ExtractionRequest } from "@/lib/types";
 import type { CoreMemory } from "@/lib/db/models";
 
 let abortController: AbortController | null = null;
@@ -426,7 +426,7 @@ function runExtraction(chatId: string, speakerId?: string): void {
         : {}),
     }));
 
-  const extractionBody = {
+  const extractionBody: ExtractionRequest = {
     messages:        recentMessages,
     chatId,
     characterId:     character.id,

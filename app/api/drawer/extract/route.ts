@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import type { ExtractionRequest } from "@/lib/types";
 import { getStore } from "@/lib/db";
 import { normPredicate, predicateFamily, isSingleValued } from "@/lib/db/predicates";
 import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
@@ -10,15 +11,24 @@ export const dynamic = "force-dynamic";
 
 // ─── Extraction Prompt ────────────────────────────────────────────────────────
 
-function buildExtractionPrompt(
-  messages:      Array<{ role: string; content: string; speaker?: string }>,
-  characterName: string,
-  knownEntities: Array<{ id: string; name: string; type: string }> = [],
-  userLabel     = "User",
-  characterId   = "",
-  userId        = "player",
-  participants: Array<{ id: string; name: string }> = []
-): string {
+interface ExtractionPromptInput {
+  messages:       Array<{ role: string; content: string; speaker?: string }>;
+  characterName:  string;
+  characterId:    string;
+  /** Display name for the human side of the conversation */
+  userLabel:      string;
+  /** Entity id for the human side — the anchor the model must reuse */
+  userId:         string;
+  /** Existing entities, so the model reuses ids instead of minting new ones */
+  knownEntities:  Array<{ id: string; name: string; type: string }>;
+  /** Everyone in the scene, for group chats */
+  participants:   Array<{ id: string; name: string }>;
+}
+
+function buildExtractionPrompt({
+  messages, characterName, characterId, userLabel, userId,
+  knownEntities, participants,
+}: ExtractionPromptInput): string {
   // Group messages carry an explicit speaker label; 1:1 falls back to role
   const conversation = messages
     .slice(-12)
@@ -233,21 +243,9 @@ export async function POST(req: NextRequest) {
       modelId,
       apiKey,
       participants,
-    } = body as {
-      messages:        Array<{ role: string; content: string; speaker?: string }>;
-      chatId:          string;
-      characterId:     string;
-      characterName:   string;
-      personaName?:    string;
-      providerType:    "ollama" | "lmstudio" | "openrouter";
-      providerBaseUrl: string;
-      modelId:         string;
-      apiKey?:         string;
-      /** Group chats: everyone present in the scene (characters + player).
-       *  Extracted facts are stamped known_to with these ids, so absent
-       *  members never "remember" what happened without them. */
-      participants?:   Array<{ id: string; name: string }>;
-    };
+    } = body as Pick<ExtractionRequest,
+      "messages" | "chatId" | "characterId" | "characterName" | "personaName" |
+      "providerType" | "providerBaseUrl" | "modelId" | "apiKey" | "participants">;
 
     if (!messages?.length || !chatId || !characterId || !providerBaseUrl || !modelId) {
       return Response.json(
@@ -289,10 +287,15 @@ export async function POST(req: NextRequest) {
     const knownEntities = store.listEntities(chatId).map((e) => ({
       id: e.id, name: e.name, type: e.type,
     }));
-    const prompt = buildExtractionPrompt(
-      messages, characterName ?? characterId, knownEntities, personaName ?? "User",
-      characterId, "player", present
-    );
+    const prompt = buildExtractionPrompt({
+      messages,
+      characterName: characterName ?? characterId,
+      characterId,
+      userLabel: personaName ?? "User",
+      userId:    "player",
+      knownEntities,
+      participants: present,
+    });
 
     // ── Call LLM ──────────────────────────────────────────────────────────
 
