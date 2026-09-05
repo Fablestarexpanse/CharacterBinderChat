@@ -1,3 +1,4 @@
+import type { PersistedAppState } from "@/lib/types";
 // ─── FableStore (TypeScript) ──────────────────────────────────────────────────
 // TypeScript port of fable_drawer2/db.py using better-sqlite3.
 // All operations are synchronous (better-sqlite3 is sync-first).
@@ -988,11 +989,7 @@ export class FableStore {
     }
   }
 
-  getAppState(): {
-    characters: unknown[]; chats: unknown[]; personas: unknown[];
-    lorebooks: unknown[]; scenarios: unknown[]; presets: unknown[];
-    defaultPresetId: string | null; globalInstructions: Record<string, unknown>;
-  } {
+  getAppState(): PersistedAppState {
     const characters = (this.db
       .prepare("SELECT data FROM app_characters ORDER BY seq")
       .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
@@ -1023,7 +1020,7 @@ export class FableStore {
     const chats = chatRows.map((row) => ({
       ...(JSON.parse(row.data) as Record<string, unknown>),
       messages: (msgStmt.all(row.id) as Array<{ data: string }>).map((m) => JSON.parse(m.data)),
-    }));
+    })) as PersistedAppState["chats"];
 
     return {
       characters, chats, personas, lorebooks, scenarios, presets,
@@ -1032,17 +1029,9 @@ export class FableStore {
     };
   }
 
-  replaceAppState(state: {
-    characters: Array<{ id: string }>;
-    chats:      Array<{ id: string; messages?: Array<{ id: string }> }>;
-    personas?:  Array<{ id: string }>;
-    lorebooks?: Array<{ id: string }>;
-    scenarios?: Array<{ id: string }>;
-    presets?:   Array<{ id: string }>;
-    /** Omitted (undefined) means "leave as-is"; null means "clear". */
-    defaultPresetId?:    string | null;
-    globalInstructions?: unknown;
-  }): void {
+  /** `defaultPresetId`/`globalInstructions` omitted (undefined) means "leave as-is". */
+  replaceAppState(state: Partial<PersistedAppState> &
+    Pick<PersistedAppState, "characters" | "chats">): void {
     const {
       characters, chats,
       personas = [], lorebooks = [], scenarios = [], presets = [],

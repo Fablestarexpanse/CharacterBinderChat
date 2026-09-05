@@ -20,6 +20,7 @@ import type {
   ProviderStatus,
   ProviderId,
   AspectRatio,
+  PersistedAppState,
 } from "@/lib/types";
 
 // ─── Utility model ────────────────────────────────────────────────────────────
@@ -150,16 +151,7 @@ interface FableStore {
   setActiveChatId: (id: string | null) => void;
   /** Replace the local collections with the durable SQLite copy (on app load).
    *  Object-shaped: the positional list had grown past readability. */
-  hydrateFromServer: (data: {
-    characters: Character[];
-    chats: Chat[];
-    personas: Persona[];
-    lorebooks?: Lorebook[];
-    scenarios?: Scenario[];
-    presets?: Preset[];
-    defaultPresetId?: string | null;
-    globalInstructions?: PromptInstructions;
-  }) => void;
+  hydrateFromServer: (data: PersistedAppState) => void;
   /** Adds a message and returns its generated ID */
   addMessage: (chatId: string, message: Omit<Message, "id" | "timestamp">) => string;
   /** Insert a message directly after another (per-message image generation) */

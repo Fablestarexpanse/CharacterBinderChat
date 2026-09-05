@@ -16,9 +16,7 @@
 
 import { useEffect, useRef } from "react";
 import { useFableStore } from "@/lib/store";
-import type {
-  Character, Chat, Persona, Lorebook, Scenario, Preset, PromptInstructions,
-} from "@/lib/types";
+import type { PersistedAppState } from "@/lib/types";
 
 const DEBOUNCE_MS = 800;   // trailing quiet-period before a save
 const MAX_WAIT_MS = 5000;  // during constant streaming, save at least this often
@@ -67,11 +65,7 @@ export function StateSync() {
     (async () => {
       try {
         const res  = await fetch("/api/state", { cache: "no-store" });
-        const data = (await res.json()) as {
-          characters?: Character[]; chats?: Chat[]; personas?: Persona[];
-          lorebooks?: Lorebook[]; scenarios?: Scenario[]; presets?: Preset[];
-          defaultPresetId?: string | null; globalInstructions?: PromptInstructions;
-        };
+        const data = (await res.json()) as Partial<PersistedAppState>;
         // Presets count too: they're often the first thing configured, and a
         // durable copy holding only presets would otherwise be treated as
         // empty and overwritten by local state.

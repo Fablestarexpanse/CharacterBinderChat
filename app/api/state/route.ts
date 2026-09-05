@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { routeError } from "@/lib/api";
+import type { Character, Chat, Persona, Lorebook, Scenario, Preset } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -42,12 +43,15 @@ export async function PUT(req: NextRequest) {
       lorebooks?: unknown; scenarios?: unknown; presets?: unknown;
       defaultPresetId?: unknown; globalInstructions?: unknown;
     };
-    const characters = Array.isArray(body.characters) ? body.characters as Array<{ id: string }> : null;
-    const chats      = Array.isArray(body.chats)      ? body.chats      as Array<{ id: string; messages?: Array<{ id: string }> }> : null;
-    const personas   = Array.isArray(body.personas)   ? body.personas   as Array<{ id: string }> : [];
-    const lorebooks  = Array.isArray(body.lorebooks)  ? body.lorebooks  as Array<{ id: string }> : [];
-    const scenarios  = Array.isArray(body.scenarios)  ? body.scenarios  as Array<{ id: string }> : [];
-    const presets    = Array.isArray(body.presets)    ? body.presets    as Array<{ id: string }> : [];
+    // Only the ids are checked here — the client is the only writer and the
+    // durable copy is a mirror of its store, so the collections are taken at
+    // their declared type once they are arrays with ids.
+    const characters = Array.isArray(body.characters) ? body.characters as Character[] : null;
+    const chats      = Array.isArray(body.chats)      ? body.chats      as Chat[]      : null;
+    const personas   = Array.isArray(body.personas)   ? body.personas   as Persona[]   : [];
+    const lorebooks  = Array.isArray(body.lorebooks)  ? body.lorebooks  as Lorebook[]  : [];
+    const scenarios  = Array.isArray(body.scenarios)  ? body.scenarios  as Scenario[]  : [];
+    const presets    = Array.isArray(body.presets)    ? body.presets    as Preset[]    : [];
 
     if (!characters || !chats) {
       return Response.json({ ok: false, error: "characters and chats arrays are required" }, { status: 400 });

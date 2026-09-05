@@ -317,3 +317,27 @@ export interface ChatProvider {
     signal?: AbortSignal
   ): AsyncIterable<string>;
 }
+
+// ─── Durable app state ───────────────────────────────────────────────────────
+
+/**
+ * The whole durable app state: what `GET /api/state` returns, what
+ * `PUT /api/state` accepts, what the store persists and hydrates, and what
+ * FableStore reads and replaces.
+ *
+ * It was enumerated by hand in five modules, so adding a collection meant
+ * finding all five — and the SQLite end typed its rows `unknown[]`, which
+ * removed the last place a miss would have shown up. One declaration makes a
+ * forgotten collection a type error instead.
+ */
+export interface PersistedAppState {
+  characters:         Character[];
+  chats:              Chat[];
+  personas:           Persona[];
+  lorebooks:          Lorebook[];
+  scenarios:          Scenario[];
+  presets:            Preset[];
+  /** null clears the selection; the collections above are always present. */
+  defaultPresetId:    string | null;
+  globalInstructions: PromptInstructions;
+}
