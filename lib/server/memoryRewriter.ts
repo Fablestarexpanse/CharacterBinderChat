@@ -1,7 +1,8 @@
 // ─── Memory Rewriter (Drawer 1 Sleep Consolidation) ──────────────────────────
 // Calls a local LLM to reflect on recent events and rewrite the Core Memory
 // Block — persona, mood, narrative summary, internal thoughts.
-// Intended to be called server-side after a batch of messages.
+// Server-side only — the directory says so; it reaches SQLite directly.
+// Called after a batch of messages.
 
 import { getStore } from "@/lib/db";
 import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";

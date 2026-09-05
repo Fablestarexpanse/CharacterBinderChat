@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
-import { rewriteCoreMemory } from "@/lib/chat/memoryRewriter";
+import { rewriteCoreMemory } from "@/lib/server/memoryRewriter";
 import { parseMemoryTaskRequest, routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";

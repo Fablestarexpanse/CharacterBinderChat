@@ -129,7 +129,7 @@ export interface EmotionalEvent {
  * The full Core Memory document stored as JSON in SQLite.
  *
  * The snake_case fields are not a style lapse: they are the literal JSON
- * contract with the memory-rewriter prompt in lib/chat/memoryRewriter.ts,
+ * contract with the memory-rewriter prompt in lib/server/memoryRewriter.ts,
  * which asks the model for these exact key names. Renaming one to camelCase
  * silently breaks the rewrite — the model's output no longer matches and the
  * field falls back to its prior value forever.

@@ -3,7 +3,7 @@ import { getStore } from "@/lib/db";
 import { normPredicate, predicateFamily, isSingleValued } from "@/lib/db/predicates";
 import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
 import { embedTexts, vecToBuffer } from "@/lib/llm/embeddings";
-import { syncStatsToCore, syncCommitmentsToCore } from "@/lib/chat/coreMemoryStore";
+import { syncStatsToCore, syncCommitmentsToCore } from "@/lib/server/coreMemoryStore";
 import type { EntityType, StatName } from "@/lib/db/models";
 import { parseMemoryTaskRequest, routeError } from "@/lib/api";
 

@@ -1,5 +1,5 @@
 // ─── Core Memory sync (Drawer 2 → Drawer 1) ───────────────────────────────────
-// Server-side only. Import from API routes; do NOT import in client components.
+// Server-side only — the directory says so; it reaches SQLite directly.
 // All operations are scoped by chatId — each chat is its own story.
 //
 // Plain reads and writes belong on FableStore directly (getStore().getCoreMemory
