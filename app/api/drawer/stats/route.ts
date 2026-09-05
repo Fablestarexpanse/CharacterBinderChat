@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { STAT_NAMES } from "@/lib/db/models";
+import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
 
     return Response.json({ stats });
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[drawer/stats GET]", err);
   }
 }
 

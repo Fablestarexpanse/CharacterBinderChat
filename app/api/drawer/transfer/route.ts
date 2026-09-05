@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
+import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ export async function GET(req: NextRequest) {
     const sources = store.listMemorySources(characterId);
     return Response.json({ sources });
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[drawer/transfer GET]", err);
   }
 }
 
@@ -43,7 +44,6 @@ export async function POST(req: NextRequest) {
     const copied = store.transferMemory(fromChatId, toChatId);
     return Response.json({ ok: true, copied });
   } catch (err) {
-    console.error("[drawer/transfer]", err);
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[drawer/transfer POST]", err);
   }
 }

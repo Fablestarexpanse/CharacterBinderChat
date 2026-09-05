@@ -6,6 +6,7 @@ import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
 import { embedTexts, vecToBuffer } from "@/lib/llm/embeddings";
 import { syncStatsToCore, syncCommitmentsToCore } from "@/lib/chat/coreMemoryStore";
 import type { EntityType, StatName } from "@/lib/db/models";
+import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -585,7 +586,6 @@ export async function POST(req: NextRequest) {
       rawModel: rawText.slice(0, 200) + (rawText.length > 200 ? "…" : ""),
     });
   } catch (err) {
-    console.error("[drawer/extract]", err);
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[drawer/extract]", err);
   }
 }

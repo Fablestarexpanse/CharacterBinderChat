@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
+import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,6 @@ export async function POST(req: NextRequest) {
 
     return Response.json({ ok: true, merged: { from: fromId, into: toId } });
   } catch (err) {
-    console.error("[entities/merge]", err);
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[entities/merge]", err);
   }
 }

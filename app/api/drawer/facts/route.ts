@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { normPredicate, predicateFamily, isSingleValued } from "@/lib/db/predicates";
+import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,7 @@ export async function GET(req: NextRequest) {
     }));
     return Response.json({ facts: enriched });
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[drawer/facts GET]", err);
   }
 }
 
@@ -138,7 +139,7 @@ export async function POST(req: NextRequest) {
 
     return Response.json({ ok: true, factId, superseded: toSupersede.map((o) => o.id) });
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[drawer/facts POST]", err);
   }
 }
 
@@ -165,6 +166,6 @@ export async function DELETE(req: NextRequest) {
     }
     return Response.json({ ok: true, revived: result.revived });
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[drawer/facts DELETE]", err);
   }
 }

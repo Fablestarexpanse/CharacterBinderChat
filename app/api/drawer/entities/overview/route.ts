@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import type { DbEntity } from "@/lib/db/models";
+import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -93,7 +94,6 @@ export async function GET(req: NextRequest) {
 
     return Response.json({ entities: enriched, possibleDuplicates });
   } catch (err) {
-    console.error("[entities/overview]", err);
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[entities/overview]", err);
   }
 }

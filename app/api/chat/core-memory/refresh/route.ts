@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import type { ExtractionRequest } from "@/lib/types";
 import { getStore } from "@/lib/db";
 import { rewriteCoreMemory } from "@/lib/chat/memoryRewriter";
+import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +54,6 @@ export async function POST(req: NextRequest) {
 
     return Response.json(result);
   } catch (err) {
-    console.error("[core-memory/refresh]", err);
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[core-memory/refresh]", err);
   }
 }

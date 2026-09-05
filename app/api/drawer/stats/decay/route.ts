@@ -1,4 +1,5 @@
 import { getStore } from "@/lib/db";
+import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,6 @@ export async function POST() {
     const changes = store.applyDecay();
     return Response.json({ changes });
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[drawer/stats/decay POST]", err);
   }
 }

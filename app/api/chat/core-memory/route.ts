@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { embedText } from "@/lib/llm/embeddings";
 import type { CoreMemory } from "@/lib/db/models";
+import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -42,8 +43,7 @@ export async function GET(req: NextRequest) {
       knownFacts, episodes, insights, bits,
     });
   } catch (err) {
-    console.error("[core-memory GET]", err);
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[core-memory GET]", err);
   }
 }
 
@@ -168,7 +168,6 @@ export async function PATCH(req: NextRequest) {
     const updated = store.patchCoreMemory(chatId, characterId, patch);
     return Response.json({ ok: true, coreMemory: updated?.data, version: updated?.version });
   } catch (err) {
-    console.error("[core-memory PATCH]", err);
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[core-memory PATCH]", err);
   }
 }

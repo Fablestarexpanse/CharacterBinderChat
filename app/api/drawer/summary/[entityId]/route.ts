@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
+import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,6 @@ export async function GET(
     const summary = store.characterSummary(chatId, entityId);
     return Response.json(summary);
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[drawer/summary/[entityId] GET]", err);
   }
 }

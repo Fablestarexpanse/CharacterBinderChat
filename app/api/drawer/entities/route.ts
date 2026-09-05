@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import type { EntityType } from "@/lib/db/models";
+import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest) {
     const entities = store.listEntities(chatId, type ?? undefined);
     return Response.json({ entities });
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[drawer/entities GET]", err);
   }
 }
 
@@ -41,6 +42,6 @@ export async function POST(req: NextRequest) {
     const entity = store.ensureEntity(chatId, id, type, name, description);
     return Response.json({ entity });
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[drawer/entities POST]", err);
   }
 }

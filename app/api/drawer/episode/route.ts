@@ -3,6 +3,7 @@ import type { ExtractionRequest } from "@/lib/types";
 import { getStore } from "@/lib/db";
 import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
 import { embedText, vecToBuffer } from "@/lib/llm/embeddings";
+import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -158,7 +159,6 @@ export async function POST(req: NextRequest) {
     if (vec) store.setCardEmbedding(cardId, vecToBuffer(vec));
     return Response.json({ ok: true, mode, cards: [cardId] });
   } catch (err) {
-    console.error("[drawer/episode]", err);
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[drawer/episode]", err);
   }
 }

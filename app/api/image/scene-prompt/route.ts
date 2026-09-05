@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -139,6 +140,6 @@ export async function POST(req: NextRequest) {
     }
     return Response.json({ ok: true, prompt });
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[image/scene-prompt POST]", err);
   }
 }

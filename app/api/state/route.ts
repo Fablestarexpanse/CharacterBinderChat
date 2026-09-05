@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
+import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +24,7 @@ export async function GET(req: NextRequest) {
 
     return Response.json(state);
   } catch (err) {
-    console.error("[state GET]", err);
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[state GET]", err);
   }
 }
 
@@ -113,7 +113,6 @@ export async function PUT(req: NextRequest) {
       ...(purged.length > 0 ? { purgedChatMemory: purged } : {}),
     });
   } catch (err) {
-    console.error("[state PUT]", err);
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[state PUT]", err);
   }
 }
