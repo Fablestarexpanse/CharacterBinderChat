@@ -243,6 +243,7 @@ export class FableStore {
   // ── Entities ──────────────────────────────────────────────────────────────
   // All memory operations are scoped by chatId: each chat is its own story.
 
+  /** INSERT OR REPLACE — overwrites the name and description of an existing row. */
   insertEntity(chatId: string, entity: Omit<DbEntity, "createdAt"> & { createdAt?: number }): void {
     const createdAt = entity.createdAt ?? now();
     this.db
@@ -253,7 +254,10 @@ export class FableStore {
       .run(chatId, entity.id, entity.type, entity.name, entity.description ?? "", createdAt);
   }
 
-  /** Upsert — safe to call even if entity already exists */
+  /**
+   * Get-or-create: returns the existing row untouched when the id is already
+   * present. Use insertEntity to overwrite an entity's name or description.
+   */
   ensureEntity(
     chatId: string,
     id: string,

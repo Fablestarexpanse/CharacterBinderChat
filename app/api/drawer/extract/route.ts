@@ -325,14 +325,6 @@ export async function POST(req: NextRequest) {
     // empty-object fallback here would make a model that can't emit JSON look
     // identical to a quiet conversation, and nothing would ever reach the DB.
     const extracted = parseLLMJson<RawExtraction | null>(rawText, null);
-    // parseLLMJson happily returns arrays/numbers for a model that emitted
-    // valid-but-wrong JSON — those must fail loudly, not read as a quiet turn.
-    if (extracted && (typeof extracted !== "object" || Array.isArray(extracted))) {
-      return Response.json(
-        { ok: false, error: "model returned non-object JSON — nothing extracted", rawModel: rawText.slice(0, 200) },
-        { status: 502 }
-      );
-    }
     if (!extracted) {
       console.warn("[drawer/extract] unparseable LLM output:", rawText.slice(0, 300));
       return Response.json(

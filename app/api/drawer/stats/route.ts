@@ -5,7 +5,7 @@ import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/drawer/stats?observer=<id>&target=<id>
+// GET /api/drawer/stats?chatId=<id>&observer=<id>&target=<id>
 export async function GET(req: NextRequest) {
   try {
     const params   = req.nextUrl.searchParams;

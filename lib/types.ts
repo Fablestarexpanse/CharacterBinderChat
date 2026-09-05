@@ -217,7 +217,8 @@ export interface ProviderStatus {
 export interface ExtractionRequest {
   chatId:          string;
   characterId:     string;
-  characterName:   string;
+  /** Falls back to characterId in every route that reads it. */
+  characterName?:  string;
   personaName?:    string;
   /** Recent turns. In groups each carries its speaker's display name, so the
    *  extractor never attributes one character's line to another. */

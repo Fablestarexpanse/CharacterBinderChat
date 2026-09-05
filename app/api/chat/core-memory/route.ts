@@ -6,7 +6,8 @@ import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-// ─── GET /api/chat/core-memory?characterId=X&name=Y ──────────────────────────
+// ─── GET /api/chat/core-memory ───────────────────────────────────────────────
+// ?chatId=X&characterId=Y&name=Z&context=<recent text, optional>
 // Returns the Core Memory Block for a character, creating defaults if needed.
 
 export async function GET(req: NextRequest) {
@@ -142,7 +143,7 @@ function sanitizePatch(raw: Record<string, unknown>): Partial<CoreMemory> | stri
 }
 
 // ─── PATCH /api/chat/core-memory ──────────────────────────────────────────────
-// Partial update. Body: { characterId, ...fields to merge }
+// Partial update. Body: { chatId, characterId, ...fields to merge }
 
 export async function PATCH(req: NextRequest) {
   try {

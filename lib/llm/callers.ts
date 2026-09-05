@@ -91,16 +91,30 @@ export async function callOpenAICompat(
   return content;
 }
 
-/** Parse an LLM response that should be JSON, stripping markdown fences. */
+/**
+ * Parse an LLM response that should be a JSON object, stripping markdown
+ * fences. Returns `fallback` for anything that is not a plain object.
+ *
+ * Every caller wants an object with named fields, and a model that emits
+ * valid-but-wrong JSON — a bare array, a number, `null` — used to sail
+ * through the `as T` cast and fail later as a property access on a number.
+ * Rejecting it here makes the declared `T` true for all callers.
+ */
 export function parseLLMJson<T>(text: string, fallback: T): T {
   const clean = text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
-  try {
-    return JSON.parse(clean) as T;
-  } catch {
-    const match = clean.match(/\{[\s\S]*\}/);
-    if (match) {
-      try { return JSON.parse(match[0]) as T; } catch { /* fall through */ }
-    }
-    return fallback;
+  const asObject = (raw: string): T | undefined => {
+    try {
+      const v: unknown = JSON.parse(raw);
+      if (typeof v === "object" && v !== null && !Array.isArray(v)) return v as T;
+    } catch { /* not JSON, or not an object */ }
+    return undefined;
+  };
+  const direct = asObject(clean);
+  if (direct !== undefined) return direct;
+  const match = clean.match(/\{[\s\S]*\}/);
+  if (match) {
+    const embedded = asObject(match[0]);
+    if (embedded !== undefined) return embedded;
   }
+  return fallback;
 }

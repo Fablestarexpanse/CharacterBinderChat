@@ -29,7 +29,9 @@ export async function GET(req: NextRequest) {
 }
 
 // ─── PUT /api/state ───────────────────────────────────────────────────────────
-// Full-replace sync from the client store. Body: { characters, chats }.
+// Full-replace sync from the client store.
+// Body: { characters, chats, personas?, lorebooks?, scenarios?, presets?,
+//         defaultPresetId?, globalInstructions? } — characters and chats required.
 // Refuses an empty payload when data already exists — a client-side bug must
 // not be able to silently wipe the durable copy.
 

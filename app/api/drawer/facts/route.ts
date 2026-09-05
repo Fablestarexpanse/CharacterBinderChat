@@ -5,7 +5,7 @@ import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/drawer/facts?subject=<id>&asOf=<unix_ts>&includeSuperseded=1
+// GET /api/drawer/facts?chatId=<id>&subject=<id>&asOf=<unix_ts>&includeSuperseded=1
 // Default (no flag): returns live facts only — backward-compatible with MemoryTab.
 // With includeSuperseded=1: returns all facts including superseded (bi-temporal view).
 export async function GET(req: NextRequest) {
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/drawer/facts
-// Body:     { subjectId, predicate, objectId?, objectLiteral?, confidence?, importance? }
+// Body:     { chatId, subjectId, predicate, objectId?, objectLiteral?, confidence?, importance? }
 // Response: { ok, factId, duplicate, superseded } — one shape whether the fact
 // was inserted or matched an existing one.
 // Applies the same dedup + supersession logic as the extract route so the
