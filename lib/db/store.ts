@@ -1308,9 +1308,11 @@ export class FableStore {
     characterId: string,
     limit = 20,
     context = "",
-    playerId = "player",
     queryEmbedding: Float32Array | null = null
   ): string[] {
+    // The player's entity id is fixed app-wide; facts are stored against it
+    // literally, so there is nothing for a caller to vary here.
+    const playerId = "player";
     // Witness filter: known_to = [] means public (every 1:1 fact); a
     // non-empty list restricts the fact to characters who were present when
     // it was established. A group member who was out of the scene must not

@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     // Semantic query vector for retrieval — null when Ollama embeddings are
     // unavailable, in which case ranking falls back to keyword overlap
     const queryVec   = context ? await embedText(context) : null;
-    const knownFacts = store.retrieveFactsForPrompt(chatId, characterId, 20, context, "player", queryVec);
+    const knownFacts = store.retrieveFactsForPrompt(chatId, characterId, 20, context, queryVec);
     // Episodic layer: scenes remembered as events, and reflective insights.
     // Kept separate from facts because they read differently in the prompt.
     const cards    = store.retrieveEpisodesForPrompt(chatId, 5, context, queryVec);
