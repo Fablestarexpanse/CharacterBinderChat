@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import type { ExtractionRequest } from "@/lib/types";
 import { getStore } from "@/lib/db";
-import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
+import { PROVIDER_TYPES, callOllama, callOpenAICompat, isProviderType, parseLLMJson, parseProviderBase } from "@/lib/llm/callers";
 import { embedText, vecToBuffer } from "@/lib/llm/embeddings";
 import { routeError } from "@/lib/api";
 
@@ -93,6 +93,19 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    if (!isProviderType(providerType)) {
+      return Response.json(
+        { ok: false, error: `providerType must be one of: ${PROVIDER_TYPES.join(", ")}` },
+        { status: 400 }
+      );
+    }
+    const baseUrl = parseProviderBase(providerBaseUrl);
+    if (!baseUrl) {
+      return Response.json(
+        { ok: false, error: "providerBaseUrl must be an http(s) URL" },
+        { status: 400 }
+      );
+    }
 
     const store = getStore();
     const userLabel = personaName ?? "the user";
@@ -118,8 +131,8 @@ export async function POST(req: NextRequest) {
     }
 
     const rawText = providerType === "ollama"
-      ? await callOllama(providerBaseUrl, modelId, prompt)
-      : await callOpenAICompat(providerBaseUrl, modelId, prompt, apiKey);
+      ? await callOllama(baseUrl, modelId, prompt)
+      : await callOpenAICompat(baseUrl, modelId, prompt, apiKey);
 
     if (mode === "reflect") {
       const parsed = parseLLMJson<{ insights?: Array<{ title?: string; content?: string; importance?: number }> } | null>(rawText, null);

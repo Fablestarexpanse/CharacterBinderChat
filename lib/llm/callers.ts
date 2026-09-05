@@ -2,6 +2,38 @@
 // Used by both the Drawer-2 extraction route and the Core Memory rewriter.
 // Keep all LLM transport logic here; do not duplicate across route files.
 
+// ─── Caller-supplied provider input ──────────────────────────────────────────
+// Routes take the provider and its base URL from the request body, because
+// generation is client-side and the user configures both in Settings. Both
+// therefore need the same gate in every route that forwards them to fetch.
+
+export type ProviderType = "ollama" | "lmstudio" | "openrouter";
+
+export const PROVIDER_TYPES: ProviderType[] = ["ollama", "lmstudio", "openrouter"];
+
+export function isProviderType(v: unknown): v is ProviderType {
+  return typeof v === "string" && (PROVIDER_TYPES as string[]).includes(v);
+}
+
+/**
+ * Validate a caller-supplied provider base URL and return it without its
+ * trailing slash, or null when it is not a usable http(s) URL.
+ *
+ * Concatenating an unchecked string into `fetch` let a body choose the scheme
+ * as well as the host — file:, data: and friends — so the parse and the
+ * protocol check are not optional.
+ */
+export function parseProviderBase(raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  return url.toString().replace(/\/$/, "");
+}
+
 export async function callOllama(
   baseUrl:    string,
   modelId:    string,

@@ -3,6 +3,7 @@ import type { ExtractionRequest } from "@/lib/types";
 import { getStore } from "@/lib/db";
 import { rewriteCoreMemory } from "@/lib/chat/memoryRewriter";
 import { routeError } from "@/lib/api";
+import { isProviderType, PROVIDER_TYPES, parseProviderBase } from "@/lib/llm/callers";
 
 export const dynamic = "force-dynamic";
 
@@ -28,10 +29,22 @@ export async function POST(req: NextRequest) {
       messages, providerType, providerBaseUrl, modelId, apiKey,
     } = body;
 
-    const validProviders = new Set(["ollama", "lmstudio", "openrouter"]);
-    if (!chatId || !characterId || !messages?.length || !providerBaseUrl || !modelId || !validProviders.has(providerType)) {
+    if (!chatId || !characterId || !messages?.length || !providerBaseUrl || !modelId) {
       return Response.json(
         { ok: false, error: "chatId, characterId, messages, providerBaseUrl and modelId are required" },
+        { status: 400 }
+      );
+    }
+    if (!isProviderType(providerType)) {
+      return Response.json(
+        { ok: false, error: `providerType must be one of: ${PROVIDER_TYPES.join(", ")}` },
+        { status: 400 }
+      );
+    }
+    const baseUrl = parseProviderBase(providerBaseUrl);
+    if (!baseUrl) {
+      return Response.json(
+        { ok: false, error: "providerBaseUrl must be an http(s) URL" },
         { status: 400 }
       );
     }
@@ -47,7 +60,7 @@ export async function POST(req: NextRequest) {
       characterAnchor,
       recentMessages: messages,
       providerType,
-      providerBaseUrl,
+      providerBaseUrl: baseUrl,
       modelId,
       apiKey,
     });

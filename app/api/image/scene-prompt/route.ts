@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { routeError } from "@/lib/api";
+import { parseProviderBase } from "@/lib/llm/callers";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +70,13 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    const baseUrl = parseProviderBase(body.ollamaBaseUrl);
+    if (!baseUrl) {
+      return Response.json(
+        { ok: false, error: "ollamaBaseUrl must be an http(s) URL" },
+        { status: 400 }
+      );
+    }
 
     // Chat format (system/user split) — instruct models follow it far more
     // reliably than raw completion; raw mode had the model restating the
@@ -77,7 +85,7 @@ export async function POST(req: NextRequest) {
     // `thinking` channel and content comes back empty. Retried without the
     // flag for models that reject it.
     const call = (withThink: boolean) =>
-      fetch(`${body.ollamaBaseUrl.replace(/\/$/, "")}/api/chat`, {
+      fetch(`${baseUrl}/api/chat`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

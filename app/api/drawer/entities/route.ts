@@ -5,6 +5,15 @@ import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
+// Whitelisted here rather than trusted from the caller: an invalid value hits
+// the schema CHECK and surfaces as an opaque SQL 500 on write, or silently
+// queries for a type that cannot exist on read.
+const VALID_TYPES: EntityType[] = ["character", "place", "object", "faction", "concept"];
+
+function isEntityType(v: string): v is EntityType {
+  return (VALID_TYPES as string[]).includes(v);
+}
+
 // GET /api/drawer/entities?chatId=<chatId>&type=character
 export async function GET(req: NextRequest) {
   try {
@@ -13,7 +22,10 @@ export async function GET(req: NextRequest) {
     if (!chatId) {
       return Response.json({ ok: false, error: "chatId param required" }, { status: 400 });
     }
-    const type  = req.nextUrl.searchParams.get("type") as EntityType | null;
+    const type = req.nextUrl.searchParams.get("type");
+    if (type !== null && !isEntityType(type)) {
+      return Response.json({ ok: false, error: `type must be one of: ${VALID_TYPES.join(", ")}` }, { status: 400 });
+    }
     const entities = store.listEntities(chatId, type ?? undefined);
     return Response.json({ entities });
   } catch (err) {
@@ -32,11 +44,8 @@ export async function POST(req: NextRequest) {
     if (!chatId || !id || !type || !name) {
       return Response.json({ ok: false, error: "chatId, id, type and name are required" }, { status: 400 });
     }
-    // Whitelist type — an invalid value would hit the schema CHECK and
-    // surface as an opaque SQL 500
-    const validTypes = ["character", "place", "object", "faction", "concept"];
-    if (!validTypes.includes(type)) {
-      return Response.json({ ok: false, error: `type must be one of: ${validTypes.join(", ")}` }, { status: 400 });
+    if (!isEntityType(type)) {
+      return Response.json({ ok: false, error: `type must be one of: ${VALID_TYPES.join(", ")}` }, { status: 400 });
     }
     const store = getStore();
     const entity = store.ensureEntity(chatId, id, type, name, description);

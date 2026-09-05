@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import type { ExtractionRequest } from "@/lib/types";
 import { getStore } from "@/lib/db";
 import { normPredicate, predicateFamily, isSingleValued } from "@/lib/db/predicates";
-import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
+import { PROVIDER_TYPES, callOllama, callOpenAICompat, isProviderType, parseLLMJson, parseProviderBase } from "@/lib/llm/callers";
 import { embedTexts, vecToBuffer } from "@/lib/llm/embeddings";
 import { syncStatsToCore, syncCommitmentsToCore } from "@/lib/chat/coreMemoryStore";
 import type { EntityType, StatName } from "@/lib/db/models";
@@ -254,6 +254,19 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    if (!isProviderType(providerType)) {
+      return Response.json(
+        { ok: false, error: `providerType must be one of: ${PROVIDER_TYPES.join(", ")}` },
+        { status: 400 }
+      );
+    }
+    const baseUrl = parseProviderBase(providerBaseUrl);
+    if (!baseUrl) {
+      return Response.json(
+        { ok: false, error: "providerBaseUrl must be an http(s) URL" },
+        { status: 400 }
+      );
+    }
 
     // ── Build prompt with known entity roster (prevents ID drift) ────────────
 
@@ -303,9 +316,9 @@ export async function POST(req: NextRequest) {
     let rawText: string;
 
     if (providerType === "ollama") {
-      rawText = await callOllama(providerBaseUrl, modelId, prompt);
+      rawText = await callOllama(baseUrl, modelId, prompt);
     } else {
-      rawText = await callOpenAICompat(providerBaseUrl, modelId, prompt, apiKey);
+      rawText = await callOpenAICompat(baseUrl, modelId, prompt, apiKey);
     }
 
     // Parse failure must be distinguishable from "nothing to extract" — an
