@@ -90,29 +90,39 @@ export function formatCoreMemoryBlock(cm: CoreMemory): string {
 // ─── Main system prompt builder ───────────────────────────────────────────────
 
 /**
+ * Everything that can go into a system prompt. An options object rather than
+ * positionals: the list ran to eight arguments, five of them consecutive
+ * `string[]`, so transposing lore and bits was silently type-correct.
+ */
+export interface SystemPromptInput {
+  character?:  Character | null;
+  coreMemory?: CoreMemory | null;
+  persona?:    Persona | null;
+  /** Drawer 2 retrieval */
+  knownFacts?: string[];
+  episodes?:   string[];
+  insights?:   string[];
+  /** Keyword-triggered lorebook entries */
+  lore?:       string[];
+  /** Shared language: nicknames, running jokes */
+  bits?:       string[];
+  /** Standing instructions from the active preset and the global settings */
+  globalPrompt?:   string;
+  customPrompt?:   string;
+  forbiddenWords?: string[];
+}
+
+/**
  * Builds the full system prompt injected before every LLM call.
  * Without core memory: ~200-300 tokens.
  * With core memory:    ~600-900 tokens.
  * With known facts:    +~100-200 tokens.
  */
-export function buildSystemPrompt(
-  character?:  Character | null,
-  coreMemory?: CoreMemory | null,
-  knownFacts?: string[],
-  persona?:    Persona | null,
-  episodes?:   string[],
-  insights?:   string[],
-  lore?:       string[],
-  bits?:       string[],
-  /** Standing instructions from the active preset and the global settings.
-   *  A trailing options object rather than three more positionals — the list
-   *  above is already at the limit of what's readable. */
-  instructions?: {
-    globalPrompt?:   string;
-    customPrompt?:   string;
-    forbiddenWords?: string[];
-  }
-): string {
+export function buildSystemPrompt({
+  character, coreMemory, persona,
+  knownFacts, episodes, insights, lore, bits,
+  globalPrompt, customPrompt, forbiddenWords,
+}: SystemPromptInput): string {
   if (!character) return "You are a helpful assistant.";
 
   const sections: string[] = [];
@@ -125,11 +135,11 @@ export function buildSystemPrompt(
   // is what the memory and anti-confabulation behaviour was tuned around; a
   // global instruction placed above it could outrank every character at once.
   // Global comes before preset so the preset reads as a refinement of it.
-  if (instructions?.globalPrompt?.trim()) {
-    sections.push(`[Global Instructions]\n${instructions.globalPrompt.trim()}`);
+  if (globalPrompt?.trim()) {
+    sections.push(`[Global Instructions]\n${globalPrompt.trim()}`);
   }
-  if (instructions?.customPrompt?.trim()) {
-    sections.push(`[Preset Instructions]\n${instructions.customPrompt.trim()}`);
+  if (customPrompt?.trim()) {
+    sections.push(`[Preset Instructions]\n${customPrompt.trim()}`);
   }
 
   if (character.description) sections.push(character.description);
@@ -197,7 +207,7 @@ export function buildSystemPrompt(
   // Forbidden words ride with the instructions rather than the prompts above:
   // negative constraints are the first thing a long prompt loses, and this
   // block is last precisely because behavioural rules survive better here.
-  const banned = (instructions?.forbiddenWords ?? []).filter((w) => w.trim());
+  const banned = (forbiddenWords ?? []).filter((w) => w.trim());
   sections.push(
     `Write in first person. Be immersive and emotionally consistent with your current mood and relationship state. Do not break character or refer to yourself as an AI.\n` +
     `Your memory above is what you actually know. If asked about something not in your memory or this conversation, say you don't know or don't remember — do not invent specifics such as names, events, or promises.` +

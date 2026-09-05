@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ensureCoreMemory } from "@/lib/chat/coreMemoryStore";
+import { getStore } from "@/lib/db";
 import { rewriteCoreMemory } from "@/lib/chat/memoryRewriter";
 
 export const dynamic = "force-dynamic";
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Ensure core memory exists before trying to rewrite it
-    ensureCoreMemory(chatId, characterId, characterName ?? characterId);
+    getStore().ensureCoreMemory(chatId, characterId, characterName ?? characterId);
 
     const result = await rewriteCoreMemory({
       chatId,

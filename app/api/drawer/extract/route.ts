@@ -3,7 +3,7 @@ import { getStore } from "@/lib/db";
 import { normPredicate, predicateFamily, isSingleValued } from "@/lib/db/predicates";
 import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
 import { embedTexts, vecToBuffer } from "@/lib/llm/embeddings";
-import { ensureCoreMemory, syncStatsToCore, syncCommitmentsToCore } from "@/lib/chat/coreMemoryStore";
+import { syncStatsToCore, syncCommitmentsToCore } from "@/lib/chat/coreMemoryStore";
 import type { EntityType, StatName } from "@/lib/db/models";
 
 export const dynamic = "force-dynamic";
@@ -554,7 +554,7 @@ export async function POST(req: NextRequest) {
     // ── Story clock ───────────────────────────────────────────────────────
     // The in-fiction "now" — lets the prompt surface commitments whose moment
     // has arrived. Only overwrite when the model actually saw a time.
-    ensureCoreMemory(chatId, characterId, characterName ?? characterId);
+    store.ensureCoreMemory(chatId, characterId, characterName ?? characterId);
     if (typeof extracted.story_time === "string" && extracted.story_time.trim() &&
         extracted.story_time.trim().toLowerCase() !== "null") {
       store.patchCoreMemory(chatId, characterId, { story_time: extracted.story_time.trim().slice(0, 120) });

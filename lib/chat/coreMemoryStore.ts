@@ -1,36 +1,13 @@
-// ─── Core Memory Store (Drawer 1) ─────────────────────────────────────────────
-// Server-side only. Thin wrappers around FableStore for Core Memory operations.
-// Import from API routes; do NOT import in client components.
+// ─── Core Memory sync (Drawer 2 → Drawer 1) ───────────────────────────────────
+// Server-side only. Import from API routes; do NOT import in client components.
 // All operations are scoped by chatId — each chat is its own story.
+//
+// Plain reads and writes belong on FableStore directly (getStore().getCoreMemory
+// etc.). Only the two projections below live here, because each carries logic
+// the store has no business knowing: the −100..100 → 0..100 rescale, and the
+// commitment labelling.
 
 import { getStore } from "@/lib/db";
-import type { CoreMemory, DbCoreMemory } from "@/lib/db/models";
-
-// ─── Read ─────────────────────────────────────────────────────────────────────
-
-export function getCoreMemory(chatId: string, characterId: string): DbCoreMemory | null {
-  return getStore().getCoreMemory(chatId, characterId);
-}
-
-export function ensureCoreMemory(
-  chatId:        string,
-  characterId:   string,
-  characterName: string
-): DbCoreMemory {
-  return getStore().ensureCoreMemory(chatId, characterId, characterName);
-}
-
-// ─── Write ────────────────────────────────────────────────────────────────────
-
-export function patchCoreMemory(
-  chatId:      string,
-  characterId: string,
-  patch:       Partial<CoreMemory>
-): DbCoreMemory | null {
-  return getStore().patchCoreMemory(chatId, characterId, patch);
-}
-
-// ─── Convenience updaters ─────────────────────────────────────────────────────
 
 /** Merge new Drawer-2 stats into the core memory relationship block */
 export function syncStatsToCore(chatId: string, characterId: string): void {

@@ -162,14 +162,14 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
     const promptCharacter = character && chat.scenarioText
       ? { ...character, scenario: chat.scenarioText }
       : character;
-    let systemPrompt = buildSystemPrompt(
-      promptCharacter, coreMemory, knownFacts, persona, episodes, insights, lore, bits,
-      {
-        globalPrompt:   resolved.globalPrompt,
-        customPrompt:   resolved.customPrompt,
-        forbiddenWords: resolved.forbiddenWords,
-      }
-    );
+    let systemPrompt = buildSystemPrompt({
+      character: promptCharacter,
+      coreMemory, persona,
+      knownFacts, episodes, insights, lore, bits,
+      globalPrompt:   resolved.globalPrompt,
+      customPrompt:   resolved.customPrompt,
+      forbiddenWords: resolved.forbiddenWords,
+    });
 
     // ── Group scene block ───────────────────────────────────────────────────
     // The speaker needs to know who else is in the room, and that other

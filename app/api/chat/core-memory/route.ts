@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { ensureCoreMemory, getCoreMemory, patchCoreMemory } from "@/lib/chat/coreMemoryStore";
 import { getStore } from "@/lib/db";
 import { embedText } from "@/lib/llm/embeddings";
 import type { CoreMemory } from "@/lib/db/models";
@@ -23,8 +22,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const cm    = ensureCoreMemory(chatId, characterId, characterName);
     const store = getStore();
+    const cm    = store.ensureCoreMemory(chatId, characterId, characterName);
     // Semantic query vector for retrieval — null when Ollama embeddings are
     // unavailable, in which case ranking falls back to keyword overlap
     const queryVec   = context ? await embedText(context) : null;
@@ -155,7 +154,8 @@ export async function PATCH(req: NextRequest) {
     }
 
     // Ensure the record exists before patching
-    const existing = getCoreMemory(chatId, characterId);
+    const store    = getStore();
+    const existing = store.getCoreMemory(chatId, characterId);
     if (!existing) {
       return Response.json({ error: "Core memory not found — call GET first to initialise" }, { status: 404 });
     }
@@ -165,7 +165,7 @@ export async function PATCH(req: NextRequest) {
       return Response.json({ error: patch }, { status: 400 });
     }
 
-    const updated = patchCoreMemory(chatId, characterId, patch);
+    const updated = store.patchCoreMemory(chatId, characterId, patch);
     return Response.json({ ok: true, coreMemory: updated?.data, version: updated?.version });
   } catch (err) {
     console.error("[core-memory PATCH]", err);
