@@ -24,6 +24,21 @@ import type {
 } from "./models";
 import { DEFAULT_DECAY_RATES } from "./models";
 
+// ─── App state collections ────────────────────────────────────────────────────
+// The flat collections of the durable app state, paired with their tables. Every
+// place that reads, wipes, writes, validates or counts them drives off this list
+// rather than repeating five near-identical statements — a new collection is one
+// row here plus its table in the schema. Chats are absent on purpose: their
+// messages live in a second table, so they are handled separately.
+
+export const APP_COLLECTIONS = [
+  ["characters", "app_characters"],
+  ["personas",   "app_personas"],
+  ["lorebooks",  "app_lorebooks"],
+  ["scenarios",  "app_scenarios"],
+  ["presets",    "app_presets"],
+] as const satisfies ReadonlyArray<readonly [keyof PersistedAppState, string]>;
+
 function now(): number {
   return Math.floor(Date.now() / 1000);
 }
@@ -969,25 +984,9 @@ export class FableStore {
   }
 
   getAppState(): PersistedAppState {
-    const characters = (this.db
-      .prepare("SELECT data FROM app_characters ORDER BY seq")
-      .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
-
-    const personas = (this.db
-      .prepare("SELECT data FROM app_personas ORDER BY seq")
-      .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
-
-    const lorebooks = (this.db
-      .prepare("SELECT data FROM app_lorebooks ORDER BY seq")
-      .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
-
-    const scenarios = (this.db
-      .prepare("SELECT data FROM app_scenarios ORDER BY seq")
-      .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
-
-    const presets = (this.db
-      .prepare("SELECT data FROM app_presets ORDER BY seq")
-      .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
+    const read = (table: string) =>
+      (this.db.prepare(`SELECT data FROM ${table} ORDER BY seq`).all() as Array<{ data: string }>)
+        .map((r) => JSON.parse(r.data));
 
     const chatRows = this.db
       .prepare("SELECT id, data FROM app_chats ORDER BY seq")
@@ -995,41 +994,36 @@ export class FableStore {
     const msgStmt = this.db.prepare(
       "SELECT data FROM app_messages WHERE chat_id = ? ORDER BY seq"
     );
-
     const chats = chatRows.map((row) => ({
       ...(JSON.parse(row.data) as Record<string, unknown>),
       messages: (msgStmt.all(row.id) as Array<{ data: string }>).map((m) => JSON.parse(m.data)),
     })) as PersistedAppState["chats"];
 
     return {
-      characters, chats, personas, lorebooks, scenarios, presets,
+      characters: read("app_characters"),
+      personas:   read("app_personas"),
+      lorebooks:  read("app_lorebooks"),
+      scenarios:  read("app_scenarios"),
+      presets:    read("app_presets"),
+      chats,
       defaultPresetId:    this.getKv<string | null>("defaultPresetId", null),
-      globalInstructions: this.getKv<Record<string, unknown>>("globalInstructions", {}),
+      globalInstructions: this.getKv<PersistedAppState["globalInstructions"]>("globalInstructions", {}),
     };
   }
 
   /** `defaultPresetId`/`globalInstructions` omitted (undefined) means "leave as-is". */
   replaceAppState(state: Partial<PersistedAppState> &
     Pick<PersistedAppState, "characters" | "chats">): void {
-    const {
-      characters, chats,
-      personas = [], lorebooks = [], scenarios = [], presets = [],
-      defaultPresetId, globalInstructions,
-    } = state;
+    const { chats, defaultPresetId, globalInstructions } = state;
 
     const tx = this.db.transaction(() => {
-      this.db.prepare("DELETE FROM app_characters").run();
-      this.db.prepare("DELETE FROM app_chats").run();
-      this.db.prepare("DELETE FROM app_messages").run();
-      this.db.prepare("DELETE FROM app_personas").run();
-      this.db.prepare("DELETE FROM app_lorebooks").run();
-      this.db.prepare("DELETE FROM app_scenarios").run();
-      this.db.prepare("DELETE FROM app_presets").run();
-
-      const insPreset = this.db.prepare(
-        "INSERT OR REPLACE INTO app_presets (id, seq, data) VALUES (?, ?, ?)"
-      );
-      presets.forEach((p, i) => insPreset.run(p.id, i, JSON.stringify(p)));
+      for (const [field, table] of APP_COLLECTIONS) {
+        this.db.prepare(`DELETE FROM ${table}`).run();
+        const ins = this.db.prepare(
+          `INSERT OR REPLACE INTO ${table} (id, seq, data) VALUES (?, ?, ?)`
+        );
+        (state[field] ?? []).forEach((row, i) => ins.run(row.id, i, JSON.stringify(row)));
+      }
 
       // app_kv is upserted, never cleared — an older client that doesn't send
       // these fields must not wipe them.
@@ -1039,26 +1033,10 @@ export class FableStore {
       if (defaultPresetId !== undefined) insKv.run("defaultPresetId", JSON.stringify(defaultPresetId));
       if (globalInstructions !== undefined) insKv.run("globalInstructions", JSON.stringify(globalInstructions));
 
-      const insChar = this.db.prepare(
-        "INSERT OR REPLACE INTO app_characters (id, seq, data) VALUES (?, ?, ?)"
-      );
-      characters.forEach((c, i) => insChar.run(c.id, i, JSON.stringify(c)));
-
-      const insPersona = this.db.prepare(
-        "INSERT OR REPLACE INTO app_personas (id, seq, data) VALUES (?, ?, ?)"
-      );
-      personas.forEach((p, i) => insPersona.run(p.id, i, JSON.stringify(p)));
-
-      const insLorebook = this.db.prepare(
-        "INSERT OR REPLACE INTO app_lorebooks (id, seq, data) VALUES (?, ?, ?)"
-      );
-      lorebooks.forEach((l, i) => insLorebook.run(l.id, i, JSON.stringify(l)));
-
-      const insScenario = this.db.prepare(
-        "INSERT OR REPLACE INTO app_scenarios (id, seq, data) VALUES (?, ?, ?)"
-      );
-      scenarios.forEach((s, i) => insScenario.run(s.id, i, JSON.stringify(s)));
-
+      // Chats are the one collection that isn't flat: messages live in their
+      // own table, keyed by chat, so they are cleared and written together.
+      this.db.prepare("DELETE FROM app_chats").run();
+      this.db.prepare("DELETE FROM app_messages").run();
       const insChat = this.db.prepare(
         "INSERT OR REPLACE INTO app_chats (id, seq, data) VALUES (?, ?, ?)"
       );

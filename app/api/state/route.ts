@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { routeError } from "@/lib/api";
-import type { Character, Chat, Persona, Lorebook, Scenario, Preset } from "@/lib/types";
+import type { PersistedAppState } from "@/lib/types";
+import { APP_COLLECTIONS } from "@/lib/db/store";
 
 export const dynamic = "force-dynamic";
 
@@ -38,31 +39,32 @@ export async function GET(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const body = await req.json() as {
-      characters?: unknown; chats?: unknown; personas?: unknown;
-      lorebooks?: unknown; scenarios?: unknown; presets?: unknown;
-      defaultPresetId?: unknown; globalInstructions?: unknown;
-    };
-    // Only the ids are checked here — the client is the only writer and the
-    // durable copy is a mirror of its store, so the collections are taken at
-    // their declared type once they are arrays with ids.
-    const characters = Array.isArray(body.characters) ? body.characters as Character[] : null;
-    const chats      = Array.isArray(body.chats)      ? body.chats      as Chat[]      : null;
-    const personas   = Array.isArray(body.personas)   ? body.personas   as Persona[]   : [];
-    const lorebooks  = Array.isArray(body.lorebooks)  ? body.lorebooks  as Lorebook[]  : [];
-    const scenarios  = Array.isArray(body.scenarios)  ? body.scenarios  as Scenario[]  : [];
-    const presets    = Array.isArray(body.presets)    ? body.presets    as Preset[]    : [];
+    const body = await req.json() as Record<string, unknown>;
 
-    if (!characters || !chats) {
+    // Only the ids are checked — the client is the only writer and the durable
+    // copy mirrors its store — so an array of things with ids is taken at its
+    // declared type. Chats carry nested messages; every other collection is
+    // flat and comes from APP_COLLECTIONS.
+    const asRows = (v: unknown) => (Array.isArray(v) ? v as Array<{ id?: string }> : null);
+
+    const chats = asRows(body.chats) as PersistedAppState["chats"] | null;
+    const collections = Object.fromEntries(
+      APP_COLLECTIONS.map(([field]) => [field, asRows(body[field]) ?? []])
+    ) as { [K in (typeof APP_COLLECTIONS)[number][0]]: PersistedAppState[K] };
+
+    if (!chats || !Array.isArray(body.characters)) {
       return Response.json({ ok: false, error: "characters and chats arrays are required" }, { status: 400 });
     }
-    if (
-      characters.some((c) => !c?.id) || chats.some((c) => !c?.id) ||
-      personas.some((p) => !p?.id) || lorebooks.some((l) => !l?.id) ||
-      scenarios.some((s) => !s?.id) || presets.some((p) => !p?.id)
-    ) {
-      return Response.json({ ok: false, error: "every character, chat, persona, lorebook, scenario and preset needs an id" }, { status: 400 });
+    const missingId =
+      chats.some((c) => !c?.id) ||
+      APP_COLLECTIONS.some(([field]) => collections[field].some((row) => !row?.id));
+    if (missingId) {
+      return Response.json(
+        { ok: false, error: "every chat and every characters/personas/lorebooks/scenarios/presets entry needs an id" },
+        { status: 400 }
+      );
     }
+
     // Singletons: absent means "leave alone", so distinguish undefined from null
     const defaultPresetId =
       body.defaultPresetId === undefined ? undefined
@@ -70,7 +72,7 @@ export async function PUT(req: NextRequest) {
       : null;
     const globalInstructions =
       body.globalInstructions !== undefined && typeof body.globalInstructions === "object" && body.globalInstructions !== null
-        ? body.globalInstructions
+        ? body.globalInstructions as PersistedAppState["globalInstructions"]
         : undefined;
 
     const store = getStore();
@@ -81,19 +83,16 @@ export async function PUT(req: NextRequest) {
     // Deleting the last one-or-two items by hand is legitimate; going from
     // 3+ straight to zero in a single sync is a bug signature.
     const existing = store.getAppState();
-    const suspicious = (
-      [
-        ["chats", chats.length, existing.chats.length],
-        ["characters", characters.length, existing.characters.length],
-        ["personas", personas.length, existing.personas.length],
-        ["lorebooks", lorebooks.length, existing.lorebooks.length],
-        ["scenarios", scenarios.length, existing.scenarios.length],
-        ["presets", presets.length, existing.presets.length],
-      ] as Array<[string, number, number]>
-    ).find(([, incoming, current]) => incoming === 0 && current >= 3);
+    const counts: Array<[string, number, number]> = [
+      ["chats", chats.length, existing.chats.length],
+      ...APP_COLLECTIONS.map(([field]) =>
+        [field, collections[field].length, existing[field].length] as [string, number, number]),
+    ];
+    const suspicious = counts.find(([, incoming, current]) => incoming === 0 && current >= 3);
     if (suspicious) {
       return Response.json(
         {
+          ok: false,
           error: `refusing to wipe all ${suspicious[0]} (${suspicious[2]} exist) in one sync — ` +
                  `if this deletion is intentional, remove the last items individually`,
         },
@@ -101,21 +100,13 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    store.replaceAppState({
-      characters, chats, personas, lorebooks, scenarios, presets,
-      defaultPresetId, globalInstructions,
-    });
+    store.replaceAppState({ ...collections, chats, defaultPresetId, globalInstructions });
     // Deleting a chat must also delete its memory — orphaned drawer rows would
     // otherwise linger forever and resurface in "continue with memories" lists.
     const purged = store.purgeOrphanedChatMemory();
     return Response.json({
       ok: true,
-      characters: characters.length,
-      chats: chats.length,
-      personas: personas.length,
-      lorebooks: lorebooks.length,
-      scenarios: scenarios.length,
-      presets: presets.length,
+      ...Object.fromEntries(counts.map(([name, incoming]) => [name, incoming])),
       ...(purged.length > 0 ? { purgedChatMemory: purged } : {}),
     });
   } catch (err) {
