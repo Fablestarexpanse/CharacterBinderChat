@@ -13,7 +13,7 @@ export async function GET(
     const { entityId } = await params;
     const chatId = req.nextUrl.searchParams.get("chatId");
     if (!chatId) {
-      return Response.json({ error: "chatId param required" }, { status: 400 });
+      return Response.json({ ok: false, error: "chatId param required" }, { status: 400 });
     }
     const store   = getStore();
     const summary = store.characterSummary(chatId, entityId);

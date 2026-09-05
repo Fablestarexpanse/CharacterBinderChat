@@ -48,14 +48,14 @@ export async function PUT(req: NextRequest) {
     const presets    = Array.isArray(body.presets)    ? body.presets    as Array<{ id: string }> : [];
 
     if (!characters || !chats) {
-      return Response.json({ error: "characters and chats arrays are required" }, { status: 400 });
+      return Response.json({ ok: false, error: "characters and chats arrays are required" }, { status: 400 });
     }
     if (
       characters.some((c) => !c?.id) || chats.some((c) => !c?.id) ||
       personas.some((p) => !p?.id) || lorebooks.some((l) => !l?.id) ||
       scenarios.some((s) => !s?.id) || presets.some((p) => !p?.id)
     ) {
-      return Response.json({ error: "every character, chat, persona, lorebook, scenario and preset needs an id" }, { status: 400 });
+      return Response.json({ ok: false, error: "every character, chat, persona, lorebook, scenario and preset needs an id" }, { status: 400 });
     }
     // Singletons: absent means "leave alone", so distinguish undefined from null
     const defaultPresetId =

@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
     const store  = getStore();
     const chatId = req.nextUrl.searchParams.get("chatId");
     if (!chatId) {
-      return Response.json({ error: "chatId param required" }, { status: 400 });
+      return Response.json({ ok: false, error: "chatId param required" }, { status: 400 });
     }
     const entities = store.listEntities(chatId);
 

@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     const observer = params.get("observer");
     const target   = params.get("target");
     if (!chatId || !observer || !target) {
-      return Response.json({ error: "chatId, observer and target params required" }, { status: 400 });
+      return Response.json({ ok: false, error: "chatId, observer and target params required" }, { status: 400 });
     }
     const store = getStore();
     const statsMap = store.queryStats(chatId, observer, target);

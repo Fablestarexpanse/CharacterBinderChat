@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     const chatId      = req.nextUrl.searchParams.get("chatId");
     const characterId = req.nextUrl.searchParams.get("characterId");
     if (!chatId) {
-      return Response.json({ error: "chatId param required" }, { status: 400 });
+      return Response.json({ ok: false, error: "chatId param required" }, { status: 400 });
     }
 
     const store = getStore();

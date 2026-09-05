@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   const context       = searchParams.get("context") ?? "";
 
   if (!chatId || !characterId) {
-    return Response.json({ error: "chatId and characterId are required" }, { status: 400 });
+    return Response.json({ ok: false, error: "chatId and characterId are required" }, { status: 400 });
   }
 
   try {
@@ -150,19 +150,19 @@ export async function PATCH(req: NextRequest) {
     const { chatId, characterId, ...rawPatch } = body;
 
     if (!chatId || typeof chatId !== "string" || !characterId || typeof characterId !== "string") {
-      return Response.json({ error: "chatId and characterId are required" }, { status: 400 });
+      return Response.json({ ok: false, error: "chatId and characterId are required" }, { status: 400 });
     }
 
     // Ensure the record exists before patching
     const store    = getStore();
     const existing = store.getCoreMemory(chatId, characterId);
     if (!existing) {
-      return Response.json({ error: "Core memory not found — call GET first to initialise" }, { status: 404 });
+      return Response.json({ ok: false, error: "Core memory not found — call GET first to initialise" }, { status: 404 });
     }
 
     const patch = sanitizePatch(rawPatch);
     if (typeof patch === "string") {
-      return Response.json({ error: patch }, { status: 400 });
+      return Response.json({ ok: false, error: patch }, { status: 400 });
     }
 
     const updated = store.patchCoreMemory(chatId, characterId, patch);

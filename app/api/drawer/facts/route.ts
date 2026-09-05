@@ -14,12 +14,12 @@ export async function GET(req: NextRequest) {
     const chatId            = params.get("chatId");
     const subject           = params.get("subject");
     if (!chatId || !subject) {
-      return Response.json({ error: "chatId and subject params required" }, { status: 400 });
+      return Response.json({ ok: false, error: "chatId and subject params required" }, { status: 400 });
     }
     const asOfRaw           = params.get("asOf");
     const asOf              = asOfRaw ? Number(asOfRaw) : undefined;
     if (asOf !== undefined && !Number.isFinite(asOf)) {
-      return Response.json({ error: "asOf must be a unix timestamp" }, { status: 400 });
+      return Response.json({ ok: false, error: "asOf must be a unix timestamp" }, { status: 400 });
     }
     const includeSuperseded = params.get("includeSuperseded") === "1";
     const store             = getStore();
@@ -66,19 +66,19 @@ export async function POST(req: NextRequest) {
     };
 
     if (!chatId || !subjectId || !predicate) {
-      return Response.json({ error: "chatId, subjectId and predicate are required" }, { status: 400 });
+      return Response.json({ ok: false, error: "chatId, subjectId and predicate are required" }, { status: 400 });
     }
     // NaN passes < and > checks — require a finite number in range
     const bad01 = (v: unknown) =>
       v !== undefined && (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > 1);
     if (bad01(confidence)) {
-      return Response.json({ error: "confidence must be a number between 0 and 1" }, { status: 400 });
+      return Response.json({ ok: false, error: "confidence must be a number between 0 and 1" }, { status: 400 });
     }
     if (bad01(importance)) {
-      return Response.json({ error: "importance must be a number between 0 and 1" }, { status: 400 });
+      return Response.json({ ok: false, error: "importance must be a number between 0 and 1" }, { status: 400 });
     }
     if (objectLiteral !== undefined && objectLiteral !== null && typeof objectLiteral !== "string") {
-      return Response.json({ error: "objectLiteral must be a string" }, { status: 400 });
+      return Response.json({ ok: false, error: "objectLiteral must be a string" }, { status: 400 });
     }
     // The facts table has FK constraints on subject_id/object_id — surface a
     // clear 400 instead of an opaque SQL 500.
@@ -150,16 +150,16 @@ export async function DELETE(req: NextRequest) {
     const chatId = params.get("chatId");
     const idRaw  = params.get("factId");
     if (!chatId || !idRaw) {
-      return Response.json({ error: "chatId and factId params required" }, { status: 400 });
+      return Response.json({ ok: false, error: "chatId and factId params required" }, { status: 400 });
     }
     const factId = Number(idRaw);
     if (!Number.isInteger(factId)) {
-      return Response.json({ error: "factId must be an integer fact id" }, { status: 400 });
+      return Response.json({ ok: false, error: "factId must be an integer fact id" }, { status: 400 });
     }
 
     const result = getStore().deleteFact(chatId, factId);
     if (!result.deleted) {
-      return Response.json({ error: `fact ${factId} not found in this chat` }, { status: 404 });
+      return Response.json({ ok: false, error: `fact ${factId} not found in this chat` }, { status: 404 });
     }
     return Response.json({ ok: true, revived: result.revived });
   } catch (err) {

@@ -15,14 +15,14 @@ export async function GET(
   try {
     const { name } = await params;
     if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) {
-      return Response.json({ error: "invalid workflow name" }, { status: 400 });
+      return Response.json({ ok: false, error: "invalid workflow name" }, { status: 400 });
     }
     const file = path.join(process.cwd(), "workflows", `${name}.json`);
     let raw: string;
     try {
       raw = await fs.readFile(file, "utf8");
     } catch {
-      return Response.json({ error: `workflow "${name}" not found` }, { status: 404 });
+      return Response.json({ ok: false, error: `workflow "${name}" not found` }, { status: 404 });
     }
     return Response.json(JSON.parse(raw));
   } catch (err) {

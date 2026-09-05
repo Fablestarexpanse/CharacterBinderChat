@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   try {
     const characterId = req.nextUrl.searchParams.get("characterId");
     if (!characterId) {
-      return Response.json({ error: "characterId param required" }, { status: 400 });
+      return Response.json({ ok: false, error: "characterId param required" }, { status: 400 });
     }
     const store = getStore();
     const sources = store.listMemorySources(characterId);
@@ -34,10 +34,10 @@ export async function POST(req: NextRequest) {
     const { fromChatId, toChatId } = body;
 
     if (!fromChatId || !toChatId) {
-      return Response.json({ error: "fromChatId and toChatId are required" }, { status: 400 });
+      return Response.json({ ok: false, error: "fromChatId and toChatId are required" }, { status: 400 });
     }
     if (fromChatId === toChatId) {
-      return Response.json({ error: "fromChatId and toChatId must be different" }, { status: 400 });
+      return Response.json({ ok: false, error: "fromChatId and toChatId must be different" }, { status: 400 });
     }
 
     const store  = getStore();

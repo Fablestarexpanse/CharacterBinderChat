@@ -45,11 +45,11 @@ async function fetchCoreMemory(
     );
     if (!res.ok) return { coreMemory: null, knownFacts: [], episodes: [], insights: [], bits: [] };
     const data = (await res.json()) as {
-      ok: boolean; coreMemory: CoreMemory; knownFacts?: string[]; episodes?: string[];
+      coreMemory: CoreMemory | null; knownFacts?: string[]; episodes?: string[];
       insights?: string[]; bits?: string[];
     };
     return {
-      coreMemory: data.ok ? data.coreMemory : null,
+      coreMemory: data.coreMemory ?? null,
       knownFacts: data.knownFacts ?? [],
       episodes:   data.episodes ?? [],
       insights:   data.insights ?? [],

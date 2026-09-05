@@ -17,10 +17,10 @@ async function proxy(
   try {
     baseUrl = new URL(base);
   } catch {
-    return Response.json({ error: `invalid base URL: ${base}` }, { status: 400 });
+    return Response.json({ ok: false, error: `invalid base URL: ${base}` }, { status: 400 });
   }
   if (baseUrl.protocol !== "http:" && baseUrl.protocol !== "https:") {
-    return Response.json({ error: "base must be http(s)" }, { status: 400 });
+    return Response.json({ ok: false, error: "base must be http(s)" }, { status: 400 });
   }
 
   const search = new URLSearchParams(req.nextUrl.searchParams);

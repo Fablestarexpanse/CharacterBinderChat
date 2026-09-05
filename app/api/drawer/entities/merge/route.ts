@@ -14,20 +14,20 @@ export async function POST(req: NextRequest) {
     const { chatId, fromId, toId } = body;
 
     if (!chatId || !fromId || !toId) {
-      return Response.json({ error: "chatId, fromId and toId are required" }, { status: 400 });
+      return Response.json({ ok: false, error: "chatId, fromId and toId are required" }, { status: 400 });
     }
     if (fromId === toId) {
-      return Response.json({ error: "fromId and toId must be different" }, { status: 400 });
+      return Response.json({ ok: false, error: "fromId and toId must be different" }, { status: 400 });
     }
 
     const store = getStore();
 
     // Verify both entities exist before merging
     if (!store.getEntity(chatId, fromId)) {
-      return Response.json({ error: `Entity not found: ${fromId}` }, { status: 404 });
+      return Response.json({ ok: false, error: `Entity not found: ${fromId}` }, { status: 404 });
     }
     if (!store.getEntity(chatId, toId)) {
-      return Response.json({ error: `Entity not found: ${toId}` }, { status: 404 });
+      return Response.json({ ok: false, error: `Entity not found: ${toId}` }, { status: 404 });
     }
 
     store.mergeEntity(chatId, fromId, toId);

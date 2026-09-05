@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     const store  = getStore();
     const chatId = req.nextUrl.searchParams.get("chatId");
     if (!chatId) {
-      return Response.json({ error: "chatId param required" }, { status: 400 });
+      return Response.json({ ok: false, error: "chatId param required" }, { status: 400 });
     }
     const type  = req.nextUrl.searchParams.get("type") as EntityType | null;
     const entities = store.listEntities(chatId, type ?? undefined);
@@ -30,17 +30,17 @@ export async function POST(req: NextRequest) {
       chatId: string; id: string; type: EntityType; name: string; description?: string;
     };
     if (!chatId || !id || !type || !name) {
-      return Response.json({ error: "chatId, id, type and name are required" }, { status: 400 });
+      return Response.json({ ok: false, error: "chatId, id, type and name are required" }, { status: 400 });
     }
     // Whitelist type — an invalid value would hit the schema CHECK and
     // surface as an opaque SQL 500
     const validTypes = ["character", "place", "object", "faction", "concept"];
     if (!validTypes.includes(type)) {
-      return Response.json({ error: `type must be one of: ${validTypes.join(", ")}` }, { status: 400 });
+      return Response.json({ ok: false, error: `type must be one of: ${validTypes.join(", ")}` }, { status: 400 });
     }
     const store = getStore();
     const entity = store.ensureEntity(chatId, id, type, name, description);
-    return Response.json({ entity });
+    return Response.json({ ok: true, entity });
   } catch (err) {
     return routeError("[drawer/entities POST]", err);
   }

@@ -12,7 +12,7 @@ export async function POST() {
   try {
     const store   = getStore();
     const changes = store.applyDecay();
-    return Response.json({ changes });
+    return Response.json({ ok: true, changes });
   } catch (err) {
     return routeError("[drawer/stats/decay POST]", err);
   }

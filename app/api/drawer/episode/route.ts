@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
       prompt = reflectPrompt(facts, episodes, characterName ?? characterId, userLabel);
     } else {
       if (!body.messages?.length) {
-        return Response.json({ error: "messages required for episode mode" }, { status: 400 });
+        return Response.json({ ok: false, error: "messages required for episode mode" }, { status: 400 });
       }
       const conversation = body.messages
         .slice(-16)

@@ -10,5 +10,5 @@
  */
 export function routeError(tag: string, err: unknown): Response {
   console.error(tag, err);
-  return Response.json({ error: String(err) }, { status: 500 });
+  return Response.json({ ok: false, error: String(err) }, { status: 500 });
 }
