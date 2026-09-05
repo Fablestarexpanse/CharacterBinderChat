@@ -45,7 +45,9 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/drawer/facts
-// Body: { subjectId, predicate, objectId?, objectLiteral?, confidence?, importance? }
+// Body:     { subjectId, predicate, objectId?, objectLiteral?, confidence?, importance? }
+// Response: { ok, factId, duplicate, superseded } — one shape whether the fact
+// was inserted or matched an existing one.
 // Applies the same dedup + supersession logic as the extract route so the
 // single-valued predicate invariant is enforced regardless of call path.
 export async function POST(req: NextRequest) {
@@ -96,21 +98,16 @@ export async function POST(req: NextRequest) {
 
     const existingFacts = store.queryFacts(chatId, subjectId);
 
-    // Skip if an equivalent live fact already exists
-    const isDuplicate = existingFacts.some((ex) => {
+    // Skip if an equivalent live fact already exists. Match on family AND
+    // object key — family alone returned the id of a sibling fact for
+    // multi-valued predicates ("knows kael" for "knows elen").
+    const duplicate = existingFacts.find((ex) => {
       if (predicateFamily(ex.predicate) !== incomingFamily) return false;
       const exKey = ex.objectId ?? (ex.objectLiteral ?? "").toLowerCase().trim();
       return exKey === newObjectKey;
     });
-    if (isDuplicate) {
-      // Match on family AND object key — family alone returned the id of a
-      // sibling fact for multi-valued predicates ("knows kael" for "knows elen")
-      const existing = existingFacts.find((ex) => {
-        if (predicateFamily(ex.predicate) !== incomingFamily) return false;
-        const exKey = ex.objectId ?? (ex.objectLiteral ?? "").toLowerCase().trim();
-        return exKey === newObjectKey;
-      });
-      return Response.json({ factId: existing?.id ?? null, duplicate: true });
+    if (duplicate) {
+      return Response.json({ ok: true, factId: duplicate.id, duplicate: true, superseded: [] });
     }
 
     // Collect prior contradicting facts to supersede (single-valued families only)
@@ -137,7 +134,7 @@ export async function POST(req: NextRequest) {
       store.supersedeFact(old.id, factId);
     }
 
-    return Response.json({ ok: true, factId, superseded: toSupersede.map((o) => o.id) });
+    return Response.json({ ok: true, factId, duplicate: false, superseded: toSupersede.map((o) => o.id) });
   } catch (err) {
     return routeError("[drawer/facts POST]", err);
   }
