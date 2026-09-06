@@ -7,6 +7,5 @@
 // source the app ships.
 
 import { register } from "node:module";
-import { pathToFileURL } from "node:url";
 
 register("./loader-hooks.mjs", import.meta.url);
