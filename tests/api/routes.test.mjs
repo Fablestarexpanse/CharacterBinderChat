@@ -14,7 +14,10 @@ import assert from "node:assert/strict";
 
 const BASE = process.env.FABLE_TEST_URL;
 const CHAT = `test-routes-${Date.now()}`;
-const skip = BASE ? false : "set FABLE_TEST_URL to run";
+// Skipping when unset is deliberate — these need a server — but the runner
+// exits 0 on an all-skipped file, so a typo'd URL would read as a pass. Naming
+// it in the output is the difference between "not run" and "ran and passed".
+const skip = BASE ? false : "set FABLE_TEST_URL to run (this suite needs a running server)";
 
 const get  = (path) => fetch(`${BASE}${path}`).then(async (r) => ({ status: r.status, body: await r.json() }));
 const send = (method, path, body) =>
@@ -111,14 +114,38 @@ test("state: the durable copy refuses a payload that would wipe it", { skip }, a
   const missing = await send("PUT", "/api/state", { chats: [] });
   assert.equal(missing.status, 400);
 
-  if (before.body.characters.length >= 3) {
-    const wipe = await send("PUT", "/api/state", { characters: [], chats: before.body.chats });
-    assert.equal(wipe.status, 409);
-    assert.match(wipe.body.error, /refusing to wipe/);
+  // The guard fires at 3+ existing rows, so this seeds its own rows rather
+  // than asserting only when the developer's database happens to hold enough —
+  // a test that passes by luck is worse than no test. Scenarios are used
+  // because they are an ordinary collection with no other machinery attached.
+  const seeded = [1, 2, 3].map((n) => ({
+    id: `test-scenario-${n}`, name: `probe ${n}`, scenario: "x",
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  }));
+  const withSeed = { ...before.body, scenarios: [...before.body.scenarios, ...seeded] };
+
+  try {
+    assert.equal((await send("PUT", "/api/state", withSeed)).status, 200);
+
+    const wipe = await send("PUT", "/api/state", { ...withSeed, scenarios: [] });
+    assert.equal(wipe.status, 409, "wiping a populated collection must be refused");
+    assert.match(wipe.body.error, /refusing to wipe all scenarios/);
+  } finally {
+    // Removing them the way the guard's own error message says to: one at a
+    // time. A bulk restore would itself be refused, which is how this test
+    // first learned the guard works.
+    for (let n = seeded.length - 1; n >= 0; n--) {
+      await send("PUT", "/api/state", {
+        ...withSeed,
+        scenarios: [...before.body.scenarios, ...seeded.slice(0, n)],
+      });
+    }
   }
 
   const after = await get("/api/state");
-  assert.equal(after.body.characters.length, before.body.characters.length, "the durable copy must be untouched");
+  assert.equal(after.body.characters.length, before.body.characters.length);
+  assert.equal(after.body.scenarios.length, before.body.scenarios.length,
+    "the durable copy must be left exactly as it was found");
 });
 
 test("workflows: the catalogue reads without a chat scope", { skip }, async () => {

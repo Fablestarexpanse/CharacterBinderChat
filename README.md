@@ -247,7 +247,7 @@ npm run dev        # Turbopack dev server
 npm run build      # production build
 npm run lint       # ESLint
 npm run typecheck  # tsc --noEmit
-npm test           # unit tests (node --test, no server, no API key)
+npm test           # 60 unit tests (node --test, no server, no API key)
 ```
 
 Those four run on every push (`.github/workflows/ci.yml`).

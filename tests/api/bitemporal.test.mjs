@@ -27,7 +27,7 @@ const facts = (params = "") =>
 const addFact = (predicate, objectLiteral) =>
   post("/api/drawer/facts", { chatId: CHAT, subjectId: SUBJECT, predicate, objectLiteral });
 
-test("bi-temporal invariants", { skip: BASE ? false : "set FABLE_TEST_URL to run" }, async (t) => {
+test("bi-temporal invariants", { skip: BASE ? false : "set FABLE_TEST_URL to run (this suite needs a running server)" }, async (t) => {
   await t.test("a single-valued predicate supersedes its predecessor", async () => {
     const first  = await addFact("lives_at", "Harbor District");
     const second = await addFact("current_location", "Uptown");   // same family, new object
