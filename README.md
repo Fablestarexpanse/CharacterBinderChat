@@ -89,7 +89,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-The SQLite database is created automatically at `data/fablestore.db` on first run. No migrations needed.
+The SQLite database is created automatically at `data/fablestore.db` on first run, and column upgrades apply when an older database is opened.
 
 ### Configuration
 

@@ -21,7 +21,7 @@ Two memory layers, both per-character:
 
 **Schema changes.** `CREATE_TABLES_SQL` is split on `;` and executed statement by statement. Never put a semicolon inside a SQL comment — it truncates the statement and the table silently fails to create. `_initSchema` only swallows "already exists" errors; everything else throws, deliberately.
 
-**No migrations exist.** Every table is `CREATE TABLE IF NOT EXISTS`, so adding a column to an existing table will not apply to a live database. Write a migration step if you need one.
+**Two migration mechanisms, and which to use.** `CREATE TABLE IF NOT EXISTS` never alters an existing table, so a schema change needs both halves. For a **new column**: add it to `CREATE_TABLES_SQL` (the real shape of a fresh table) *and* add an `addCol` line to `FableStore._ensureColumns`, which ALTERs databases created before it existed. For a **shape change** — a table keyed differently, data that must be rewritten — write a version-detecting step like `_migrateIfNeeded`, which is what carried v1's character-global memory onto v2's chat scoping.
 
 **Predicates are canonicalized on write.** `normPredicate()` in `lib/db/predicates.ts` snake_cases and maps aliases (`is_located_at` → `located_at`). Both the extract route and the manual facts route must store the canonical form, or fact supersession silently stops working.
 

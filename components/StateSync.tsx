@@ -76,14 +76,13 @@ export function StateSync() {
           throw new Error(`GET /api/state returned ${res.status}`);
         }
         const data = (await res.json()) as Partial<PersistedAppState>;
-        // Presets count too: they're often the first thing configured, and a
-        // durable copy holding only presets would otherwise be treated as
-        // empty and overwritten by local state.
-        const serverHasData =
-          (data.characters?.length ?? 0) > 0 ||
-          (data.chats?.length ?? 0) > 0 ||
-          (data.personas?.length ?? 0) > 0 ||
-          (data.presets?.length ?? 0) > 0;
+        // Every collection counts. Presets are often the first thing
+        // configured, and a durable copy holding only presets — or only
+        // lorebooks — would otherwise be treated as empty and overwritten by
+        // local state.
+        const serverHasData = ([
+          "characters", "chats", "personas", "lorebooks", "scenarios", "presets",
+        ] as const).some((key) => (data[key]?.length ?? 0) > 0);
 
         if (serverHasData) {
           useFableStore.getState().hydrateFromServer({

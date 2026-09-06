@@ -134,8 +134,10 @@ export class FableStore {
     this._ensureColumns();
   }
 
-  // Additive column upgrades — safe on any schema version. CREATE TABLE IF NOT
-  // EXISTS never alters existing tables, so new columns must be added here.
+  // The upgrade path for databases created before a column existed. Every
+  // column here is also in CREATE_TABLES_SQL, which describes the real shape
+  // of a fresh table; CREATE TABLE IF NOT EXISTS never alters an existing one,
+  // so both are needed and they must agree.
   private _ensureColumns(): void {
     const addCol = (table: string, col: string, ddl: string) => {
       const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;

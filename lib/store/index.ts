@@ -61,7 +61,10 @@ export const useFableStore = create<FableStore>()(
     }),
     {
       name: "fablechat-store",
-      // Only persist settings, not transient UI state
+      // A same-browser cache of the whole domain, not just settings: SQLite is
+      // the durable copy, but StateSync only hydrates once /api/state answers,
+      // and rendering an empty app until then reads as data loss. Transient UI
+      // state lives in ./ui.ts and is deliberately absent.
       partialize: (state) => ({
         providerSettings: state.providerSettings,
         characters: state.characters,
