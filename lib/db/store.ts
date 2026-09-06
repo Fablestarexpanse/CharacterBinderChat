@@ -11,6 +11,7 @@ import { bufferToVec, cosine } from "@/lib/llm/embeddings";
 import { contentWords, jaccard, normalizeText } from "@/lib/text/overlap";
 import type { PersistedAppState } from "@/lib/types";
 import { getAppState, replaceAppState } from "./appState";
+import { listMemorySources, transferMemory } from "./transfer";
 import type {
   DbEntity,
   DbFact,
@@ -48,7 +49,7 @@ function now(): number {
 // ─── Row → Model mappers ──────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rowToEntity(r: any): DbEntity {
+export function rowToEntity(r: any): DbEntity {
   return {
     id:          r.id,
     type:        r.type as EntityType,
@@ -59,7 +60,7 @@ function rowToEntity(r: any): DbEntity {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rowToFact(r: any): DbFact {
+export function rowToFact(r: any): DbFact {
   return {
     id:            r.id,
     subjectId:     r.subject_id,
@@ -77,7 +78,7 @@ function rowToFact(r: any): DbFact {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rowToStat(r: any): DbRelationshipStat {
+export function rowToStat(r: any): DbRelationshipStat {
   return {
     id:          r.id,
     observerId:  r.observer_id,
@@ -91,7 +92,7 @@ function rowToStat(r: any): DbRelationshipStat {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rowToMemoryCard(r: any): DbMemoryCard {
+export function rowToMemoryCard(r: any): DbMemoryCard {
   return {
     id:         r.id,
     title:      r.title,
@@ -105,7 +106,7 @@ function rowToMemoryCard(r: any): DbMemoryCard {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rowToCommitment(r: any): DbCommitment {
+export function rowToCommitment(r: any): DbCommitment {
   return {
     id:          r.id,
     promisorId:  r.promisor_id,
@@ -1086,135 +1087,13 @@ export class FableStore {
 
   // ── Memory transfer ───────────────────────────────────────────────────────
 
-  /**
-   * Chats that hold memories involving a character — candidates for
-   * "continue with memories" when starting a new chat with them.
-   */
-  listMemorySources(characterId: string): Array<{
-    chatId: string; chatName: string | null; facts: number; updatedAt: number;
-  }> {
-    const rows = this.db.prepare(`
-      SELECT cm.chat_id AS chat_id,
-             cm.updated_at AS updated_at,
-             (SELECT COUNT(*) FROM facts f
-               WHERE f.chat_id = cm.chat_id AND f.superseded_by IS NULL) AS facts
-      FROM core_memory cm
-      WHERE cm.character_id = ?
-      ORDER BY cm.updated_at DESC
-    `).all(characterId) as Array<{ chat_id: string; updated_at: number; facts: number }>;
-
-    const nameOf = this.db.prepare("SELECT data FROM app_chats WHERE id = ?");
-    return rows.map((r) => {
-      let chatName: string | null = null;
-      const chat = nameOf.get(r.chat_id) as { data: string } | undefined;
-      if (chat) {
-        try { chatName = (JSON.parse(chat.data) as { name?: string }).name ?? null; } catch { /* ignore */ }
-      }
-      return { chatId: r.chat_id, chatName, facts: r.facts, updatedAt: r.updated_at };
-    });
+  /** Chats holding memories that involve a character — see lib/db/transfer.ts. */
+  listMemorySources(characterId: string): ReturnType<typeof listMemorySources> {
+    return listMemorySources(this.db, characterId);
   }
 
-  /**
-   * Copy one chat's entire memory into another chat. Used for the explicit
-   * "continue with memories" option when starting a new chat — memory NEVER
-   * carries over implicitly. Existing rows in the target chat are preserved;
-   * colliding entities/stats keep the target's version.
-   * Fact supersession links are remapped onto the copied ids.
-   */
-  transferMemory(fromChatId: string, toChatId: string): { entities: number; facts: number; stats: number } {
-    let entities = 0, facts = 0, stats = 0;
-    const tx = this.db.transaction(() => {
-      // Entities — keep target's on collision
-      for (const e of this.listEntities(fromChatId)) {
-        if (!this.getEntity(toChatId, e.id)) {
-          this.insertEntity(toChatId, e);
-          entities++;
-        }
-      }
-
-      // Facts — copy all (incl. superseded, preserving history), remap ids
-      const srcFacts = this.db
-        .prepare("SELECT * FROM facts WHERE chat_id = ? ORDER BY id")
-        .all(fromChatId)
-        .map(rowToFact);
-      const idMap = new Map<number, number>();
-      // importance and embedding must ride along: dropping them reset every
-      // transferred fact to 0.5 (losing its retrieval rank) and silently
-      // downgraded transferred chats to lexical-only retrieval forever.
-      const ins = this.db.prepare(
-        `INSERT INTO facts (chat_id, subject_id, predicate, object_id, object_literal,
-           t_valid_start, t_valid_end, t_ingested, confidence, importance, embedding, known_to, superseded_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
-      );
-      const srcEmbedding = this.db.prepare("SELECT embedding FROM facts WHERE id = ?");
-      for (const f of srcFacts) {
-        const emb = (srcEmbedding.get(f.id) as { embedding: Buffer | null } | undefined)?.embedding ?? null;
-        const info = ins.run(
-          toChatId, f.subjectId, f.predicate, f.objectId, f.objectLiteral,
-          f.tValidStart, f.tValidEnd, f.tIngested, f.confidence, f.importance, emb, JSON.stringify(f.knownTo)
-        );
-        idMap.set(f.id, info.lastInsertRowid as number);
-        facts++;
-      }
-      const setSup = this.db.prepare("UPDATE facts SET superseded_by = ? WHERE id = ?");
-      for (const f of srcFacts) {
-        if (f.supersededBy !== null && idMap.has(f.supersededBy)) {
-          setSup.run(idMap.get(f.supersededBy)!, idMap.get(f.id)!);
-        }
-      }
-
-      // Stats — keep target's on collision
-      const srcStats = this.db
-        .prepare("SELECT * FROM relationship_stats WHERE chat_id = ?")
-        .all(fromChatId)
-        .map(rowToStat);
-      const insStat = this.db.prepare(
-        `INSERT OR IGNORE INTO relationship_stats
-           (chat_id, observer_id, target_id, stat_name, value, decay_rate, last_updated)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      );
-      for (const s of srcStats) {
-        const r = insStat.run(toChatId, s.observerId, s.targetId, s.statName, s.value, s.decayRate, s.lastUpdated);
-        if (r.changes > 0) stats++;
-      }
-
-      // Commitments and memory cards — straight copies
-      const srcCommit = this.db.prepare("SELECT * FROM commitments WHERE chat_id = ?").all(fromChatId).map(rowToCommitment);
-      const insCommit = this.db.prepare(
-        `INSERT INTO commitments (chat_id, promisor_id, promisee_id, description, status, created_at, resolved_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      );
-      for (const c of srcCommit) {
-        insCommit.run(toChatId, c.promisorId, c.promiseeId, c.description, c.status, c.createdAt, c.resolvedAt);
-      }
-      const srcCards = this.db.prepare("SELECT * FROM memory_cards WHERE chat_id = ?").all(fromChatId).map(rowToMemoryCard);
-      const insCard = this.db.prepare(
-        `INSERT INTO memory_cards (chat_id, title, content, tags, entity_ids, importance, embedding, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      );
-      const srcCardEmb = this.db.prepare("SELECT embedding FROM memory_cards WHERE id = ?");
-      for (const c of srcCards) {
-        const emb = (srcCardEmb.get(c.id) as { embedding: Buffer | null } | undefined)?.embedding ?? null;
-        insCard.run(toChatId, c.title, c.content, JSON.stringify(c.tags), JSON.stringify(c.entityIds), c.importance, emb, c.createdAt, c.updatedAt);
-      }
-
-      // Core memory — only if the target has none yet
-      const rows = this.db
-        .prepare("SELECT * FROM core_memory WHERE chat_id = ?")
-        .all(fromChatId) as Array<{ character_id: string; data: string; version: number; updated_at: number }>;
-      for (const row of rows) {
-        const exists = this.db
-          .prepare("SELECT 1 FROM core_memory WHERE chat_id = ? AND character_id = ?")
-          .get(toChatId, row.character_id);
-        if (!exists) {
-          this.db
-            .prepare("INSERT INTO core_memory (chat_id, character_id, data, version, updated_at) VALUES (?, ?, ?, ?, ?)")
-            .run(toChatId, row.character_id, row.data, row.version, row.updated_at);
-        }
-      }
-    });
-    tx();
-    return { entities, facts, stats };
+  transferMemory(fromChatId: string, toChatId: string): ReturnType<typeof transferMemory> {
+    return transferMemory(this, this.db, fromChatId, toChatId);
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
