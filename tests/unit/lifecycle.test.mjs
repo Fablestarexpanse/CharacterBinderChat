@@ -149,3 +149,38 @@ test("one unreadable chat row cannot shift another chat's messages onto it", () 
       `${chat.id} kept its own messages`);
   }
 });
+
+// The two conflict purges inside mergeEntity are the same query with the
+// observer and target columns swapped. Folding them into one helper is only
+// safe if BOTH sides still drop the row that would collide — a leftover
+// duplicate breaks the (observer, target, stat) uniqueness the stat readers
+// assume, and a wrongly-dropped row silently loses a relationship.
+test("merging entities drops colliding stat rows on both sides", () => {
+  const store = seeded();
+  store.ensureEntity(CHAT, "kael-2", "character", "Kael");
+
+  // Observer-side collision: kael and kael-2 both rate player's trust.
+  store.deltaStat(CHAT, "kael",   "player", "trust", 20);
+  store.deltaStat(CHAT, "kael-2", "player", "trust", 5);
+  // Target-side collision: ash rates both kael and kael-2 on affection.
+  store.deltaStat(CHAT, "ash", "kael",   "affection", 30);
+  store.deltaStat(CHAT, "ash", "kael-2", "affection", 7);
+
+  store.mergeEntity(CHAT, "kael-2", "kael");
+
+  // The surviving row is the one that was already on the merge target.
+  assert.equal(store.getStat(CHAT, "kael", "player", "trust").value, 20);
+  assert.equal(store.getStat(CHAT, "ash", "kael", "affection").value, 30);
+  assert.equal(store.getEntity(CHAT, "kael-2"), null);
+});
+
+test("merging entities carries a stat that has no counterpart to collide with", () => {
+  const store = seeded();
+  store.ensureEntity(CHAT, "kael-2", "character", "Kael");
+  store.deltaStat(CHAT, "kael-2", "player", "desire", 12);
+
+  store.mergeEntity(CHAT, "kael-2", "kael");
+
+  assert.equal(store.getStat(CHAT, "kael", "player", "desire").value, 12,
+    "a non-colliding row must be repointed, not purged");
+});

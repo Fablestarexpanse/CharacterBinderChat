@@ -12,7 +12,6 @@ import { matchLoreEntries, booksForChat } from "./lorebook";
 import { resolveGeneration } from "./settings";
 import { fitHistoryToBudget } from "./tokenBudget";
 import type { Chat, Character, MessageRole, MemoryTaskRequest } from "@/lib/types";
-import type { CoreMemory } from "@/lib/db/models";
 import type { CoreMemoryGetResponse } from "@/lib/api/dto";
 
 let abortController: AbortController | null = null;
@@ -28,20 +27,18 @@ export function stopGeneration(): void {
 
 // ─── Core Memory fetcher ──────────────────────────────────────────────────────
 
-interface CoreMemoryResponse {
-  coreMemory: CoreMemory | null;
-  knownFacts: string[];
-  episodes:   string[];
-  insights:   string[];
-  sharedLanguage:       string[];
-}
+/** What the route returns when there is nothing to return. */
+const NO_MEMORY: CoreMemoryGetResponse = {
+  coreMemory: null, version: 0, updatedAt: 0,
+  knownFacts: [], episodes: [], insights: [], sharedLanguage: [],
+};
 
 async function fetchCoreMemory(
   chatId:        string,
   characterId:   string,
   characterName: string,
   context = ""
-): Promise<CoreMemoryResponse> {
+): Promise<CoreMemoryGetResponse> {
   try {
     // Context lets retrieval rank facts by relevance to what's being discussed.
     // Capped so the query string stays a sane length.
@@ -49,8 +46,9 @@ async function fetchCoreMemory(
     const data = await getJson<CoreMemoryGetResponse>(
       `/api/chat/core-memory?chatId=${encodeURIComponent(chatId)}&characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}${ctxParam}`
     );
+    // The ?? [] guards stay: this is JSON off the wire that nothing validates.
     return {
-      coreMemory: data.coreMemory ?? null,
+      ...data,
       knownFacts: data.knownFacts ?? [],
       episodes:   data.episodes ?? [],
       insights:   data.insights ?? [],
@@ -69,10 +67,10 @@ async function fetchCoreMemory(
  * nothing anywhere says why. The inspector already surfaces
  * `lastExtractionError`, so the failure lands where a user would look.
  */
-function degraded(reason: string): CoreMemoryResponse {
+function degraded(reason: string): CoreMemoryGetResponse {
   console.warn("[core-memory] fetch failed, generating without memory:", reason);
   useFableStore.getState().setLastExtractionError(`memory could not be loaded — ${reason}`);
-  return { coreMemory: null, knownFacts: [], episodes: [], insights: [], sharedLanguage: [] };
+  return NO_MEMORY;
 }
 
 // ─── Group helpers ────────────────────────────────────────────────────────────
@@ -159,7 +157,7 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
     const recentText = chat.messages.slice(-3).map((m) => m.content).join(" ");
     const { coreMemory, knownFacts, episodes, insights, sharedLanguage } = character
       ? await fetchCoreMemory(chatId, character.id, character.name, recentText)
-      : { coreMemory: null, knownFacts: [], episodes: [], insights: [], sharedLanguage: [] };
+      : NO_MEMORY;
 
     // ── Build message history within the model's token budget ──────────────
     const persona = store.personas.find((p) => p.id === store.activePersonaId) ?? null;

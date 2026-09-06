@@ -10,7 +10,9 @@ import type { CoreMemory, StatName, EntityType, CommitmentStatus } from "@/lib/d
 
 /** GET /api/chat/core-memory */
 export interface CoreMemoryGetResponse {
-  coreMemory:     CoreMemory;
+  /** null when the character has no document yet, and on the client's own
+   *  degraded path when the read failed and generation continues without it. */
+  coreMemory:     CoreMemory | null;
   version:        number;
   updatedAt:      number;
   knownFacts:     string[];

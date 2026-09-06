@@ -852,39 +852,44 @@ export class FableStore {
    * Any stat rows that would violate the UNIQUE constraint after the repoint
    * are dropped (toId's existing value wins).
    */
+  /**
+   * Delete the `fromId` relationship_stats rows that a merge into `toId` would
+   * duplicate. Only the two column names are interpolated and both come from a
+   * closed literal union, so nothing user-supplied reaches the SQL.
+   */
+  private purgeStatConflicts(
+    chatId:    string,
+    fromId:    string,
+    toId:      string,
+    mergedCol: "observer_id" | "target_id",
+    otherCol:  "observer_id" | "target_id",
+  ): void {
+    const conflicts = this.db.prepare(`
+      SELECT rs1.id FROM relationship_stats rs1
+      WHERE rs1.chat_id = ? AND rs1.${mergedCol} = ?
+        AND EXISTS (
+          SELECT 1 FROM relationship_stats rs2
+          WHERE rs2.chat_id = rs1.chat_id AND rs2.${mergedCol} = ? AND rs2.${otherCol} = rs1.${otherCol} AND rs2.stat_name = rs1.stat_name
+        )
+    `).all(chatId, fromId, toId) as { id: number }[];
+    for (const row of conflicts) {
+      this.db.prepare("DELETE FROM relationship_stats WHERE id = ?").run(row.id);
+    }
+  }
+
   mergeEntity(chatId: string, fromId: string, toId: string): void {
     const doMerge = this.db.transaction(() => {
       // ── Facts: repoint subject and object references ──────────────────────
       this.db.prepare("UPDATE facts SET subject_id = ? WHERE chat_id = ? AND subject_id = ?").run(toId, chatId, fromId);
       this.db.prepare("UPDATE facts SET object_id  = ? WHERE chat_id = ? AND object_id  = ?").run(toId, chatId, fromId);
 
-      // ── Relationship stats (observer side) ────────────────────────────────
-      // Delete fromId rows that would collide with an existing toId row
-      const obsConflicts = this.db.prepare(`
-        SELECT rs1.id FROM relationship_stats rs1
-        WHERE rs1.chat_id = ? AND rs1.observer_id = ?
-          AND EXISTS (
-            SELECT 1 FROM relationship_stats rs2
-            WHERE rs2.chat_id = rs1.chat_id AND rs2.observer_id = ? AND rs2.target_id = rs1.target_id AND rs2.stat_name = rs1.stat_name
-          )
-      `).all(chatId, fromId, toId) as { id: number }[];
-      for (const row of obsConflicts) {
-        this.db.prepare("DELETE FROM relationship_stats WHERE id = ?").run(row.id);
-      }
+      // ── Relationship stats: both sides, same shape ────────────────────────
+      // Drop the fromId rows that would collide with an existing toId row,
+      // then repoint the rest.
+      this.purgeStatConflicts(chatId, fromId, toId, "observer_id", "target_id");
       this.db.prepare("UPDATE relationship_stats SET observer_id = ? WHERE chat_id = ? AND observer_id = ?").run(toId, chatId, fromId);
 
-      // ── Relationship stats (target side) ──────────────────────────────────
-      const tgtConflicts = this.db.prepare(`
-        SELECT rs1.id FROM relationship_stats rs1
-        WHERE rs1.chat_id = ? AND rs1.target_id = ?
-          AND EXISTS (
-            SELECT 1 FROM relationship_stats rs2
-            WHERE rs2.chat_id = rs1.chat_id AND rs2.target_id = ? AND rs2.observer_id = rs1.observer_id AND rs2.stat_name = rs1.stat_name
-          )
-      `).all(chatId, fromId, toId) as { id: number }[];
-      for (const row of tgtConflicts) {
-        this.db.prepare("DELETE FROM relationship_stats WHERE id = ?").run(row.id);
-      }
+      this.purgeStatConflicts(chatId, fromId, toId, "target_id", "observer_id");
       this.db.prepare("UPDATE relationship_stats SET target_id = ? WHERE chat_id = ? AND target_id = ?").run(toId, chatId, fromId);
 
       // ── Commitments ───────────────────────────────────────────────────────
