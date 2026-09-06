@@ -5,7 +5,7 @@
 // the AbortController stays module-local (not serialisable).
 
 import { useFableStore } from "@/lib/store";
-import { createChatProvider } from "@/lib/providers/factory";
+import { createChatProvider, resolveRouteCredentials } from "@/lib/providers/factory";
 import { buildSystemPrompt, estimateTokens } from "./promptBuilder";
 import { matchLoreEntries, booksForChat } from "./lorebook";
 import { resolveGeneration } from "./settings";
@@ -394,16 +394,9 @@ function runExtraction(chatId: string, speakerId?: string): void {
       ]
     : undefined;
 
-  const providerType =
-    chat.providerId === "lmstudio"     ? "lmstudio"
-    : chat.providerId === "openrouter" ? "openrouter"
-    : "ollama";
-  const baseUrl =
-    providerType === "lmstudio"       ? providerSettings.lmstudio.baseUrl
-    : providerType === "openrouter"   ? "https://openrouter.ai/api"
-    : providerSettings.ollama.baseUrl;
+  const { providerType, providerBaseUrl, apiKey } =
+    resolveRouteCredentials(chat.providerId, providerSettings);
   const modelId = chat.modelId ?? "llama3.2:latest";
-  const apiKey  = providerType === "openrouter" ? providerSettings.openrouter.apiKey : undefined;
 
   setIsExtracting(true);
 
@@ -437,7 +430,7 @@ function runExtraction(chatId: string, speakerId?: string): void {
     characterAnchor: [character.description, character.personality].filter(Boolean).join(" "),
     participants,
     providerType,
-    providerBaseUrl: baseUrl,
+    providerBaseUrl,
     modelId,
     apiKey,
   };

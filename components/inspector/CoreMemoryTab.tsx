@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Section } from "./Section";
 import type { CoreMemory } from "@/lib/db/models";
 import type { CoreMemoryGetResponse } from "@/app/api/chat/core-memory/route";
+import { resolveRouteCredentials } from "@/lib/providers/factory";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -122,14 +123,8 @@ export function CoreMemoryTab() {
     setRefreshing(true);
     setRefreshError(null);
 
-    const providerType =
-      chat.providerId === "lmstudio"    ? "lmstudio"
-      : chat.providerId === "openrouter" ? "openrouter"
-      : "ollama";
-    const baseUrl =
-      providerType === "lmstudio"   ? providerSettings.lmstudio.baseUrl
-      : providerType === "openrouter" ? "https://openrouter.ai/api"
-      : providerSettings.ollama.baseUrl;
+    const { providerType, providerBaseUrl, apiKey } =
+      resolveRouteCredentials(chat.providerId, providerSettings);
 
     try {
       const res = await fetch("/api/chat/core-memory/refresh", {
@@ -141,9 +136,9 @@ export function CoreMemoryTab() {
           characterName:   character.name,
           messages:        chat.messages.slice(-16).map((m) => ({ role: m.role, content: m.content })),
           providerType,
-          providerBaseUrl: baseUrl,
+          providerBaseUrl,
           modelId:         chat.modelId ?? "llama3.2:latest",
-          apiKey:          providerType === "openrouter" ? providerSettings.openrouter.apiKey : undefined,
+          apiKey,
         }),
       });
       // HTTP errors don't throw — an unchecked 500 here used to spin, silently

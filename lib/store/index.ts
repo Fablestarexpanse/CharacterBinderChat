@@ -240,6 +240,25 @@ interface FableStore {
   setLastExtractionError: (e: string | null) => void;
 }
 
+// ─── Ids ──────────────────────────────────────────────────────────────────────
+
+/**
+ * A readable, collision-free id: `char-ronan`, `char-ronan-2`.
+ *
+ * Characters and personas get slugs because their ids leave the store: a
+ * character's id IS its Drawer 2 entity id, and reading a graph of
+ * `char-ronan` beats reading one of `char-1735689600000-x7f2q`. Scenarios and
+ * presets keep timestamp ids on purpose — nothing outside the store ever
+ * derives an entity from them, so there is nothing to read them for.
+ */
+function uniqueSlugId(prefix: string, name: string, taken: (id: string) => boolean): string {
+  const base =
+    name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || prefix;
+  let id = `${prefix}-${base}`;
+  for (let n = 2; taken(id); n++) id = `${prefix}-${base}-${n}`;
+  return id;
+}
+
 // ─── Store Implementation ─────────────────────────────────────────────────────
 
 export const useFableStore = create<FableStore>()(
@@ -248,13 +267,7 @@ export const useFableStore = create<FableStore>()(
       characters: [],
 
       addCharacter: (data) => {
-        // Readable slug id — doubles as the Drawer 2 entity id
-        const base =
-          data.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ||
-          "character";
-        const taken = (i: string) => get().characters.some((c) => c.id === i);
-        let id = `char-${base}`;
-        for (let n = 2; taken(id); n++) id = `char-${base}-${n}`;
+        const id = uniqueSlugId("char", data.name, (i) => get().characters.some((c) => c.id === i));
 
         const now = new Date().toISOString();
         const character: Character = { ...data, id, createdAt: now, updatedAt: now };
@@ -279,12 +292,7 @@ export const useFableStore = create<FableStore>()(
       setActivePersona: (id) => set({ activePersonaId: id }),
 
       addPersona: (data) => {
-        const base =
-          data.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ||
-          "persona";
-        const taken = (i: string) => get().personas.some((p) => p.id === i);
-        let id = `persona-${base}`;
-        for (let n = 2; taken(id); n++) id = `persona-${base}-${n}`;
+        const id = uniqueSlugId("persona", data.name, (i) => get().personas.some((p) => p.id === i));
 
         const now = new Date().toISOString();
         const persona: Persona = { ...data, id, createdAt: now, updatedAt: now };
