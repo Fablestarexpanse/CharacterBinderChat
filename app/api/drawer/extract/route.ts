@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
-import { normPredicate, predicateFamily, isSingleValued } from "@/lib/db/predicates";
 import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
 import { embedTexts, vecToBuffer } from "@/lib/llm/embeddings";
 import { syncStatsToCore, syncCommitmentsToCore } from "@/lib/server/coreMemoryStore";
@@ -177,6 +176,11 @@ interface RawExtraction {
 
 const normKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
+// Clamp model-supplied numbers: an out-of-range confidence would trip the
+// schema CHECK mid-pipeline and leave a half-written turn.
+const clamp01 = (v: unknown, dflt: number) =>
+  typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : dflt;
+
 class EntityResolver {
   /** normalized name -> canonical entity id */
   private byName = new Map<string, string>();
@@ -329,12 +333,11 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Write extracted facts ─────────────────────────────────────────────
-    // Strategy per fact:
-    // 1. Query existing live facts for this subject ONCE.
-    // 2. If an identical live fact already exists (same predicate + same object),
-    //    skip the insert entirely — prevents unbounded duplicate accumulation.
-    // 3. For single-valued predicates, identify contradicting facts to supersede.
-    // 4. Insert the new fact, then supersede the contradicting ones.
+    // Dedup and supersession are store.assertFact's job — the invariant
+    // belongs with the table, not with each caller. What is left here is what
+    // only extraction knows: routing ids onto canonical entities, deciding
+    // literal vs entity object, clamping the model's numbers, and the witness
+    // stamp.
 
     const writtenFacts: number[] = [];
     for (const raw of extracted.facts ?? []) {
@@ -351,41 +354,11 @@ export async function POST(req: NextRequest) {
         store.ensureEntity(chatId, f.subject, "character", f.subject);
       }
 
-      const objectEntity  = store.getEntity(chatId, f.object);
-      const incomingNorm  = normPredicate(f.predicate);
-      // Compare by family so drift between lives_at / located_at /
-      // current_location still supersedes instead of accumulating.
-      const incomingFamily = predicateFamily(f.predicate);
-      const singleValued   = isSingleValued(f.predicate);
-      const newObjectKey  = objectEntity ? f.object : f.object.toLowerCase().trim();
+      const objectEntity = store.getEntity(chatId, f.object);
 
-      // Single query for all existing live facts for this subject
-      const existingFacts = store.queryFacts(chatId, f.subject);
-
-      // Skip if an equivalent live fact already exists (dedup)
-      const isDuplicate = existingFacts.some((ex) => {
-        if (predicateFamily(ex.predicate) !== incomingFamily) return false;
-        const exKey = ex.objectId ?? (ex.objectLiteral ?? "").toLowerCase().trim();
-        return exKey === newObjectKey;
-      });
-      if (isDuplicate) continue;
-
-      // Collect facts to supersede (single-valued family, different object)
-      const toSupersede = singleValued
-        ? existingFacts.filter((ex) => {
-            if (predicateFamily(ex.predicate) !== incomingFamily) return false;
-            const exKey = ex.objectId ?? (ex.objectLiteral ?? "").toLowerCase().trim();
-            return exKey !== newObjectKey;
-          })
-        : [];
-
-      // Clamp model-supplied numbers: an out-of-range confidence would trip
-      // the schema CHECK mid-pipeline and leave a half-written turn.
-      const clamp01 = (v: unknown, dflt: number) =>
-        typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : dflt;
-      const newFactId = store.insertFact(chatId, {
+      const { factId, duplicate } = store.assertFact(chatId, {
         subjectId:     f.subject,
-        predicate:     incomingNorm,
+        predicate:     f.predicate,
         objectId:      objectEntity ? f.object : null,
         objectLiteral: objectEntity ? null : f.object,
         confidence:    clamp01(f.confidence, 0.85),
@@ -393,11 +366,7 @@ export async function POST(req: NextRequest) {
         // Witness stamp: group facts belong to whoever was in the scene
         knownTo:       witnessIds,
       });
-      writtenFacts.push(newFactId);
-
-      for (const old of toSupersede) {
-        store.supersedeFact(old.id, newFactId);
-      }
+      if (!duplicate) writtenFacts.push(factId);
     }
 
     // ── Write stat changes ────────────────────────────────────────────────

@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
-import { normPredicate, predicateFamily, isSingleValued } from "@/lib/db/predicates";
 import { routeError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -90,51 +89,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const incomingNorm   = normPredicate(predicate);
-    // Compare by family so drift between equivalent predicates still supersedes
-    const incomingFamily = predicateFamily(predicate);
-    const singleValued   = isSingleValued(predicate);
-    const newObjectKey   = objectId ?? (objectLiteral ?? "").toLowerCase().trim();
-
-    const existingFacts = store.queryFacts(chatId, subjectId);
-
-    // Skip if an equivalent live fact already exists. Match on family AND
-    // object key — family alone returned the id of a sibling fact for
-    // multi-valued predicates ("knows kael" for "knows elen").
-    const duplicate = existingFacts.find((ex) => {
-      if (predicateFamily(ex.predicate) !== incomingFamily) return false;
-      const exKey = ex.objectId ?? (ex.objectLiteral ?? "").toLowerCase().trim();
-      return exKey === newObjectKey;
-    });
-    if (duplicate) {
-      return Response.json({ ok: true, factId: duplicate.id, duplicate: true, superseded: [] });
-    }
-
-    // Collect prior contradicting facts to supersede (single-valued families only)
-    const toSupersede = singleValued
-      ? existingFacts.filter((ex) => {
-          if (predicateFamily(ex.predicate) !== incomingFamily) return false;
-          const exKey = ex.objectId ?? (ex.objectLiteral ?? "").toLowerCase().trim();
-          return exKey !== newObjectKey;
-        })
-      : [];
-
     // Hand-entered facts default to HIGH importance: the user bothered to
     // type it, so it must not rank below incidental extractor output.
-    const factId = store.insertFact(chatId, {
+    const result = store.assertFact(chatId, {
       subjectId,
-      predicate:     incomingNorm,
+      predicate,
       objectId:      objectId      ?? null,
       objectLiteral: objectLiteral ?? null,
       confidence:    confidence    ?? 1.0,
       importance:    importance    ?? 0.8,
     });
 
-    for (const old of toSupersede) {
-      store.supersedeFact(old.id, factId);
-    }
-
-    return Response.json({ ok: true, factId, duplicate: false, superseded: toSupersede.map((o) => o.id) });
+    return Response.json({ ok: true, ...result });
   } catch (err) {
     return routeError("[drawer/facts POST]", err);
   }

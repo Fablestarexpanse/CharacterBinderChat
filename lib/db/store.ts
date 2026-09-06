@@ -6,7 +6,7 @@ import Database, { type Database as DB } from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 import { CREATE_TABLES_SQL } from "./schema";
-import { predicateFamily } from "./predicates";
+import { isSingleValued, normPredicate, predicateFamily } from "./predicates";
 import { bufferToVec, cosine } from "@/lib/llm/embeddings";
 import type { PersistedAppState } from "@/lib/types";
 import type {
@@ -446,6 +446,52 @@ export class FableStore {
     this.db
       .prepare("UPDATE facts SET importance = MAX(importance, ?) WHERE id = ?")
       .run(Math.max(0, Math.min(1, importance)), factId);
+  }
+
+  /**
+   * Write a fact while keeping the single-valued-predicate invariant: at most
+   * one live fact per (subject, predicate family) unless the family is
+   * multi-valued.
+   *
+   * Both write paths — the manual facts route and the extractor — need this,
+   * and they each had their own copy, which is exactly how one of them can
+   * start drifting from the table's own rule. Matching is by predicate FAMILY,
+   * so `lives_at` / `located_at` / `current_location` supersede one another
+   * instead of accumulating, and by object key as well, because family alone
+   * folded siblings of a multi-valued predicate together ("knows kael"
+   * superseding "knows elen").
+   *
+   * `duplicate` means an equivalent live fact already existed; nothing was
+   * written and `factId` is that existing fact.
+   */
+  assertFact(chatId: string, fact: {
+    subjectId:     string;
+    predicate:     string;
+    objectId?:     string | null;
+    objectLiteral?:string | null;
+    confidence?:   number;
+    importance?:   number;
+    knownTo?:      string[];
+  }): { factId: number; duplicate: boolean; superseded: number[] } {
+    const family      = predicateFamily(fact.predicate);
+    const objectKey   = fact.objectId ?? (fact.objectLiteral ?? "").toLowerCase().trim();
+    const sameFamily  = (p: string) => predicateFamily(p) === family;
+    const keyOf       = (f: DbFact) => f.objectId ?? (f.objectLiteral ?? "").toLowerCase().trim();
+
+    // One query serves both the duplicate check and the supersession scan
+    const existing = this.queryFacts(chatId, fact.subjectId);
+
+    const duplicate = existing.find((ex) => sameFamily(ex.predicate) && keyOf(ex) === objectKey);
+    if (duplicate) return { factId: duplicate.id, duplicate: true, superseded: [] };
+
+    const toSupersede = isSingleValued(fact.predicate)
+      ? existing.filter((ex) => sameFamily(ex.predicate) && keyOf(ex) !== objectKey)
+      : [];
+
+    const factId = this.insertFact(chatId, { ...fact, predicate: normPredicate(fact.predicate) });
+    for (const old of toSupersede) this.supersedeFact(old.id, factId);
+
+    return { factId, duplicate: false, superseded: toSupersede.map((f) => f.id) };
   }
 
   supersedeFact(oldId: number, newId: number, atTime?: number): void {
