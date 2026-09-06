@@ -101,6 +101,9 @@ export function StateSync() {
         }
       } catch (e) {
         console.warn("[state-sync] initial load failed:", e);
+      } finally {
+        // Either way the window is over: the app can render and accept edits.
+        useFableStore.getState().setSyncReady(true);
       }
 
       // Subscribe only after hydration so the initial replace doesn't echo back

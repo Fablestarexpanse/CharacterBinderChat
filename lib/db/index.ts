@@ -5,16 +5,20 @@
 import path from "path";
 import { FableStore } from "./store";
 
-let _store: FableStore | null = null;
+// Cached on globalThis, not in a module variable: Next's dev server replaces
+// module instances on hot reload, and a fresh module variable means a second
+// better-sqlite3 connection to the same file — two writers, one of them with a
+// stale schema view.
+const globalForStore = globalThis as { _fableStore?: FableStore };
 
 export function getStore(): FableStore {
-  if (!_store) {
+  if (!globalForStore._fableStore) {
     const dbPath =
       process.env.FABLE_DB_PATH ??
       path.join(process.cwd(), "data", "fablestore.db");
-    _store = new FableStore(dbPath);
+    globalForStore._fableStore = new FableStore(dbPath);
   }
-  return _store;
+  return globalForStore._fableStore;
 }
 
 export * from "./models";

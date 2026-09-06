@@ -9,8 +9,6 @@
 //
 // Vectors are L2-normalised at creation, so cosine similarity is a dot product.
 
-const EMBED_URL   = process.env.OLLAMA_EMBED_URL ?? "http://127.0.0.1:11434";
-const EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL ?? "nomic-embed-text";
 
 let unavailableUntil = 0;
 const RETRY_AFTER_MS = 60_000;
@@ -32,11 +30,18 @@ export async function embedTexts(texts: string[]): Promise<Float32Array[] | null
   if (texts.length === 0) return [];
   if (Date.now() < unavailableUntil) return null;
 
+  // Read per call, not at import: a module constant snapshots whatever the
+  // environment was when the module first loaded, which in dev is whenever a
+  // hot reload happened to pull it in. getStore() reads FABLE_DB_PATH the same
+  // way.
+  const embedUrl   = process.env.OLLAMA_EMBED_URL ?? "http://127.0.0.1:11434";
+  const embedModel = process.env.OLLAMA_EMBED_MODEL ?? "nomic-embed-text";
+
   try {
-    const res = await fetch(`${EMBED_URL}/api/embed`, {
+    const res = await fetch(`${embedUrl}/api/embed`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ model: EMBED_MODEL, input: texts }),
+      body:    JSON.stringify({ model: embedModel, input: texts }),
       signal:  AbortSignal.timeout(4000),
     });
     if (!res.ok) throw new Error(`embed HTTP ${res.status}`);

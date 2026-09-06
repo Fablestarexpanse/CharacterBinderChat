@@ -204,15 +204,25 @@ export class FableStore {
       // and a quote in the chat id must not break the migration mid-transaction.
       this.db.prepare(`INSERT INTO entities (chat_id, id, type, name, description, created_at)
         SELECT ?, id, type, name, description, created_at FROM entities_v1`).run(target);
+      // Columns added after v1 shipped. A v1 database may or may not have
+      // them, and leaving one out of the copy silently resets it — every
+      // fact's importance back to the 0.5 default, every open rupture healed.
+      const carry = (table: string, col: string) =>
+        (this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>)
+          .some((c) => c.name === col) ? `, ${col}` : "";
+      const factImportance  = carry("facts_v1", "importance");
+      const cardImportance  = carry("memory_cards_v1", "importance");
+      const statRupture     = carry("relationship_stats_v1", "rupture_recovery");
+
       // Fact ids preserved so superseded_by links stay valid
       this.db.prepare(`INSERT INTO facts (id, chat_id, subject_id, predicate, object_id, object_literal,
-          t_valid_start, t_valid_end, t_ingested, confidence, known_to, superseded_by)
+          t_valid_start, t_valid_end, t_ingested, confidence, known_to, superseded_by${factImportance})
         SELECT id, ?, subject_id, predicate, object_id, object_literal,
-          t_valid_start, t_valid_end, t_ingested, confidence, known_to, superseded_by FROM facts_v1`).run(target);
-      this.db.prepare(`INSERT INTO relationship_stats (chat_id, observer_id, target_id, stat_name, value, decay_rate, last_updated)
-        SELECT ?, observer_id, target_id, stat_name, value, decay_rate, last_updated FROM relationship_stats_v1`).run(target);
-      this.db.prepare(`INSERT INTO memory_cards (chat_id, title, content, tags, entity_ids, created_at, updated_at)
-        SELECT ?, title, content, tags, entity_ids, created_at, updated_at FROM memory_cards_v1`).run(target);
+          t_valid_start, t_valid_end, t_ingested, confidence, known_to, superseded_by${factImportance} FROM facts_v1`).run(target);
+      this.db.prepare(`INSERT INTO relationship_stats (chat_id, observer_id, target_id, stat_name, value, decay_rate, last_updated${statRupture})
+        SELECT ?, observer_id, target_id, stat_name, value, decay_rate, last_updated${statRupture} FROM relationship_stats_v1`).run(target);
+      this.db.prepare(`INSERT INTO memory_cards (chat_id, title, content, tags, entity_ids, created_at, updated_at${cardImportance})
+        SELECT ?, title, content, tags, entity_ids, created_at, updated_at${cardImportance} FROM memory_cards_v1`).run(target);
       this.db.prepare(`INSERT INTO commitments (chat_id, promisor_id, promisee_id, description, status, created_at, resolved_at)
         SELECT ?, promisor_id, promisee_id, description, status, created_at, resolved_at FROM commitments_v1`).run(target);
       this.db.prepare(`INSERT INTO core_memory (chat_id, character_id, data, version, updated_at)

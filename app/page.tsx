@@ -22,7 +22,7 @@ import { useHydrated } from "@/lib/hooks/useHydrated";
 import { useUiStore } from "@/lib/store/ui";
 
 export default function Home() {
-  const { activeChatId } = useFableStore();
+  const { activeChatId, syncReady } = useFableStore();
   const { activeSection } = useUiStore();
   // The persisted store rehydrates from localStorage before React's first
   // client render, so any returning user's state differs from the SSR HTML
@@ -33,7 +33,9 @@ export default function Home() {
   // No open chat means we're browsing the list, which has nothing to inspect
   const showInspector = activeSection === "chats" && !!activeChatId;
 
-  if (!hydrated) return null;
+  // StateSync must mount before the gate below — it is what sets syncReady —
+  // so it renders on its own while the app is still waiting.
+  if (!hydrated || !syncReady) return <StateSync />;
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">
@@ -60,7 +62,8 @@ export default function Home() {
       {/* New-chat builder — opened by the sidebar's New Chat button */}
       <NewChatDialog />
 
-      {/* Hydrates from SQLite on load, then mirrors edits back (debounced) */}
+      {/* Hydrates from SQLite on load, then mirrors edits back (debounced).
+          Also rendered while the app waits — it is what ends that wait. */}
       <StateSync />
 
       {/* Window-wide drag-and-drop for CharacterBinder PNG / JSON cards */}

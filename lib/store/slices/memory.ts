@@ -6,6 +6,15 @@ import type { FableStore } from "../index";
 
 
 export interface MemorySlice {
+  /**
+   * True once the initial GET /api/state has resolved, either way. The app
+   * renders nothing until then: before it lands the store still holds the
+   * localStorage cache, and an edit made in that window was overwritten by
+   * hydration and never reached SQLite.
+   */
+  syncReady: boolean;
+  setSyncReady: (v: boolean) => void;
+
   // Drawer 2 — knowledge graph sync signal
   // Bump this after extraction completes so inspector tabs re-fetch from the DB.
   extractionVersion: number;
@@ -18,6 +27,9 @@ export interface MemorySlice {
 }
 
 export const createMemorySlice: StateCreator<FableStore, [], [], MemorySlice> = (set) => ({
+  syncReady: false,
+  setSyncReady: (v) => set({ syncReady: v }),
+
   extractionVersion: 0,
   bumpExtraction:    () => set((s) => ({ extractionVersion: s.extractionVersion + 1 })),
   isExtracting:      false,
