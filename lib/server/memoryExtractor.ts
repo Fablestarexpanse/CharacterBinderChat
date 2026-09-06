@@ -16,6 +16,7 @@ import { syncStatsToCore, syncCommitmentsToCore } from "@/lib/server/coreMemoryS
 import type { EntityType, StatName } from "@/lib/db/models";
 import type { MemoryTaskRequest } from "@/lib/types";
 import type { ProviderType } from "@/lib/llm/callers";
+import { contentWords, coverage, jaccard } from "@/lib/text/overlap";
 
 // ─── Extraction Prompt ────────────────────────────────────────────────────────
 
@@ -387,17 +388,7 @@ async function embedNewFacts(
  * ~200 active rows holding five variants of the same shirt promise.
  */
 function isRestatement(incoming: string, existing: string): boolean {
-  const contentWords = (text: string) =>
-    new Set(
-      text.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/)
-        .filter((w) => w.length > 3)
-    );
-  const a = contentWords(incoming);
-  const b = contentWords(existing);
-  if (a.size === 0 || b.size === 0) return false;
-  let overlap = 0;
-  for (const w of a) if (b.has(w)) overlap++;
-  return overlap / (a.size + b.size - overlap) >= 0.5;
+  return jaccard(contentWords(incoming), contentWords(existing)) >= 0.5;
 }
 
 function writeCommitments(
@@ -433,14 +424,15 @@ function resolveCommitments(
 ): void {
   for (const res of extracted.resolved_commitments ?? []) {
     if (!res.match?.trim() || !["fulfilled", "broken"].includes(res.status)) continue;
-    const words = res.match.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
-    if (words.length === 0) continue;
-    // Best overlap match among active commitments
+    const words = contentWords(res.match);
+    if (words.size === 0) continue;
+    // Coverage, not Jaccard: the model quotes a fragment of a longer promise,
+    // so what matters is how much of the fragment the commitment contains —
+    // scoring symmetrically would penalise the commitment for being longer.
     const active = store.allCommitments(chatId, "active");
     let best: { id: number; score: number } | null = null;
     for (const c of active) {
-      const desc = c.description.toLowerCase();
-      const score = words.filter((w) => desc.includes(w)).length / words.length;
+      const score = coverage(words, contentWords(c.description));
       if (score >= 0.5 && (!best || score > best.score)) best = { id: c.id, score };
     }
     if (best) {

@@ -127,7 +127,7 @@ export interface Lorebook {
 
 // ─── Image Generation ─────────────────────────────────────────────────────────
 
-export type ImageJobStatus = "pending" | "queued" | "generating" | "complete" | "failed";
+export type ImageJobStatus = "queued" | "generating" | "complete" | "failed";
 
 export type AspectRatio = "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "2:1" | "custom";
 

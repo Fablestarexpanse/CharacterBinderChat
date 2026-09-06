@@ -8,6 +8,7 @@ import path from "path";
 import { CREATE_TABLES_SQL } from "./schema";
 import { isSingleValued, normPredicate, predicateFamily } from "./predicates";
 import { bufferToVec, cosine } from "@/lib/llm/embeddings";
+import { contentWords, jaccard, normalizeText } from "@/lib/text/overlap";
 import type { PersistedAppState } from "@/lib/types";
 import type {
   DbEntity,
@@ -749,10 +750,8 @@ export class FableStore {
    * a pair actually keeps using rise to the top of the injected list.
    */
   upsertBondCard(chatId: string, kind: string, text: string): { id: number; reinforced: boolean } {
-    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
-    const words = (s: string) => new Set(norm(s).split(" ").filter((w) => w.length > 3));
-    const incoming = words(text);
-    const incomingNorm = norm(text);
+    const incoming = contentWords(text);
+    const incomingNorm = normalizeText(text);
 
     // Lightweight query — no embedding BLOBs, bond cards only. Scanning
     // listMemoryCards here pulled every episode's ~3KB vector per bit.
@@ -762,19 +761,11 @@ export class FableStore {
 
     for (const card of existing) {
       if (card.title !== kind) continue; // a "joke" never folds into a "ritual"
-      let dup = false;
-      if (incoming.size === 0) {
+      const dup = incoming.size === 0
         // Short texts ("Pip") have no content words — compare whole strings,
         // else every re-mention of a short nickname inserts a fresh card
-        dup = norm(card.content) === incomingNorm;
-      } else {
-        const ex = words(card.content);
-        if (ex.size > 0) {
-          let overlap = 0;
-          for (const w of incoming) if (ex.has(w)) overlap++;
-          dup = overlap / (incoming.size + ex.size - overlap) >= 0.5;
-        }
-      }
+        ? normalizeText(card.content) === incomingNorm
+        : jaccard(incoming, contentWords(card.content)) >= 0.5;
       if (dup) {
         this.db
           .prepare("UPDATE memory_cards SET importance = MIN(1.0, importance + 0.1), updated_at = ? WHERE id = ?")

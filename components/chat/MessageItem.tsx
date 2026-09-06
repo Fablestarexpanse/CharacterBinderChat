@@ -350,7 +350,7 @@ function ImageCard({ message }: { message: Message }) {
       `fablechat-${(job?.id ?? "image").slice(0, 8)}${index > 0 ? `-${index + 1}` : ""}.png`
     );
 
-  const busy = job?.status === "queued" || job?.status === "generating" || job?.status === "pending";
+  const busy = job?.status === "queued" || job?.status === "generating";
 
   // In-app viewer — clicking an image must never navigate away from the chat
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
@@ -529,7 +529,7 @@ function ImageCard({ message }: { message: Message }) {
                         : "text-yellow-600"
                   }`}
                 >
-                  {job?.status ?? "pending"}
+                  {job?.status ?? "missing"}
                 </span>
               </div>
               {job && !busy && !editingPrompt && (

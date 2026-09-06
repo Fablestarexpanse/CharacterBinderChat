@@ -12,6 +12,7 @@ import type { FableStore } from "@/lib/db/store";
 import type { DbFact, DbMemoryCard } from "@/lib/db/models";
 import { isDurableFact, isIdentityCoreFact } from "@/lib/db/predicates";
 import { cosine } from "@/lib/llm/embeddings";
+import { contentWords, coverage } from "@/lib/text/overlap";
 
 /**
  * `context` is recent conversation text. Without it relevance is 0 everywhere
@@ -67,9 +68,7 @@ export function retrieveFactsForPrompt(
   // Relevance: cosine similarity against the current exchange when both
   // sides have embeddings (semantic — "the crossing" matches "afraid of deep
   // water"), keyword overlap otherwise (lexical fallback).
-  const contextWords = new Set(
-    context.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3)
-  );
+  const contextWords = contentWords(context);
   const relevanceOf = (f: DbFact): number => {
     if (queryEmbedding) {
       const v = store.factEmbedding(f.id);
@@ -78,10 +77,7 @@ export function retrieveFactsForPrompt(
       if (v) return Math.max(0, (cosine(queryEmbedding, v) - 0.3) / 0.6);
     }
     if (contextWords.size === 0) return 0;
-    const text = `${f.predicate} ${f.objectId ?? ""} ${f.objectLiteral ?? ""}`.toLowerCase();
-    const words = text.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3);
-    if (words.length === 0) return 0;
-    return words.filter((w) => contextWords.has(w)).length / words.length;
+    return coverage(contentWords(`${f.predicate} ${f.objectId ?? ""} ${f.objectLiteral ?? ""}`), contextWords);
   };
 
   // Importance first (with the durable-predicate heuristic as a floor, so a
@@ -170,19 +166,14 @@ export function retrieveEpisodesForPrompt(
   // Bond cards (shared language) have their own retrieval path
   const cards = store.listMemoryCards(chatId).filter((c) => !c.tags.includes("bond"));
   if (cards.length === 0) return [];
-  const contextWords = new Set(
-    context.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3)
-  );
+  const contextWords = contentWords(context);
   const relevance = (c: DbMemoryCard): number => {
     if (queryEmbedding) {
       const v = store.cardEmbedding(c.id);
       if (v) return Math.max(0, (cosine(queryEmbedding, v) - 0.3) / 0.6);
     }
     if (contextWords.size === 0) return 0;
-    const words = `${c.title} ${c.content}`.toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3);
-    if (words.length === 0) return 0;
-    return words.filter((w) => contextWords.has(w)).length / words.length;
+    return coverage(contentWords(`${c.title} ${c.content}`), contextWords);
   };
   return [...cards]
     .sort((a, b) =>

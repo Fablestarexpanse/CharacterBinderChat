@@ -85,7 +85,7 @@ export const useFableStore = create<FableStore>()(
       onRehydrateStorage: () => (state) => {
         if (!state) return;
         state.imageJobs = state.imageJobs.map((j) =>
-          j.status === "queued" || j.status === "generating" || j.status === "pending"
+          j.status === "queued" || j.status === "generating"
             ? { ...j, status: "failed" as const, error: "Interrupted by page reload" }
             : j
         );
