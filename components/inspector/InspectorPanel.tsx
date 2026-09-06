@@ -36,7 +36,7 @@ export function InspectorPanel() {
           <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-fg)]">
             Viewing
           </span>
-          {chat.memberIds!.map((id) => {
+          {(chat.memberIds ?? []).map((id) => {
             const m = characters.find((c) => c.id === id);
             if (!m) return null;
             const active = character?.id === id;

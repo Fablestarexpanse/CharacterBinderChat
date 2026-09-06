@@ -40,6 +40,7 @@ export function ChatHeader() {
 
   const chat      = chats.find((c) => c.id === activeChatId);
   const character = characters.find((c) => c.id === chat?.characterId);
+  const memberIds = chat?.memberIds ?? [];
 
   const { models, loading: loadingModels, loaded: realModelsLoaded } = useModelCatalog();
 
@@ -127,9 +128,9 @@ export function ChatHeader() {
 
       {/* Character info / group members with presence toggles */}
       <div className="flex items-center gap-2.5 flex-1 min-w-0">
-        {(chat.memberIds?.length ?? 0) >= 2 ? (
+        {memberIds.length >= 2 ? (
           <div className="flex items-center gap-1.5 min-w-0">
-            {chat.memberIds!.map((id) => {
+            {memberIds.map((id) => {
               const m = characters.find((c) => c.id === id);
               if (!m) return null;
               const absent = chat.absentIds?.includes(id) ?? false;

@@ -18,11 +18,12 @@ export function useInspectedCharacter(): {
   const { activeChatId, chats, characters } = useFableStore();
   const { inspectorMemberId } = useUiStore();
   const chat = chats.find((c) => c.id === activeChatId);
-  const isGroup = (chat?.memberIds?.length ?? 0) >= 2;
+  const memberIds = chat?.memberIds ?? [];
+  const isGroup = memberIds.length >= 2;
   const charId = isGroup
-    ? (inspectorMemberId && chat!.memberIds!.includes(inspectorMemberId)
+    ? (inspectorMemberId && memberIds.includes(inspectorMemberId)
         ? inspectorMemberId
-        : chat!.memberIds![0])
+        : memberIds[0])
     : chat?.characterId;
   return { chat, character: characters.find((c) => c.id === charId), isGroup };
 }

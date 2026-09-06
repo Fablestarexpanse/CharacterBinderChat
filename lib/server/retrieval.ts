@@ -74,10 +74,11 @@ export function retrieveFactsForPrompt(
   // O(n log n) times.
   const contextWords = contentWords(context);
   const vectors = queryEmbedding ? store.getEmbeddings(chatId, "facts", all.map((f) => f.id)) : null;
+  const vectorFor = (id: number) => vectors?.get(id);
   const relevance = new Map<number, number>(all.map((f) => [
     f.id,
     queryEmbedding
-      ? embeddingRelevance(queryEmbedding, vectors!.get(f.id))
+      ? embeddingRelevance(queryEmbedding, vectorFor(f.id))
       : contextWords.size === 0
         ? 0
         : coverage(contentWords(`${f.predicate} ${f.objectId ?? ""} ${f.objectLiteral ?? ""}`), contextWords),
@@ -164,12 +165,13 @@ export function retrieveEpisodesForPrompt(
   if (cards.length === 0) return [];
   const contextWords = contentWords(context);
   const vectors = queryEmbedding ? store.getEmbeddings(chatId, "memory_cards", cards.map((c) => c.id)) : null;
+  const vectorFor = (id: number) => vectors?.get(id);
   // Scored once, then sorted — same reason as the facts path above.
   const scored = cards.map((card) => ({
     card,
     score: card.importance + (
       queryEmbedding
-        ? embeddingRelevance(queryEmbedding, vectors!.get(card.id))
+        ? embeddingRelevance(queryEmbedding, vectorFor(card.id))
         : contextWords.size === 0
           ? 0
           : coverage(contentWords(`${card.title} ${card.content}`), contextWords)

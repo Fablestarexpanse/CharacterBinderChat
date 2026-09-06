@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Group, Plus, MessageSquare, Check } from "lucide-react";
 import { useUiStore } from "@/lib/store/ui";
+import type { Character } from "@/lib/types";
 
 export function GroupsView() {
   const { chats, characters, createGroupChat, setActiveChatId } = useFableStore();
@@ -70,12 +71,12 @@ export function GroupsView() {
             {groupChats.map((chat) => {
               const members = (chat.memberIds ?? [])
                 .map((id) => characters.find((c) => c.id === id))
-                .filter(Boolean);
+                .filter((c): c is Character => !!c);
               return (
                 <Card key={chat.id} className="p-4 hover:border-[var(--purple)] transition-colors">
                   <div className="flex items-center gap-1.5 mb-2">
                     {members.slice(0, 4).map((m) => (
-                      <Avatar key={m!.id} name={m!.name} src={m!.avatar} size="sm" />
+                      <Avatar key={m.id} name={m.name} src={m.avatar} size="sm" />
                     ))}
                   </div>
                   <div className="font-semibold text-sm text-[var(--foreground)] truncate">{chat.name}</div>

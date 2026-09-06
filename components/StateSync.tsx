@@ -141,7 +141,11 @@ export function StateSync() {
           await save();
         }
       } catch (e) {
+        // A thrown read (network down, bad JSON) lands here rather than at the
+        // status check above, so it needs the same in-app surface.
         console.warn("[state-sync] initial load failed:", e);
+        useFableStore.getState().setLastSyncError(
+          `could not load saved state — ${e instanceof Error ? e.message : String(e)}`);
       } finally {
         // Either way the window is over: the app can render and accept edits.
         useFableStore.getState().setSyncReady(true);
