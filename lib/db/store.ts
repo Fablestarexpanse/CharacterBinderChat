@@ -316,8 +316,17 @@ export class FableStore {
     return rows.map(rowToFact);
   }
 
-  setFactEmbedding(factId: number, embedding: Buffer): void {
-    this.db.prepare("UPDATE facts SET embedding = ? WHERE id = ?").run(embedding, factId);
+  /**
+   * chatId is part of the WHERE clause on every id-keyed write below, not
+   * because a caller currently passes a foreign id — they all source ids from
+   * chat-scoped queries — but because "memory is scoped to a chat" should be
+   * enforced by the store rather than by caller discipline. The v1 to v2
+   * migration threaded chatId through the string-id methods and left these four
+   * keyed on the bare row id.
+   */
+  setFactEmbedding(chatId: string, factId: number, embedding: Buffer): void {
+    this.db.prepare("UPDATE facts SET embedding = ? WHERE id = ? AND chat_id = ?")
+      .run(embedding, factId, chatId);
   }
 
   /** Raw embedding blob for a memory card (null when never embedded) */
@@ -358,8 +367,9 @@ export class FableStore {
     return map;
   }
 
-  setCardEmbedding(cardId: number, embedding: Buffer): void {
-    this.db.prepare("UPDATE memory_cards SET embedding = ? WHERE id = ?").run(embedding, cardId);
+  setCardEmbedding(chatId: string, cardId: number, embedding: Buffer): void {
+    this.db.prepare("UPDATE memory_cards SET embedding = ? WHERE id = ? AND chat_id = ?")
+      .run(embedding, cardId, chatId);
   }
 
   /** Raw embedding blob for a fact (null when never embedded) */
@@ -398,10 +408,10 @@ export class FableStore {
 
   /** Raise (never lower) a fact's importance — used when a restatement folds
    *  into it so the survivor keeps the highest score either version earned. */
-  raiseFactImportance(factId: number, importance: number): void {
+  raiseFactImportance(chatId: string, factId: number, importance: number): void {
     this.db
-      .prepare("UPDATE facts SET importance = MAX(importance, ?) WHERE id = ?")
-      .run(Math.max(0, Math.min(1, importance)), factId);
+      .prepare("UPDATE facts SET importance = MAX(importance, ?) WHERE id = ? AND chat_id = ?")
+      .run(Math.max(0, Math.min(1, importance)), factId, chatId);
   }
 
   /**
@@ -445,16 +455,16 @@ export class FableStore {
       : [];
 
     const factId = this.insertFact(chatId, { ...fact, predicate: normPredicate(fact.predicate) });
-    for (const old of toSupersede) this.supersedeFact(old.id, factId);
+    for (const old of toSupersede) this.supersedeFact(chatId, old.id, factId);
 
     return { factId, duplicate: false, superseded: toSupersede.map((f) => f.id) };
   }
 
-  supersedeFact(oldId: number, newId: number, atTime?: number): void {
+  supersedeFact(chatId: string, oldId: number, newId: number, atTime?: number): void {
     const t = atTime ?? now();
     this.db
-      .prepare("UPDATE facts SET t_valid_end = ?, superseded_by = ? WHERE id = ?")
-      .run(t, newId, oldId);
+      .prepare("UPDATE facts SET t_valid_end = ?, superseded_by = ? WHERE id = ? AND chat_id = ?")
+      .run(t, newId, oldId, chatId);
   }
 
   /**

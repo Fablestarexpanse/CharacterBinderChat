@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { parseProviderBase } from "@/lib/llm/callers";
 
 export const dynamic = "force-dynamic";
 
@@ -11,22 +12,20 @@ async function proxy(
   params: Promise<{ path: string[] }>
 ): Promise<Response> {
   const { path } = await params;
-  const base = req.nextUrl.searchParams.get("base") ?? "http://127.0.0.1:8188";
 
-  let baseUrl: URL;
-  try {
-    baseUrl = new URL(base);
-  } catch {
-    return Response.json({ ok: false, error: `invalid base URL: ${base}` }, { status: 400 });
-  }
-  if (baseUrl.protocol !== "http:" && baseUrl.protocol !== "https:") {
-    return Response.json({ ok: false, error: "base must be http(s)" }, { status: 400 });
+  // Through the same guard the LLM routes use, rather than a second hand-rolled
+  // copy of it — and using its parsed result, so the string that reaches fetch
+  // is the one that was checked.
+  const base = parseProviderBase(
+    req.nextUrl.searchParams.get("base") ?? "http://127.0.0.1:8188");
+  if (!base) {
+    return Response.json({ ok: false, error: "base must be an http(s) URL" }, { status: 400 });
   }
 
   const search = new URLSearchParams(req.nextUrl.searchParams);
   search.delete("base");
   const query = search.size > 0 ? `?${search}` : "";
-  const target = `${base.replace(/\/$/, "")}/${path.map(encodeURIComponent).join("/")}${query}`;
+  const target = `${base}/${path.map(encodeURIComponent).join("/")}${query}`;
 
   try {
     const hasBody = req.method !== "GET" && req.method !== "HEAD";

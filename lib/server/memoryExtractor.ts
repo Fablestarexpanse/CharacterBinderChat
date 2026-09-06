@@ -365,7 +365,7 @@ async function embedNewFacts(
       writtenFacts.forEach((id, i) => {
         const vec = vecs[i];
         if (!vec) return;
-        store.setFactEmbedding(id, vecToBuffer(vec));
+        store.setFactEmbedding(chatId, id, vecToBuffer(vec));
         // Semantic dedupe: a restatement of an existing fact ("trusts Kael
         // deeply" next to "has deep trust in Kael") passes the exact-key
         // check above but adds no information — it only steals a prompt
@@ -377,8 +377,8 @@ async function embedNewFacts(
         if (f) {
           const dup = store.findSimilarLiveFact(chatId, f.subjectId, f.predicate, vec, newIds);
           if (dup !== null) {
-            store.supersedeFact(dup.id, id);
-            store.raiseFactImportance(id, dup.importance);
+            store.supersedeFact(chatId, dup.id, id);
+            store.raiseFactImportance(chatId, id, dup.importance);
             foldedFacts.push(dup.id);
           }
         }

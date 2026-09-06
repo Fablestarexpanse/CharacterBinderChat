@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
           importance: typeof ins.importance === "number" ? ins.importance : 0.7,
         });
         const vec = await embedText(`${ins.title ?? ""} ${ins.content}`);
-        if (vec) store.setCardEmbedding(id, vecToBuffer(vec));
+        if (vec) store.setCardEmbedding(chatId, id, vecToBuffer(vec));
         written.push(id);
       }
       return Response.json({ ok: true, mode, cards: written });
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
       importance: typeof parsed.importance === "number" ? parsed.importance : 0.5,
     });
     const vec = await embedText(`${parsed.title ?? ""} ${parsed.content}`);
-    if (vec) store.setCardEmbedding(cardId, vecToBuffer(vec));
+    if (vec) store.setCardEmbedding(chatId, cardId, vecToBuffer(vec));
     return Response.json({ ok: true, mode, cards: [cardId] });
   } catch (err) {
     return routeError("[drawer/episode]", err);

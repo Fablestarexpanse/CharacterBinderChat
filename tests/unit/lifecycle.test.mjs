@@ -108,3 +108,22 @@ test("replaceAppState is a full replace, and keeps singletons it isn't given", (
   assert.equal(state.characters.length, 0, "collections are replaced wholesale");
   assert.equal(state.defaultPresetId, "preset-1", "the singleton survives");
 });
+
+test("id-keyed writes are scoped to their chat", () => {
+  // Every caller sources ids from a chat-scoped query, so this is not a live
+  // bug — it asserts that the invariant is the store's job rather than the
+  // caller's, which is what the v1 to v2 migration left half-done.
+  const store = seeded();
+  const other = "c2";
+  store.ensureEntity(other, "ash", "character", "ash");
+  const theirs = store.assertFact(other, {
+    subjectId: "ash", predicate: "fears", objectLiteral: "heights", importance: 0.2,
+  });
+
+  store.raiseFactImportance(CHAT, theirs.factId, 0.99);          // wrong chat
+  const untouched = store.queryFacts(other, "ash").find((f) => f.id === theirs.factId);
+  assert.equal(untouched.importance, 0.2, "another chat's fact must not be reachable by id alone");
+
+  store.supersedeFact(CHAT, theirs.factId, theirs.factId);       // wrong chat
+  assert.equal(store.queryFacts(other, "ash").length, 1, "and must not be closed by id alone");
+});
