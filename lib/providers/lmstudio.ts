@@ -7,6 +7,7 @@
 import type { ChatProvider, GenerationParams, MessageRole, ModelInfo } from "@/lib/types";
 import { buildRequestParams } from "./params";
 import { parseOpenAIStream } from "./openaiStream";
+import { streamStartError } from "./streamError";
 
 export class LMStudioProvider implements ChatProvider {
   id = "lmstudio" as const;
@@ -65,7 +66,7 @@ export class LMStudioProvider implements ChatProvider {
     });
 
     if (!res.ok || !res.body) {
-      throw new Error(`LM Studio error: ${res.status}`);
+      throw await streamStartError("LM Studio", res);
     }
 
     yield* parseOpenAIStream(res.body);

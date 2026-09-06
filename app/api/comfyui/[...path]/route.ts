@@ -50,6 +50,9 @@ async function proxy(
       },
     });
   } catch (err) {
+    // Every other route logs its failure through routeError; this one returns
+    // the right status but wrote nothing to the server log.
+    console.error("[comfyui-proxy]", req.method, base, err);
     return Response.json(
       { ok: false, error: `ComfyUI unreachable at ${base}: ${err instanceof Error ? err.message : String(err)}` },
       { status: 502 }

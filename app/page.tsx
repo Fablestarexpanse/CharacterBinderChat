@@ -24,7 +24,7 @@ import { useUiStore } from "@/lib/store/ui";
 import { sendJson } from "@/lib/api/client";
 
 export default function Home() {
-  const { activeChatId, syncReady } = useFableStore();
+  const { activeChatId, syncReady, lastSyncError } = useFableStore();
   const { activeSection } = useUiStore();
   // The persisted store rehydrates from localStorage before React's first
   // client render, so any returning user's state differs from the SSR HTML
@@ -68,6 +68,13 @@ export default function Home() {
     <div className="flex h-screen w-screen overflow-hidden">
       {/* Hydrates from SQLite on load, then mirrors edits back (debounced) */}
       <StateSync />
+      {/* Fixed rather than in-flow: the root here is a flex row, so a block
+          banner would become a flex child and squeeze the sidebar. */}
+      {lastSyncError && (
+        <div className="fixed top-2 left-1/2 -translate-x-1/2 z-50 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-600">
+          Changes are not being saved — {lastSyncError}
+        </div>
+      )}
       {!ready ? null : <>
       <Sidebar />
 

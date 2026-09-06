@@ -24,6 +24,11 @@ export interface MemorySlice {
   /** Error from the most recent extraction / core-memory refresh, or null */
   lastExtractionError: string | null;
   setLastExtractionError: (e: string | null) => void;
+  /** Error from the most recent durable-state read or write, or null. Without
+   *  this a failed save was a console warning nobody sees, and the app went on
+   *  looking like it had persisted the change. */
+  lastSyncError: string | null;
+  setLastSyncError: (e: string | null) => void;
 }
 
 export const createMemorySlice: StateCreator<FableStore, [], [], MemorySlice> = (set) => ({
@@ -36,4 +41,6 @@ export const createMemorySlice: StateCreator<FableStore, [], [], MemorySlice> = 
   setIsExtracting:   (v) => set({ isExtracting: v }),
   lastExtractionError:    null,
   setLastExtractionError: (e) => set({ lastExtractionError: e }),
+  lastSyncError:          null,
+  setLastSyncError:       (e) => set({ lastSyncError: e }),
 });

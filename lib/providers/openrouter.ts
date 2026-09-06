@@ -7,6 +7,7 @@
 import { parseOpenAIStream } from "./openaiStream";
 import type { ChatProvider, GenerationParams, MessageRole, ModelInfo } from "@/lib/types";
 import { buildRequestParams } from "./params";
+import { streamStartError } from "./streamError";
 
 const OPENROUTER_BASE = "https://openrouter.ai/api/v1";
 
@@ -89,7 +90,7 @@ export class OpenRouterProvider implements ChatProvider {
     });
 
     if (!res.ok || !res.body) {
-      throw new Error(`OpenRouter error: ${res.status}`);
+      throw await streamStartError("OpenRouter", res);
     }
 
     yield* parseOpenAIStream(res.body);

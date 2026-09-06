@@ -69,12 +69,17 @@ export function StateSync() {
           headers: { "Content-Type": "application/json" },
           body:    JSON.stringify(payload),
         });
+        const setSyncError = useFableStore.getState().setLastSyncError;
         if (!res.ok) {
           const data = await res.json().catch(() => null);
           console.warn("[state-sync] save rejected:", data?.error ?? res.status);
+          setSyncError(String(data?.error ?? `HTTP ${res.status}`));
+        } else {
+          setSyncError(null);
         }
       } catch (e) {
         console.warn("[state-sync] save failed:", e);
+        useFableStore.getState().setLastSyncError(e instanceof Error ? e.message : String(e));
       }
     };
 
@@ -97,6 +102,10 @@ export function StateSync() {
         if (!res.ok) {
           console.warn(`[state-sync] initial load failed: HTTP ${res.status} —`,
             (await res.text()).slice(0, 200));
+          // A distinct message: nothing has failed to save yet, the saved copy
+          // could not be read.
+          useFableStore.getState().setLastSyncError(
+            `could not load saved state (HTTP ${res.status})`);
           // Skip hydration AND the first-run save; later edits still sync, and
           // the route's own wipe guard covers a mass delete.
           throw new Error(`GET /api/state returned ${res.status}`);

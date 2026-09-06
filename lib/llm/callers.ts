@@ -33,6 +33,12 @@ export interface LlmBackend {
 /**
  * Call whichever backend the request named. The ollama-vs-OpenAI-compatible
  * branch was written out at three call sites, all of them one shape.
+ *
+ * The branches are not equivalent in one respect: callOllama asks for
+ * `format: "json"`, while callOpenAICompat sends no `response_format` — some
+ * OpenAI-compatible backends reject it. So an LM Studio or OpenRouter caller
+ * can get prose with the JSON embedded in it, which is why every caller goes
+ * through parseLLMJson rather than JSON.parse.
  */
 export function callLLM(backend: LlmBackend, prompt: string): Promise<string> {
   const { providerType, providerBaseUrl, modelId, apiKey } = backend;
