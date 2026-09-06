@@ -2,7 +2,7 @@
 // Presets and the standing instructions that layer under them.
 
 import type { StateCreator } from "zustand";
-import { normalizeForbiddenWords } from "@/lib/chat/settings";
+import { normalizeForbiddenWords } from "@/lib/utils";
 import type { FableStore } from "../index";
 import type {
   Preset, PromptInstructions,

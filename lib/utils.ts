@@ -64,3 +64,26 @@ export async function downloadFromUrl(url: string, filename: string): Promise<vo
     window.open(url, "_blank");
   }
 }
+
+// ─── Forbidden words ──────────────────────────────────────────────────────────
+// Lives here rather than in lib/chat/settings.ts, which owns the rest of the
+// preset rules: the store needs it too, and importing lib/chat from lib/store
+// made those two directories depend on each other over this one helper.
+
+/** Ban lists are capped and de-duped wherever they enter the store. */
+export const MAX_FORBIDDEN_WORDS = 10;
+
+export function normalizeForbiddenWords(words: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of words) {
+    const word = raw.trim();
+    if (!word) continue;
+    const key = word.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(word);
+    if (out.length >= MAX_FORBIDDEN_WORDS) break;
+  }
+  return out;
+}

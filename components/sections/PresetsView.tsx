@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { DEFAULT_GENERATION_PARAMS, paramSupport } from "@/lib/providers/params";
-import { MAX_FORBIDDEN_WORDS } from "@/lib/chat/settings";
+import { MAX_FORBIDDEN_WORDS } from "@/lib/utils";
 import type { GenerationParams, ParamKey, Preset } from "@/lib/types";
 import { Sliders, Plus, Trash2, Copy, Star, X, Globe, RotateCcw } from "lucide-react";
 

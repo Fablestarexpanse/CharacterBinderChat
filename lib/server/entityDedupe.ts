@@ -1,0 +1,73 @@
+// ─── Entity duplicate detection ───────────────────────────────────────────────
+// Surfacing entities that are probably the same thing under two ids, for the
+// inspector's merge affordance. This is a READ-side heuristic: the write-side
+// EntityResolver folds ids by display name before anything is stored.
+
+import type { DbEntity } from "@/lib/db/models";
+
+// ─── Duplicate detection ──────────────────────────────────────────────────────
+
+/** Normalize a string to a bare stem for loose comparison */
+function stem(s: string): string {
+  return s.toLowerCase().replace(/[\s_\-\.]+/g, "");
+}
+
+/**
+ * Return clusters of entity IDs that are likely duplicates.
+ * Two entities are candidates when their stemmed names match or their
+ * stemmed ids match — i.e. case/separator variants of the same word
+ * ("Char-Ronan" ≈ "char_ronan"). Substring pairs like "ronan" vs
+ * "ronan_voss" are NOT caught here; those are the EntityResolver's job at
+ * write time, which matches by display name. Clusters of size ≥ 2 return.
+ */
+export function findDuplicateClusters(entities: DbEntity[]): string[][] {
+  // Key: stem(name) — primary signal
+  const byName = new Map<string, string[]>();
+  for (const e of entities) {
+    const k = stem(e.name);
+    if (!byName.has(k)) byName.set(k, []);
+    byName.get(k)!.push(e.id);
+  }
+
+  // Also cluster by stem(id) for IDs like "ronan" vs "ronan_voss"
+  // Only merge into an existing name-cluster if the stems overlap
+  const byIdStem = new Map<string, string[]>();
+  for (const e of entities) {
+    const k = stem(e.id);
+    if (!byIdStem.has(k)) byIdStem.set(k, []);
+    byIdStem.get(k)!.push(e.id);
+  }
+
+  // Union-find: merge clusters that share at least one member
+  const parent = new Map<string, string>();
+  const find = (x: string): string => {
+    if (!parent.has(x)) parent.set(x, x);
+    if (parent.get(x) !== x) parent.set(x, find(parent.get(x)!));
+    return parent.get(x)!;
+  };
+  const union = (a: string, b: string) => {
+    const ra = find(a), rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+
+  for (const ids of byName.values()) {
+    if (ids.length >= 2) for (let i = 1; i < ids.length; i++) union(ids[0], ids[i]);
+  }
+  for (const ids of byIdStem.values()) {
+    if (ids.length >= 2) for (let i = 1; i < ids.length; i++) union(ids[0], ids[i]);
+  }
+
+  // Collect clusters
+  const groups = new Map<string, string[]>();
+  for (const e of entities) {
+    const root = find(e.id);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root)!.push(e.id);
+  }
+
+  return [...groups.values()].filter((g) => g.length >= 2);
+}
+
+// ─── Route ────────────────────────────────────────────────────────────────────
+
+// GET /api/drawer/entities/overview?chatId=<chatId>
