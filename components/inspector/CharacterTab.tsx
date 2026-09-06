@@ -10,16 +10,10 @@ import { Section } from "./Section";
 import { ExternalLink, Edit2, Heart, Shield, Flame, Link2, CloudSun, UserRound, ChevronDown, Check } from "lucide-react";
 import { useUiStore } from "@/lib/store/ui";
 import { getJson } from "@/lib/api/client";
+import type { DrawerStat } from "@/lib/api/dto";
 import type { StatName } from "@/lib/db/models";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface StatRow {
-  name:        StatName;
-  value:       number | null;
-  decayRate:   number | null;
-  lastUpdated: number | null;
-}
 
 interface RelationshipGroup {
   targetId:   string;
@@ -88,7 +82,7 @@ export function CharacterTab() {
   const [result, setResult] = useState<{
     key:           string;
     relationships: RelationshipGroup[];
-    stats:         StatRow[];
+    stats:         DrawerStat[];
     error:         string | null;
   } | null>(null);
 
@@ -110,7 +104,7 @@ export function CharacterTab() {
     Promise.all([
       getJson<{ relationships?: RelationshipGroup[] }>(
         `/api/drawer/summary/${encodeURIComponent(characterId)}?${chatParam}`),
-      getJson<{ stats?: StatRow[] }>(
+      getJson<{ stats?: DrawerStat[] }>(
         `/api/drawer/stats?${chatParam}&observer=${encodeURIComponent(characterId)}&target=player`),
     ])
       .then(([summary, statsRes]) => {
@@ -138,7 +132,7 @@ export function CharacterTab() {
   }
 
   // Find the "player → character" stat row for display
-  const playerStats = stats.filter((s) => s.value !== null) as Array<StatRow & { value: number }>;
+  const playerStats = stats.filter((s) => s.value !== null) as Array<DrawerStat & { value: number }>;
 
   return (
     <div className="p-3 space-y-3">

@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import type { AspectRatio } from "@/lib/types";
 import { getJson } from "@/lib/api/client";
-import type { WorkflowSummary } from "@/app/api/workflows/route";
+import type { WorkflowSummary } from "@/lib/api/dto";
 
 const SAMPLERS = ["euler", "euler_a", "dpmpp_2m", "dpmpp_2m_karras", "ddim", "lcm"];
 const ASPECT_RATIOS: AspectRatio[] = ["1:1", "16:9", "9:16", "4:3", "3:4", "2:1", "custom"];

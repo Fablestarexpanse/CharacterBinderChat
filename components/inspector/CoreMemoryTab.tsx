@@ -7,7 +7,7 @@ import { Brain, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Section } from "./Section";
 import type { CoreMemory } from "@/lib/db/models";
-import type { CoreMemoryGetResponse } from "@/app/api/chat/core-memory/route";
+import type { CoreMemoryGetResponse } from "@/lib/api/dto";
 import { resolveRouteCredentials } from "@/lib/providers/factory";
 import { getJson, sendJson } from "@/lib/api/client";
 

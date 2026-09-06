@@ -3,24 +3,10 @@ import { getStore } from "@/lib/db";
 import { embedText } from "@/lib/llm/embeddings";
 import type { CoreMemory } from "@/lib/db/models";
 import { routeError } from "@/lib/api/server";
+import type { CoreMemoryGetResponse } from "@/lib/api/dto";
 import { retrieveEpisodesForPrompt, retrieveFactsForPrompt } from "@/lib/server/retrieval";
 
 export const dynamic = "force-dynamic";
-
-/**
- * What the GET returns. Declared here rather than at each call site: it was
- * hand-typed twice on the client with different field sets, so a change to the
- * route only ever broke one of them.
- */
-export interface CoreMemoryGetResponse {
-  coreMemory: CoreMemory;
-  version:    number;
-  updatedAt:  number;
-  knownFacts: string[];
-  episodes:   string[];
-  insights:   string[];
-  sharedLanguage: string[];
-}
 
 // ─── GET /api/chat/core-memory ───────────────────────────────────────────────
 // ?chatId=X&characterId=Y&name=Z&context=<recent text, optional>

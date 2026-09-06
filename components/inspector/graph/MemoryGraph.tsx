@@ -10,31 +10,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { getJson } from "@/lib/api/client";
-
-// ─── Data shapes (mirror /api/drawer/graph) ──────────────────────────────────
-
-interface GraphEntity {
-  id: string; name: string; type: string; kind: "entity";
-  isCharacter: boolean; isPlayer: boolean;
-}
-interface GraphCard {
-  id: string; name: string; content: string;
-  kind: "episode" | "insight"; importance: number; entityIds: string[];
-}
-interface GraphCommitment {
-  id: string; name: string; description: string; status: string;
-  promisorId: string; promiseeId: string | null; kind: "commitment";
-}
-interface GraphPayload {
-  entities: GraphEntity[];
-  literals: Array<{ id: string; name: string }>;
-  links: Array<{ source: string; target: string; predicate: string; importance: number }>;
-  cards: GraphCard[];
-  commitments: GraphCommitment[];
-  bond: Record<string, number | null>;
-  mood: { valence: number; arousal: number; dominance: number } | null;
-  error?: string;
-}
+import type { GraphPayload } from "@/lib/api/dto";
 
 // ─── Simulation types ─────────────────────────────────────────────────────────
 

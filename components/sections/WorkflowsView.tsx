@@ -13,7 +13,7 @@ import { Card, CardBody } from "@/components/ui/card";
 import { GitBranch, Check, AlertTriangle, Loader2 } from "lucide-react";
 import { useUiStore } from "@/lib/store/ui";
 import { getJson } from "@/lib/api/client";
-import type { WorkflowSummary } from "@/app/api/workflows/route";
+import type { WorkflowSummary } from "@/lib/api/dto";
 
 export function WorkflowsView() {
   const { imageSettings, setImageSettings } = useFableStore();

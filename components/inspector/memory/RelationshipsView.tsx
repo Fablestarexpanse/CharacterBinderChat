@@ -4,14 +4,7 @@ import { useState, useEffect } from "react";
 import { Loader2, Heart, Shield, Flame, Link2, CloudSun } from "lucide-react";
 import { formatAgeFromUnixSeconds } from "./utils";
 import { getJson } from "@/lib/api/client";
-import type { StatName } from "@/lib/db/models";
-
-interface StatRow {
-  name:        StatName;
-  value:       number | null;
-  decayRate:   number | null;
-  lastUpdated: number | null;
-}
+import type { DrawerStat } from "@/lib/api/dto";
 
 const STAT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   affection:  Heart,
@@ -38,7 +31,7 @@ interface Props {
 export function RelationshipsView({ chatId, characterId, extractionVersion }: Props) {
   // Single result object keyed by what was fetched; `loading` is derived so
   // the effect never calls setState synchronously (react-hooks/set-state-in-effect).
-  const [result, setResult] = useState<{ key: string; stats: StatRow[]; error: string | null } | null>(null);
+  const [result, setResult] = useState<{ key: string; stats: DrawerStat[]; error: string | null } | null>(null);
 
   const fetchKey = `${chatId}:${characterId}:${extractionVersion}`;
 
@@ -46,7 +39,7 @@ export function RelationshipsView({ chatId, characterId, extractionVersion }: Pr
     let cancelled = false;
     const key = `${chatId}:${characterId}:${extractionVersion}`;
     // character → player: how this character feels about the user
-    getJson<{ stats?: StatRow[] }>(
+    getJson<{ stats?: DrawerStat[] }>(
       `/api/drawer/stats?chatId=${encodeURIComponent(chatId)}&observer=${encodeURIComponent(characterId)}&target=player`
     )
       .then((data) => { if (!cancelled) setResult({ key, stats: data.stats ?? [], error: null }); })

@@ -13,7 +13,7 @@ import { resolveGeneration } from "./settings";
 import { fitHistoryToBudget } from "./tokenBudget";
 import type { Chat, Character, MessageRole, MemoryTaskRequest } from "@/lib/types";
 import type { CoreMemory } from "@/lib/db/models";
-import type { CoreMemoryGetResponse } from "@/app/api/chat/core-memory/route";
+import type { CoreMemoryGetResponse } from "@/lib/api/dto";
 
 let abortController: AbortController | null = null;
 

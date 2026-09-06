@@ -8,16 +8,7 @@ import { useFableStore } from "@/lib/store";
 import { Loader2, Trash2, Plus, X } from "lucide-react";
 import { formatAgeFromUnixSeconds, formatDateFromUnixSeconds } from "./utils";
 import { getJson, sendJson } from "@/lib/api/client";
-
-interface EnrichedFact {
-  id:            number;
-  predicate:     string;
-  objectDisplay: string;
-  confidence:    number;
-  tValidStart:   number;
-  tValidEnd:     number | null;
-  supersededBy:  number | null;
-}
+import type { DrawerFact } from "@/lib/api/dto";
 
 interface Props {
   chatId:         string;
@@ -37,7 +28,7 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
   const [writeError, setWriteError] = useState<string | null>(null);
   // Result keyed by what was fetched; `loading` is derived so the effect
   // never calls setState synchronously (react-hooks/set-state-in-effect).
-  const [result, setResult] = useState<{ key: string; facts: EnrichedFact[]; error: string | null } | null>(null);
+  const [result, setResult] = useState<{ key: string; facts: DrawerFact[]; error: string | null } | null>(null);
 
   const fetchKey = `${chatId}:${characterId}:${extractionVersion}:${showHistory ? 1 : 0}`;
 
@@ -45,7 +36,7 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
     let cancelled = false;
     const key = `${chatId}:${characterId}:${extractionVersion}:${showHistory ? 1 : 0}`;
     const url = `/api/drawer/facts?chatId=${encodeURIComponent(chatId)}&subject=${encodeURIComponent(characterId)}${showHistory ? "&includeSuperseded=1" : ""}`;
-    getJson<{ facts?: EnrichedFact[] }>(url)
+    getJson<{ facts?: DrawerFact[] }>(url)
       .then((data) => { if (!cancelled) setResult({ key, facts: data.facts ?? [], error: null }); })
       .catch((e: Error) => { if (!cancelled) setResult({ key, facts: [], error: e.message }); });
     return () => { cancelled = true; };
@@ -97,7 +88,7 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
   const supersededFacts = facts.filter((f) => f.tValidEnd !== null);
 
   // Build a map: supersededBy fact ID → the fact(s) it replaced
-  const predecessors = new Map<number, EnrichedFact[]>();
+  const predecessors = new Map<number, DrawerFact[]>();
   for (const f of supersededFacts) {
     if (f.supersededBy !== null) {
       if (!predecessors.has(f.supersededBy)) predecessors.set(f.supersededBy, []);

@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { routeError } from "@/lib/api/server";
+import type { WorkflowSummary } from "@/lib/api/dto";
 
 export const dynamic = "force-dynamic";
 
@@ -8,20 +9,6 @@ export const dynamic = "force-dynamic";
 // Index the workflows/ directory. The picker used to be a hand-maintained
 // array in the Image Studio, so dropping a template into the folder never
 // surfaced it and deleting one left a dead option. This reads the truth.
-
-/** The shape this route returns — imported by both views that render it. */
-export interface WorkflowSummary {
-  slug:        string;
-  title:       string;
-  description: string | null;
-  nodeCount:   number;
-  /** Settings FableChat can drive on this template (from _meta.fablechat) */
-  controls:    string[];
-  /** Sampler defaults, when the template exposes a KSampler */
-  steps:       number | null;
-  cfg:         number | null;
-  error?:      string;
-}
 
 type Node = { class_type?: string; inputs?: Record<string, unknown> };
 
