@@ -66,3 +66,19 @@ export function parseMemoryTaskRequest(
   }
   return { ok: true, value: { ...body, providerType, providerBaseUrl: baseUrl } };
 }
+
+/**
+ * The upstream model is down or refused: 502, not 500.
+ *
+ * The routes each said so in a comment, but only core-memory/refresh acted on
+ * it — extract and episode let the transport error escape into routeError's
+ * 500, which reads as "FableChat is broken" rather than "Ollama is not
+ * running".
+ */
+export function upstreamError(tag: string, err: unknown): Response {
+  console.error(tag, err);
+  return Response.json(
+    { ok: false, error: `the model could not be reached: ${String(err)}` },
+    { status: 502 }
+  );
+}

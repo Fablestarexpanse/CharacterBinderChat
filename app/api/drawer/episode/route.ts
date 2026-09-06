@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { callLLM, parseLLMJson } from "@/lib/llm/callers";
 import { embedText, vecToBuffer } from "@/lib/llm/embeddings";
-import { parseMemoryTaskRequest, routeError } from "@/lib/api/server";
+import { parseMemoryTaskRequest, routeError, upstreamError } from "@/lib/api/server";
 import { episodePrompt, reflectPrompt } from "@/lib/server/episodePrompts";
 import { retrieveFactsForPrompt } from "@/lib/server/retrieval";
 
@@ -52,7 +52,12 @@ export async function POST(req: NextRequest) {
       prompt = episodePrompt(conversation, characterName ?? characterId, userLabel, entityIds);
     }
 
-    const rawText = await callLLM({ providerType, providerBaseUrl, modelId, apiKey }, prompt);
+    let rawText: string;
+    try {
+      rawText = await callLLM({ providerType, providerBaseUrl, modelId, apiKey }, prompt);
+    } catch (err) {
+      return upstreamError("[drawer/episode]", err);
+    }
 
     if (mode === "reflect") {
       const parsed = parseLLMJson<{ insights?: Array<{ title?: string; content?: string; importance?: number }> } | null>(rawText, null);

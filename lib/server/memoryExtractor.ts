@@ -535,7 +535,14 @@ export async function extractMemory(
 
   // ── Call LLM ──────────────────────────────────────────────────────────
 
-  const rawText = await callLLM({ providerType, providerBaseUrl, modelId, apiKey }, prompt);
+  let rawText: string;
+  try {
+    rawText = await callLLM({ providerType, providerBaseUrl, modelId, apiKey }, prompt);
+  } catch (err) {
+    // Reported as an upstream failure, not an extraction failure: nothing was
+    // written, and the caller needs to know which of the two happened.
+    return { ok: false as const, error: `the model could not be reached: ${String(err)}`, rawModel: "" };
+  }
 
   // Parse failure must be distinguishable from "nothing to extract" — an
   // empty-object fallback here would make a model that can't emit JSON look
