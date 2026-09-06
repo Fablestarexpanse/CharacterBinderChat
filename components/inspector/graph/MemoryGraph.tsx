@@ -168,6 +168,10 @@ export function MemoryGraph({ chatId, characterId, extractionVersion, full = fal
   useEffect(() => {
     if (!data || !canvasRef.current || !wrapRef.current) return;
     const canvas = canvasRef.current;
+    // Bound here rather than read through the ref inside resize(): the guard
+    // above already proved it is there, and the ref is not reassigned while
+    // this effect is mounted.
+    const wrap = wrapRef.current;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
@@ -183,7 +187,7 @@ export function MemoryGraph({ chatId, characterId, extractionVersion, full = fal
 
     const dpr = window.devicePixelRatio || 1;
     const resize = () => {
-      const rect = wrapRef.current!.getBoundingClientRect();
+      const rect = wrap.getBoundingClientRect();
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
       canvas.style.width = `${rect.width}px`;
