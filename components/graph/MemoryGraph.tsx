@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { getJson } from "@/lib/api/client";
 
 // ─── Data shapes (mirror /api/drawer/graph) ──────────────────────────────────
 
@@ -189,14 +190,10 @@ export function MemoryGraph({ chatId, characterId, extractionVersion, full = fal
     const key = `${chatId}:${characterId}:${extractionVersion}`;
     const url = `/api/drawer/graph?chatId=${encodeURIComponent(chatId)}` +
       (characterId ? `&characterId=${encodeURIComponent(characterId)}` : "");
-    fetch(url)
-      .then((r) => r.json())
-      .then((d: GraphPayload) => {
-        if (d.error) throw new Error(d.error);
-        if (!cancelled) setPayload({ key, data: d, error: null });
-      })
-      // A failed read used to render the same "nothing mapped yet" as an empty
-      // graph, so a broken endpoint read as a story with no memories.
+    // A failed read used to render the same "nothing mapped yet" as an empty
+    // graph, so a broken endpoint read as a story with no memories.
+    getJson<GraphPayload>(url)
+      .then((d) => { if (!cancelled) setPayload({ key, data: d, error: null }); })
       .catch((e: Error) => { if (!cancelled) setPayload({ key, data: null, error: e.message }); });
     return () => { cancelled = true; };
   }, [chatId, characterId, extractionVersion]);

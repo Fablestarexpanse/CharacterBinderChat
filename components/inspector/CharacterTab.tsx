@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Section } from "./Section";
 import { ExternalLink, Edit2, Heart, Shield, Flame, Link2, CloudSun, UserRound, ChevronDown, Check } from "lucide-react";
 import { useUiStore } from "@/lib/store/ui";
+import { getJson } from "@/lib/api/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -93,21 +94,19 @@ export function CharacterTab() {
     let cancelled = false;
 
     // Fetch summary (which includes relationships + stats)
-    fetch(`/api/drawer/summary/${encodeURIComponent(characterId)}?${chatParam}`)
-      .then((r) => r.json())
-      .then((data: { relationships?: RelationshipGroup[]; error?: string }) => {
-        if (data.error) throw new Error(data.error);
+    getJson<{ relationships?: RelationshipGroup[] }>(
+      `/api/drawer/summary/${encodeURIComponent(characterId)}?${chatParam}`
+    )
+      .then((data) => {
         if (!cancelled) { setRelationships(data.relationships ?? []); setDrawerError(null); }
       })
       .catch((e: Error) => { if (!cancelled) setDrawerError(e.message); });
 
     // character -> player: how this character feels about the user
-    fetch(`/api/drawer/stats?${chatParam}&observer=${encodeURIComponent(characterId)}&target=player`)
-      .then((r) => r.json())
-      .then((data: { stats?: StatRow[]; error?: string }) => {
-        if (data.error) throw new Error(data.error);
-        if (!cancelled) setStats(data.stats ?? []);
-      })
+    getJson<{ stats?: StatRow[] }>(
+      `/api/drawer/stats?${chatParam}&observer=${encodeURIComponent(characterId)}&target=player`
+    )
+      .then((data) => { if (!cancelled) setStats(data.stats ?? []); })
       .catch((e: Error) => { if (!cancelled) setDrawerError(e.message); });
 
     return () => { cancelled = true; };

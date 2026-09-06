@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Loader2, Heart, Shield, Flame, Link2, CloudSun } from "lucide-react";
 import { formatRelativeTime } from "./utils";
+import { getJson } from "@/lib/api/client";
 
 interface StatRow {
   name:        string;
@@ -44,15 +45,11 @@ export function RelationshipsView({ chatId, characterId, extractionVersion }: Pr
     let cancelled = false;
     const key = `${chatId}:${characterId}:${extractionVersion}`;
     // character → player: how this character feels about the user
-    fetch(`/api/drawer/stats?chatId=${encodeURIComponent(chatId)}&observer=${encodeURIComponent(characterId)}&target=player`)
-      .then((r) => r.json())
-      .then((data: { stats?: StatRow[]; error?: string }) => {
-        if (data.error) throw new Error(data.error);
-        if (!cancelled) setResult({ key, stats: data.stats ?? [], error: null });
-      })
-      .catch((e: Error) => {
-        if (!cancelled) setResult({ key, stats: [], error: e.message });
-      });
+    getJson<{ stats?: StatRow[] }>(
+      `/api/drawer/stats?chatId=${encodeURIComponent(chatId)}&observer=${encodeURIComponent(characterId)}&target=player`
+    )
+      .then((data) => { if (!cancelled) setResult({ key, stats: data.stats ?? [], error: null }); })
+      .catch((e: Error) => { if (!cancelled) setResult({ key, stats: [], error: e.message }); });
     return () => { cancelled = true; };
   }, [chatId, characterId, extractionVersion]);
 

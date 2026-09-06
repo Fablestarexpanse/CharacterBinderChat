@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { useFableStore } from "@/lib/store";
 import { Loader2, Trash2, Plus, X } from "lucide-react";
 import { formatRelativeTime, formatAbsTime } from "./utils";
+import { getJson } from "@/lib/api/client";
 
 interface EnrichedFact {
   id:            number;
@@ -44,15 +45,9 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
     let cancelled = false;
     const key = `${chatId}:${characterId}:${extractionVersion}:${showHistory ? 1 : 0}`;
     const url = `/api/drawer/facts?chatId=${encodeURIComponent(chatId)}&subject=${encodeURIComponent(characterId)}${showHistory ? "&includeSuperseded=1" : ""}`;
-    fetch(url)
-      .then((r) => r.json())
-      .then((data: { facts?: EnrichedFact[]; error?: string }) => {
-        if (data.error) throw new Error(data.error);
-        if (!cancelled) setResult({ key, facts: data.facts ?? [], error: null });
-      })
-      .catch((e: Error) => {
-        if (!cancelled) setResult({ key, facts: [], error: e.message });
-      });
+    getJson<{ facts?: EnrichedFact[] }>(url)
+      .then((data) => { if (!cancelled) setResult({ key, facts: data.facts ?? [], error: null }); })
+      .catch((e: Error) => { if (!cancelled) setResult({ key, facts: [], error: e.message }); });
     return () => { cancelled = true; };
   }, [chatId, characterId, extractionVersion, showHistory]);
 

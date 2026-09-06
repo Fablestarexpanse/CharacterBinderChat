@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Loader2, AlertTriangle, GitMerge } from "lucide-react";
+import { getJson } from "@/lib/api/client";
 
 interface EntityOverview {
   id:          string;
@@ -48,15 +49,9 @@ export function EntitiesView({ chatId, extractionVersion }: Props) {
   useEffect(() => {
     let cancelled = false;
     const key = `${chatId}:${extractionVersion}:${refreshTick}`;
-    fetch(`/api/drawer/entities/overview?chatId=${encodeURIComponent(chatId)}`)
-      .then((r) => r.json())
-      .then((d: OverviewResponse) => {
-        if (d.error) throw new Error(d.error);
-        if (!cancelled) setResult({ key, data: d, error: null });
-      })
-      .catch((e: Error) => {
-        if (!cancelled) setResult({ key, data: null, error: e.message });
-      });
+    getJson<OverviewResponse>(`/api/drawer/entities/overview?chatId=${encodeURIComponent(chatId)}`)
+      .then((d) => { if (!cancelled) setResult({ key, data: d, error: null }); })
+      .catch((e: Error) => { if (!cancelled) setResult({ key, data: null, error: e.message }); });
     return () => { cancelled = true; };
   }, [chatId, extractionVersion, refreshTick]);
 
