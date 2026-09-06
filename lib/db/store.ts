@@ -1287,10 +1287,20 @@ export class FableStore {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  /** Resolve a fact's object to a display string */
-  factObjectDisplay(chatId: string, fact: DbFact): string {
+  /**
+   * Resolve a fact's object to a display string.
+   *
+   * `lookup` defaults to a per-call query. Retrieval passes its own, backed by
+   * the batch it already fetched, so rendering twenty facts doesn't mean
+   * twenty more queries.
+   */
+  factObjectDisplay(
+    chatId: string,
+    fact: DbFact,
+    lookup: (id: string) => DbEntity | null = (id) => this.getEntity(chatId, id)
+  ): string {
     if (fact.objectId) {
-      const e = this.getEntity(chatId, fact.objectId);
+      const e = lookup(fact.objectId);
       if (e) return e.name + (fact.objectLiteral ? ` / "${fact.objectLiteral}"` : "");
       return fact.objectId;
     }
