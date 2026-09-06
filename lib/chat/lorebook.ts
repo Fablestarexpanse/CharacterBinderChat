@@ -62,8 +62,11 @@ export function matchLoreEntries(
   recentText: string,
   budget = LORE_TOKEN_BUDGET
 ): string[] {
+  // No early return on empty text: constant entries fire regardless of the
+  // conversation, and skipping them on the first turn of a new chat dropped
+  // exactly the always-on world lore the chat was started with. Keyword
+  // entries already fail to match an empty haystack.
   const haystack = recentText.toLowerCase();
-  if (!haystack.trim()) return [];
 
   const matched: LoreEntry[] = [];
   for (const book of lorebooks) {

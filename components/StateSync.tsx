@@ -31,6 +31,10 @@ export function StateSync() {
     let timer: ReturnType<typeof setTimeout> | null = null;
     let lastSaveAt = 0;
     let unsubscribe = () => {};
+    // The subscription is created after an await, so an unmount can beat it —
+    // the cleanup would then call the initial no-op and the real subscription
+    // would live on, saving state for a component that is gone.
+    let disposed = false;
 
     const save = async () => {
       lastSaveAt = Date.now();
@@ -106,6 +110,8 @@ export function StateSync() {
         useFableStore.getState().setSyncReady(true);
       }
 
+      if (disposed) return;
+
       // Subscribe only after hydration so the initial replace doesn't echo back
       unsubscribe = useFableStore.subscribe((state, prev) => {
         if (
@@ -124,6 +130,7 @@ export function StateSync() {
     })();
 
     return () => {
+      disposed = true;
       unsubscribe();
       if (timer) clearTimeout(timer);
     };

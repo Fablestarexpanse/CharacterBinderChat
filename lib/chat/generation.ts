@@ -16,6 +16,11 @@ import type { CoreMemoryGetResponse } from "@/app/api/chat/core-memory/route";
 
 let abortController: AbortController | null = null;
 
+// How many extractions are in flight. A turn can start one while the previous
+// is still running (long histories, a slow local model), and a plain boolean
+// meant the first to finish cleared the spinner for both.
+let extractionsInFlight = 0;
+
 export function stopGeneration(): void {
   abortController?.abort();
 }
@@ -412,6 +417,7 @@ function runExtraction(chatId: string, speakerId?: string): void {
     resolveRouteCredentials(chat.providerId, providerSettings);
   const modelId = chat.modelId ?? "llama3.2:latest";
 
+  extractionsInFlight++;
   setIsExtracting(true);
 
   // In groups every message carries its speaker's name so the extractor
@@ -501,5 +507,8 @@ function runExtraction(chatId: string, speakerId?: string): void {
       setLastExtractionError(errors.find((e) => e !== null) ?? null);
       bumpExtraction();
     })
-    .finally(() => setIsExtracting(false));
+    .finally(() => {
+      extractionsInFlight--;
+      if (extractionsInFlight === 0) setIsExtracting(false);
+    });
 }
