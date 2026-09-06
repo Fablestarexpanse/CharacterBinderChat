@@ -33,7 +33,7 @@ const ALWAYS_SENT: ParamKey[] = ["temperature", "maxTokens", "topP"];
 type Slot = "root" | "options";
 interface FieldSpec { field: string; slot: Slot }
 
-type SupportedProvider = "ollama" | "lmstudio" | "openrouter";
+type SupportedProvider = Exclude<ProviderId, "comfyui">;  // ComfyUI is images, not chat
 
 export const PARAM_MAP: Record<SupportedProvider, Partial<Record<ParamKey, FieldSpec>>> = {
   ollama: {

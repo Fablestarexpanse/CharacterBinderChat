@@ -89,14 +89,21 @@ export function StateSync() {
         ] as const).some((key) => (data[key]?.length ?? 0) > 0);
 
         if (serverHasData) {
+          // Checked, not asserted: the durable copy is JSON on disk that a
+          // crashed write or a hand-edit could leave malformed, and an entry
+          // without an id fails the route's own validation on the way back
+          // out — so the whole sync would start failing silently.
+          const withIds = <T,>(rows: T[] | undefined): T[] =>
+            (rows ?? []).filter((r): r is T => !!r && typeof (r as { id?: unknown }).id === "string");
+
           useFableStore.getState().hydrateFromServer({
-            characters: data.characters ?? [],
-            chats:      data.chats ?? [],
-            personas:   data.personas ?? [],
-            lorebooks:  data.lorebooks ?? [],
-            scenarios:  data.scenarios ?? [],
-            presets:    data.presets ?? [],
-            defaultPresetId:    data.defaultPresetId ?? null,
+            characters: withIds(data.characters),
+            chats:      withIds(data.chats).filter((c) => Array.isArray(c.messages)),
+            personas:   withIds(data.personas),
+            lorebooks:  withIds(data.lorebooks),
+            scenarios:  withIds(data.scenarios),
+            presets:    withIds(data.presets),
+            defaultPresetId:    typeof data.defaultPresetId === "string" ? data.defaultPresetId : null,
             globalInstructions: data.globalInstructions ?? {},
           });
         } else {
