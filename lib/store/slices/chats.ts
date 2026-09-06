@@ -67,6 +67,25 @@ export interface ChatsSlice {
   setIsGenerating: (v: boolean) => void;
 }
 
+/**
+ * Replace one message inside one chat, leaving every other object identity
+ * alone — four actions differed only in the patch they applied.
+ */
+function patchMessage(
+  state: { chats: Chat[] },
+  chatId: string,
+  messageId: string,
+  patch: (m: Message) => Message
+): { chats: Chat[] } {
+  return {
+    chats: state.chats.map((c) =>
+      c.id !== chatId
+        ? c
+        : { ...c, messages: c.messages.map((m) => (m.id === messageId ? patch(m) : m)) }
+    ),
+  };
+}
+
 export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (set, get) => ({
   chats: [],
   activeChatId: null,
@@ -159,20 +178,8 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
     }));
   },
 
-  updateMessageContent: (chatId, messageId, content) => {
-    set((state) => ({
-      chats: state.chats.map((c) =>
-        c.id === chatId
-          ? {
-              ...c,
-              messages: c.messages.map((m) =>
-                m.id === messageId ? { ...m, content } : m
-              ),
-            }
-          : c
-      ),
-    }));
-  },
+  updateMessageContent: (chatId, messageId, content) =>
+    set((s) => patchMessage(s, chatId, messageId, (m) => ({ ...m, content }))),
 
   setMessageMemoryTrace: (chatId, messageId, trace) => {
     set((state) => ({
@@ -202,50 +209,14 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
     }));
   },
 
-  markMessageError: (chatId, messageId) => {
-    set((state) => ({
-      chats: state.chats.map((c) =>
-        c.id === chatId
-          ? {
-              ...c,
-              messages: c.messages.map((m) =>
-                m.id === messageId ? { ...m, error: true } : m
-              ),
-            }
-          : c
-      ),
-    }));
-  },
+  markMessageError: (chatId, messageId) =>
+    set((s) => patchMessage(s, chatId, messageId, (m) => ({ ...m, error: true }))),
 
-  setMessageImageJob: (chatId, messageId, jobId) => {
-    set((state) => ({
-      chats: state.chats.map((c) =>
-        c.id === chatId
-          ? {
-              ...c,
-              messages: c.messages.map((m) =>
-                m.id === messageId ? { ...m, imageJobId: jobId } : m
-              ),
-            }
-          : c
-      ),
-    }));
-  },
+  setMessageImageJob: (chatId, messageId, jobId) =>
+    set((s) => patchMessage(s, chatId, messageId, (m) => ({ ...m, imageJobId: jobId }))),
 
-  toggleMessageCollapsed: (chatId, messageId) => {
-    set((state) => ({
-      chats: state.chats.map((c) =>
-        c.id === chatId
-          ? {
-              ...c,
-              messages: c.messages.map((m) =>
-                m.id === messageId ? { ...m, collapsed: !m.collapsed } : m
-              ),
-            }
-          : c
-      ),
-    }));
-  },
+  toggleMessageCollapsed: (chatId, messageId) =>
+    set((s) => patchMessage(s, chatId, messageId, (m) => ({ ...m, collapsed: !m.collapsed }))),
 
   setChatLorebooks: (chatId, lorebookIds) => {
     set((state) => ({
