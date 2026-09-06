@@ -250,13 +250,21 @@ npm run typecheck  # tsc --noEmit
 npm test           # 60 unit tests (node --test, no server, no API key)
 ```
 
-Those four run on every push (`.github/workflows/ci.yml`).
-
-Two suites need more than a checkout, so they stay manual:
+Those four run on every push, and so does the API suite — CI starts the dev
+server on a scratch database and points `FABLE_TEST_URL` at it
+(`.github/workflows/ci.yml`). To run that suite locally against your own server:
 
 ```bash
-FABLE_TEST_URL=http://localhost:3001 npm run test:api   # route contracts + bi-temporal invariants, against a running server
-npm run eval                                            # scripted scenarios through a real model (costs money)
+FABLE_TEST_URL=http://localhost:3001 npm run test:api   # route contracts + bi-temporal invariants
+```
+
+It writes only under per-run ids and cleans up after itself, but it does write,
+so point it at a scratch `FABLE_DB_PATH` if that matters to you.
+
+One suite stays manual — it calls a paid model and takes minutes:
+
+```bash
+npm run eval                                            # scripted scenarios through a real model
 ```
 
 `npm test` loads the app's own `.ts` modules through Node's type stripping — no build step and no test-only bundle, so nothing can pass there while the app fails. A small resolve hook (`tests/unit/loader.mjs`) teaches Node the `@/` alias and extensionless imports, so the suite reaches FableStore and retrieval as well as the pure modules.
