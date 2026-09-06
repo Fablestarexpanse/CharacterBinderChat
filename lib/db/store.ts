@@ -330,9 +330,10 @@ export class FableStore {
   }
 
   /** Raw embedding blob for a memory card (null when never embedded) */
-  getCardEmbedding(cardId: number): Float32Array | null {
-    const row = this.db.prepare("SELECT embedding FROM memory_cards WHERE id = ?").get(cardId) as
-      { embedding: Buffer | null } | undefined;
+  getCardEmbedding(chatId: string, cardId: number): Float32Array | null {
+    const row = this.db
+      .prepare("SELECT embedding FROM memory_cards WHERE id = ? AND chat_id = ?")
+      .get(cardId, chatId) as { embedding: Buffer | null } | undefined;
     return bufferToVec(row?.embedding ?? null);
   }
 
@@ -341,13 +342,13 @@ export class FableStore {
    * so the per-row accessors above meant one SQLite round trip per fact —
    * from inside a sort comparator, so the count was O(n log n), not O(n).
    */
-  getEmbeddings(table: "facts" | "memory_cards", ids: number[]): Map<number, Float32Array> {
+  getEmbeddings(chatId: string, table: "facts" | "memory_cards", ids: number[]): Map<number, Float32Array> {
     const map = new Map<number, Float32Array>();
     if (ids.length === 0) return map;
     const placeholders = ids.map(() => "?").join(",");
     const rows = this.db
-      .prepare(`SELECT id, embedding FROM ${table} WHERE id IN (${placeholders})`)
-      .all(...ids) as Array<{ id: number; embedding: Buffer | null }>;
+      .prepare(`SELECT id, embedding FROM ${table} WHERE chat_id = ? AND id IN (${placeholders})`)
+      .all(chatId, ...ids) as Array<{ id: number; embedding: Buffer | null }>;
     for (const row of rows) {
       const vec = bufferToVec(row.embedding);
       if (vec) map.set(row.id, vec);
@@ -373,9 +374,10 @@ export class FableStore {
   }
 
   /** Raw embedding blob for a fact (null when never embedded) */
-  getFactEmbedding(factId: number): Float32Array | null {
-    const row = this.db.prepare("SELECT embedding FROM facts WHERE id = ?").get(factId) as
-      { embedding: Buffer | null } | undefined;
+  getFactEmbedding(chatId: string, factId: number): Float32Array | null {
+    const row = this.db
+      .prepare("SELECT embedding FROM facts WHERE id = ? AND chat_id = ?")
+      .get(factId, chatId) as { embedding: Buffer | null } | undefined;
     return bufferToVec(row?.embedding ?? null);
   }
 
@@ -397,7 +399,7 @@ export class FableStore {
     const family = predicateFamily(predicate);
     for (const f of this.queryFacts(chatId, subjectId)) {
       if (excludeIds.has(f.id)) continue;
-      const other = this.getFactEmbedding(f.id);
+      const other = this.getFactEmbedding(chatId, f.id);
       if (!other) continue;
       const sim = cosine(vec, other);
       const bar = predicateFamily(f.predicate) === family ? threshold : 0.97;
