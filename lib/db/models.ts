@@ -7,6 +7,13 @@ export type CommitmentStatus = "active" | "fulfilled" | "broken" | "forgotten";
 
 export const STAT_NAMES: StatName[] = ["affection", "trust", "desire", "connection", "mood"];
 
+/** The runtime companion to EntityType — the schema CHECK constraint's list. */
+export const ENTITY_TYPES: EntityType[] = ["character", "place", "object", "faction", "concept"];
+
+export function isEntityType(v: unknown): v is EntityType {
+  return typeof v === "string" && (ENTITY_TYPES as string[]).includes(v);
+}
+
 export const DEFAULT_DECAY_RATES: Record<StatName, number> = {
   affection:  0.05,
   trust:      0.03,

@@ -13,7 +13,8 @@ import type { FableStore } from "@/lib/db/store";
 import { callLLM, parseLLMJson } from "@/lib/llm/callers";
 import { embedTexts, vecToBuffer } from "@/lib/llm/embeddings";
 import { syncStatsToCore, syncCommitmentsToCore } from "@/lib/server/coreMemory";
-import type { EntityType, StatName } from "@/lib/db/models";
+import { isEntityType } from "@/lib/db/models";
+import type { StatName } from "@/lib/db/models";
 import type { MemoryTaskRequest } from "@/lib/types";
 import type { ProviderType } from "@/lib/llm/callers";
 import { contentWords, coverage, jaccard } from "@/lib/text/overlap";
@@ -262,8 +263,9 @@ function writeEntities(
   for (const e of extracted.entities ?? []) {
     if (!e.id || !e.name) continue;
     if (resolver.aliasIfKnown(e.id, e.name)) continue; // folded onto an existing entity
-    const validTypes = ["character", "place", "object", "faction", "concept"];
-    const type = validTypes.includes(e.type) ? (e.type as EntityType) : "character";
+    // The model invents types; anything unrecognised becomes a character
+    // rather than tripping the schema CHECK mid-pipeline.
+    const type = isEntityType(e.type) ? e.type : "character";
     store.ensureEntity(chatId, e.id, type, e.name, e.description ?? "");
     writtenEntities.push(e.id);
   }

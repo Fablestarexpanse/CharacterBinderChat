@@ -139,7 +139,7 @@ export interface LoraEntry {
 }
 
 export interface ImageGenerationSettings {
-  provider: "comfyui" | "a1111";
+  provider: "comfyui";
   workflow: string;
   prompt: string;
   negativePrompt: string;
@@ -149,7 +149,8 @@ export interface ImageGenerationSettings {
   steps: number;
   cfg: number;
   sampler: string;
-  seed: number | -1;
+  /** -1 means "randomise at queue time" — see lib/providers/comfyui.ts */
+  seed: number;
   batchCount: number;
   /** Injected as `<lora:name:weight>` into the workflow's loraSyntaxNode */
   loras: LoraEntry[];
