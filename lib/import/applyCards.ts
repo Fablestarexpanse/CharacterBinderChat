@@ -8,11 +8,11 @@ import { useFableStore } from "@/lib/store";
 import {
   decodePngPayload,
   convertPayload,
-  downscaleImage,
   isPng,
   type ImportedCard,
   type ImportedLorebook,
 } from "./cardFile";
+import { downscaleImage } from "@/lib/image/downscale";
 import { useUiStore } from "@/lib/store/ui";
 
 export interface ImportResult {

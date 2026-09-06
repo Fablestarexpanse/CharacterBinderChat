@@ -10,7 +10,7 @@ import { useRef, useState } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { downscaleImage } from "@/lib/import/cardFile";
+import { downscaleImage } from "@/lib/image/downscale";
 import { Upload, X, Loader2 } from "lucide-react";
 
 export function AvatarPicker({

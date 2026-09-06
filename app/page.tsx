@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useFableStore } from "@/lib/store";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { ChatArea } from "@/components/chat/ChatArea";
@@ -20,6 +21,7 @@ import { StateSync } from "@/components/StateSync";
 import { DropImport } from "@/components/DropImport";
 import { useHydrated } from "@/lib/hooks/useHydrated";
 import { useUiStore } from "@/lib/store/ui";
+import { sendJson } from "@/lib/api/client";
 
 export default function Home() {
   const { activeChatId, syncReady } = useFableStore();
@@ -39,6 +41,28 @@ export default function Home() {
   // whole hydrate-or-seed effect — a second GET /api/state and, on an empty
   // server, a second seed PUT.
   const ready = hydrated && syncReady;
+
+  // ── Lazy stat decay ────────────────────────────────────────────────────────
+  // Once per session, apply Ebbinghaus decay. The server computes decay per-row
+  // from each stat's own last_updated timestamp; this just decides whether a new
+  // session began. It lives here rather than in ChatInput because Home is the
+  // only mount point that is always alive — hosted in the composer, decay never
+  // ran for a session that opened Settings or the Gallery and no chat.
+  useEffect(() => {
+    const LAST_SESSION_KEY = "fablechat:lastSessionAt";
+    const now = Date.now();
+    const lastStr = localStorage.getItem(LAST_SESSION_KEY);
+    localStorage.setItem(LAST_SESSION_KEY, String(now));
+
+    if (!lastStr) return; // first ever session — nothing to decay yet
+    if (now - Number(lastStr) < 15 * 60 * 1000) return; // same sitting, skip
+
+    // Fire-and-forget by design — nothing waits on decay — but through
+    // sendJson so a rejected request is a warning rather than a success: the
+    // bare fetch only caught network errors, so a 500 looked like it worked.
+    sendJson("POST", "/api/drawer/stats/decay")
+      .catch((e: Error) => console.warn("[decay]", e.message));
+  }, []);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">
