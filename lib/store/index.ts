@@ -27,8 +27,6 @@ export type SidebarSection =
 
 // ─── Inspector Panel ──────────────────────────────────────────────────────────
 
-// "summary" was removed (duplicated Memory + Core Mem); persisted selections
-// of it fall back to "character" in InspectorPanel.
 export type InspectorTab = "character" | "memory" | "graph" | "lore" | "image-studio" | "core-memory";
 
 // ─── Store Shape ──────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@
 // the AbortController stays module-local (not serialisable).
 
 import { useFableStore } from "@/lib/store";
-import { sendJson } from "@/lib/api/client";
+import { getJson, sendJson } from "@/lib/api/client";
 import { createChatProvider, resolveRouteCredentials } from "@/lib/providers/factory";
 import { buildSystemPrompt, estimateTokens } from "./promptBuilder";
 import { matchLoreEntries, booksForChat } from "./lorebook";
@@ -46,21 +46,18 @@ async function fetchCoreMemory(
     // Context lets retrieval rank facts by relevance to what's being discussed.
     // Capped so the query string stays a sane length.
     const ctxParam = context ? `&context=${encodeURIComponent(context.slice(0, 600))}` : "";
-    const res = await fetch(
-      `/api/chat/core-memory?chatId=${encodeURIComponent(chatId)}&characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}${ctxParam}`,
-      { cache: "no-store" }
+    const data = await getJson<CoreMemoryGetResponse>(
+      `/api/chat/core-memory?chatId=${encodeURIComponent(chatId)}&characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}${ctxParam}`
     );
-    if (!res.ok) return degraded(`HTTP ${res.status} — ${(await res.text()).slice(0, 200)}`);
-    const data = (await res.json()) as CoreMemoryGetResponse;
     return {
       coreMemory: data.coreMemory ?? null,
       knownFacts: data.knownFacts ?? [],
       episodes:   data.episodes ?? [],
       insights:   data.insights ?? [],
-      sharedLanguage:       data.sharedLanguage ?? [],
+      sharedLanguage: data.sharedLanguage ?? [],
     };
   } catch (e) {
-    return degraded(String(e));
+    return degraded(e instanceof Error ? e.message : String(e));
   }
 }
 

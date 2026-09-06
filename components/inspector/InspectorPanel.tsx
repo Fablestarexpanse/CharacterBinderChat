@@ -11,9 +11,6 @@ import { CoreMemoryTab } from "./CoreMemoryTab";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/lib/store/ui";
 
-// The old Summary tab duplicated Memory (facts/relationships) and Core Mem
-// (commitments) and was dropped; a persisted "summary" selection falls back
-// to Character below.
 const TABS: { id: InspectorTab; label: string }[] = [
   { id: "character",    label: "Character" },
   { id: "core-memory",  label: "Core Mem" },
@@ -31,7 +28,7 @@ export function InspectorPanel() {
   if (!inspectorOpen) return null;
 
   // Persisted selections may reference removed tabs
-  const activeTab = TABS.some((t) => t.id === inspectorTab) ? inspectorTab : "character";
+  const activeTab = inspectorTab;
 
   return (
     <aside className="flex flex-col h-full w-[280px] flex-shrink-0 border-l border-[var(--border)] bg-[var(--sidebar-bg)]">
