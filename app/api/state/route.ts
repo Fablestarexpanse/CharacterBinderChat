@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
-import { routeError } from "@/lib/api";
+import { routeError } from "@/lib/api/server";
 import type { PersistedAppState } from "@/lib/types";
 import { APP_COLLECTIONS } from "@/lib/db/appState";
 

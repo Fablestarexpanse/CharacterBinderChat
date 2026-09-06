@@ -5,7 +5,7 @@ import { getStore } from "@/lib/db";
 // queries for a type that cannot exist on read.
 import { ENTITY_TYPES, isEntityType } from "@/lib/db/models";
 import type { EntityType } from "@/lib/db/models";
-import { routeError } from "@/lib/api";
+import { routeError } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 

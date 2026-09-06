@@ -146,21 +146,26 @@ fablechat/
 ├── components/
 │   ├── characters/               # CharacterEditorDialog, PersonaEditorDialog
 │   ├── chat/                     # ChatHeader, ChatInput, MessageItem
-│   ├── graph/                    # MemoryGraph — the story-web canvas
 │   ├── inspector/                # CharacterTab, CoreMemoryTab, MemoryTab…
+│   │   ├── graph/                # MemoryGraph — the story-web canvas
+│   │   └── memory/               # Facts, Relationships, Entities sub-views
 │   ├── sections/                 # One screen per sidebar entry
 │   ├── sidebar/                  # Sidebar, SystemStatus
 │   ├── ui/                       # Hand-rolled primitives (dialog is the one Radix wrapper)
 │   └── StateSync.tsx             # Hydrate from SQLite, mirror edits back
 ├── lib/
+│   ├── api/                      # server.ts (routeError, envelope validator) + client.ts (getJson)
 │   ├── chat/                     # generation, promptBuilder, tokenBudget — client-safe
-│   ├── server/                   # memoryRewriter, retrieval, coreMemoryStore — SQLite-side
-│   ├── db/                       # FableStore (better-sqlite3), schema, models, predicates
+│   ├── server/                   # memoryExtractor, memoryRewriter, retrieval, coreMemory — SQLite-side
+│   ├── db/                       # FableStore (better-sqlite3), schema, models, rows, predicates
 │   ├── hooks/                    # useHydrated, useModelCatalog, useInspectedCharacter
 │   ├── import/                   # CharacterBinder / SillyTavern card parsing
 │   ├── llm/                      # Shared LLM transport, JSON parsing, embeddings
 │   ├── providers/                # Ollama, LMStudio, OpenRouter, ComfyUI adapters
-│   └── store/                    # Zustand client store (domain) + ui.ts (transient)
+│   ├── store/                    # Zustand client store (slices) + ui.ts (transient)
+│   ├── text/                     # Lexical overlap — the no-embeddings fallback
+│   ├── types.ts                  # Shared wire and domain types
+│   └── utils.ts                  # cn, downloads, time formatting, forbidden words
 └── data/
     └── fablestore.db             # auto-created SQLite database
 ```

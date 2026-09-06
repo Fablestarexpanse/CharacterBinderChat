@@ -1,5 +1,5 @@
 import { getStore } from "@/lib/db";
-import { routeError } from "@/lib/api";
+import { routeError } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 

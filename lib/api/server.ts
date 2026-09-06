@@ -1,3 +1,8 @@
+// ─── Route-side API helpers ───────────────────────────────────────────────────
+// Server half of lib/api/: what route handlers share. The browser half is
+// client.ts next to it — the directory says which runtime each belongs to,
+// the way lib/server and lib/chat do.
+
 // ─── Route error handling ─────────────────────────────────────────────────────
 
 /**

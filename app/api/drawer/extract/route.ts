@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { extractMemory } from "@/lib/server/memoryExtractor";
-import { parseMemoryTaskRequest, routeError } from "@/lib/api";
+import { parseMemoryTaskRequest, routeError } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 

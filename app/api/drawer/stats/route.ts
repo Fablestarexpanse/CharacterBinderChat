@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { STAT_NAMES } from "@/lib/db/models";
-import { routeError } from "@/lib/api";
+import { routeError } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 

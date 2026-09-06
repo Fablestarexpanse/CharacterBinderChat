@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { embedText } from "@/lib/llm/embeddings";
 import type { CoreMemory } from "@/lib/db/models";
-import { routeError } from "@/lib/api";
+import { routeError } from "@/lib/api/server";
 import { retrieveEpisodesForPrompt, retrieveFactsForPrompt } from "@/lib/server/retrieval";
 
 export const dynamic = "force-dynamic";

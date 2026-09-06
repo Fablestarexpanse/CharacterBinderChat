@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { callLLM, parseLLMJson } from "@/lib/llm/callers";
 import { embedText, vecToBuffer } from "@/lib/llm/embeddings";
-import { parseMemoryTaskRequest, routeError } from "@/lib/api";
+import { parseMemoryTaskRequest, routeError } from "@/lib/api/server";
 import { episodePrompt, reflectPrompt } from "@/lib/server/episodePrompts";
 import { retrieveFactsForPrompt } from "@/lib/server/retrieval";
 

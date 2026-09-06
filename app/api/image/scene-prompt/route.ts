@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { routeError } from "@/lib/api";
+import { routeError } from "@/lib/api/server";
 import { parseProviderBase } from "@/lib/llm/callers";
 import {
   buildDirectorMessages, looksLikeInstructionLeak,

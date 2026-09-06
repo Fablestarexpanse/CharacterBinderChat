@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { routeError } from "@/lib/api";
+import { routeError } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 
