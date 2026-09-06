@@ -250,7 +250,7 @@ Those four run on every push (`.github/workflows/ci.yml`).
 Two suites need more than a checkout, so they stay manual:
 
 ```bash
-FABLE_TEST_URL=http://localhost:3001 npm run test:api   # bi-temporal invariants against a running server
+FABLE_TEST_URL=http://localhost:3001 npm run test:api   # route contracts + bi-temporal invariants, against a running server
 npm run eval                                            # scripted scenarios through a real model (costs money)
 ```
 
