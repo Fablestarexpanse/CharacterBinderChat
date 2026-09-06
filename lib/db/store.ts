@@ -10,6 +10,7 @@ import { isSingleValued, normPredicate, predicateFamily } from "./predicates";
 import { bufferToVec, cosine } from "@/lib/llm/embeddings";
 import { contentWords, jaccard, normalizeText } from "@/lib/text/overlap";
 import type { PersistedAppState } from "@/lib/types";
+import { getAppState, replaceAppState } from "./appState";
 import type {
   DbEntity,
   DbFact,
@@ -1040,88 +1041,14 @@ export class FableStore {
   // `seq` preserves array order. Full-replace semantics: the client sends its
   // complete state and the transaction rewrites the mirror atomically.
 
-  /** Small singleton values that aren't collections (default preset, global
-   *  instructions). Upserted rather than wiped so a client that omits one
-   *  doesn't null it. */
-  private getKv<T>(key: string, fallback: T): T {
-    const row = this.db.prepare("SELECT value FROM app_kv WHERE key = ?").get(key) as
-      | { value: string }
-      | undefined;
-    if (!row) return fallback;
-    try {
-      return JSON.parse(row.value) as T;
-    } catch {
-      return fallback;
-    }
-  }
-
   getAppState(): PersistedAppState {
-    const read = (table: string) =>
-      (this.db.prepare(`SELECT data FROM ${table} ORDER BY seq`).all() as Array<{ data: string }>)
-        .map((r) => JSON.parse(r.data));
-
-    const chatRows = this.db
-      .prepare("SELECT id, data FROM app_chats ORDER BY seq")
-      .all() as Array<{ id: string; data: string }>;
-    const msgStmt = this.db.prepare(
-      "SELECT data FROM app_messages WHERE chat_id = ? ORDER BY seq"
-    );
-    const chats = chatRows.map((row) => ({
-      ...(JSON.parse(row.data) as Record<string, unknown>),
-      messages: (msgStmt.all(row.id) as Array<{ data: string }>).map((m) => JSON.parse(m.data)),
-    })) as PersistedAppState["chats"];
-
-    return {
-      characters: read("app_characters"),
-      personas:   read("app_personas"),
-      lorebooks:  read("app_lorebooks"),
-      scenarios:  read("app_scenarios"),
-      presets:    read("app_presets"),
-      chats,
-      defaultPresetId:    this.getKv<string | null>("defaultPresetId", null),
-      globalInstructions: this.getKv<PersistedAppState["globalInstructions"]>("globalInstructions", {}),
-    };
+    return getAppState(this.db);
   }
 
   /** `defaultPresetId`/`globalInstructions` omitted (undefined) means "leave as-is". */
   replaceAppState(state: Partial<PersistedAppState> &
     Pick<PersistedAppState, "characters" | "chats">): void {
-    const { chats, defaultPresetId, globalInstructions } = state;
-
-    const tx = this.db.transaction(() => {
-      for (const [field, table] of APP_COLLECTIONS) {
-        this.db.prepare(`DELETE FROM ${table}`).run();
-        const ins = this.db.prepare(
-          `INSERT OR REPLACE INTO ${table} (id, seq, data) VALUES (?, ?, ?)`
-        );
-        (state[field] ?? []).forEach((row, i) => ins.run(row.id, i, JSON.stringify(row)));
-      }
-
-      // app_kv is upserted, never cleared — an older client that doesn't send
-      // these fields must not wipe them.
-      const insKv = this.db.prepare(
-        "INSERT OR REPLACE INTO app_kv (key, value) VALUES (?, ?)"
-      );
-      if (defaultPresetId !== undefined) insKv.run("defaultPresetId", JSON.stringify(defaultPresetId));
-      if (globalInstructions !== undefined) insKv.run("globalInstructions", JSON.stringify(globalInstructions));
-
-      // Chats are the one collection that isn't flat: messages live in their
-      // own table, keyed by chat, so they are cleared and written together.
-      this.db.prepare("DELETE FROM app_chats").run();
-      this.db.prepare("DELETE FROM app_messages").run();
-      const insChat = this.db.prepare(
-        "INSERT OR REPLACE INTO app_chats (id, seq, data) VALUES (?, ?, ?)"
-      );
-      const insMsg = this.db.prepare(
-        "INSERT OR REPLACE INTO app_messages (id, chat_id, seq, data) VALUES (?, ?, ?, ?)"
-      );
-      chats.forEach((chat, i) => {
-        const { messages = [], ...meta } = chat;
-        insChat.run(chat.id, i, JSON.stringify(meta));
-        messages.forEach((m, j) => insMsg.run(m.id, chat.id, j, JSON.stringify(m)));
-      });
-    });
-    tx();
+    replaceAppState(this.db, state);
   }
 
   // ── Memory lifecycle ──────────────────────────────────────────────────────
