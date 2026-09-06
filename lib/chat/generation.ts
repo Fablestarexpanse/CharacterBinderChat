@@ -32,7 +32,7 @@ interface CoreMemoryResponse {
   knownFacts: string[];
   episodes:   string[];
   insights:   string[];
-  bits:       string[];
+  sharedLanguage:       string[];
 }
 
 async function fetchCoreMemory(
@@ -56,7 +56,7 @@ async function fetchCoreMemory(
       knownFacts: data.knownFacts ?? [],
       episodes:   data.episodes ?? [],
       insights:   data.insights ?? [],
-      bits:       data.bits ?? [],
+      sharedLanguage:       data.sharedLanguage ?? [],
     };
   } catch (e) {
     return degraded(String(e));
@@ -74,7 +74,7 @@ async function fetchCoreMemory(
 function degraded(reason: string): CoreMemoryResponse {
   console.warn("[core-memory] fetch failed, generating without memory:", reason);
   useFableStore.getState().setLastExtractionError(`memory could not be loaded — ${reason}`);
-  return { coreMemory: null, knownFacts: [], episodes: [], insights: [], bits: [] };
+  return { coreMemory: null, knownFacts: [], episodes: [], insights: [], sharedLanguage: [] };
 }
 
 // ─── Group helpers ────────────────────────────────────────────────────────────
@@ -159,9 +159,9 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
     // ── Fetch Core Memory (Drawer 1) + Drawer 2 known facts ────────────────
     // The last few turns act as the relevance signal for fact retrieval
     const recentText = chat.messages.slice(-3).map((m) => m.content).join(" ");
-    const { coreMemory, knownFacts, episodes, insights, bits } = character
+    const { coreMemory, knownFacts, episodes, insights, sharedLanguage } = character
       ? await fetchCoreMemory(chatId, character.id, character.name, recentText)
-      : { coreMemory: null, knownFacts: [], episodes: [], insights: [], bits: [] };
+      : { coreMemory: null, knownFacts: [], episodes: [], insights: [], sharedLanguage: [] };
 
     // ── Build message history within the model's token budget ──────────────
     const persona = store.personas.find((p) => p.id === store.activePersonaId) ?? null;
@@ -182,7 +182,7 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
     let systemPrompt = buildSystemPrompt({
       character: promptCharacter,
       coreMemory, persona,
-      knownFacts, episodes, insights, lore, bits,
+      knownFacts, episodes, insights, lore, sharedLanguage,
       globalPrompt:   resolved.globalPrompt,
       customPrompt:   resolved.customPrompt,
       forbiddenWords: resolved.forbiddenWords,
@@ -255,7 +255,7 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
     // Provenance: record exactly which memory was injected into this reply's
     // prompt, so the message can answer "why did you say that?"
     store.setMessageMemoryTrace(chatId, assistantMsgId, {
-      facts: knownFacts, episodes, insights, bits, lore,
+      facts: knownFacts, episodes, insights, sharedLanguage, lore,
       storyTime: coreMemory?.story_time ?? null,
     });
 

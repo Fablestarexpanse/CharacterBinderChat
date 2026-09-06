@@ -66,12 +66,14 @@ export interface Message {
  *  that?" inspector. Recorded at generation time from the exact injected
  *  prompt sections. */
 export interface MemoryTrace {
-  facts:      string[];
-  episodes:   string[];
-  insights:   string[];
-  bits:       string[];
-  lore:       string[];
-  storyTime?: string | null;
+  facts:          string[];
+  episodes:       string[];
+  insights:       string[];
+  sharedLanguage: string[];
+  lore:           string[];
+  storyTime?:     string | null;
+  /** Traces written before the field was renamed from `bits`. Read-only. */
+  bits?:          string[];
 }
 
 export interface Chat {

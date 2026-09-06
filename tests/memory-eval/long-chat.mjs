@@ -243,7 +243,7 @@ async function fetchMemory(context = "") {
 // The harness passes no preset, so [Global Instructions], [Preset
 // Instructions] and the forbidden-words line stay absent — a non-empty global
 // prompt puts a run off this measured baseline.
-function systemPrompt(cm, knownFacts, { withMemory = true, episodes = [], insights = [], bits = [] } = {}) {
+function systemPrompt(cm, knownFacts, { withMemory = true, episodes = [], insights = [], sharedLanguage = [] } = {}) {
   return buildSystemPrompt({
     character:  CHARACTER,
     persona:    PERSONA,
@@ -251,7 +251,7 @@ function systemPrompt(cm, knownFacts, { withMemory = true, episodes = [], insigh
     knownFacts: withMemory ? knownFacts : [],
     episodes:   withMemory ? episodes : [],
     insights:   withMemory ? insights : [],
-    bits:       withMemory ? bits : [],
+    sharedLanguage:       withMemory ? sharedLanguage : [],
   });
 }
 
@@ -371,7 +371,7 @@ async function main() {
       const cm = mem.coreMemory ?? null;
       const knownFacts = mem.knownFacts ?? [];
       const system = systemPrompt(cm, knownFacts, {
-        episodes: mem.episodes ?? [], insights: mem.insights ?? [], bits: mem.bits ?? [],
+        episodes: mem.episodes ?? [], insights: mem.insights ?? [], sharedLanguage: mem.sharedLanguage ?? [],
       });
 
       const reply = await chat([{ role: "system", content: system }, ...history], {
@@ -451,7 +451,7 @@ async function main() {
         // shared language included; facts alone understated it.
         const memOnly = await chat([
           { role: "system", content: systemPrompt(cm, knownFacts, {
-            episodes: mem.episodes ?? [], insights: mem.insights ?? [], bits: mem.bits ?? [],
+            episodes: mem.episodes ?? [], insights: mem.insights ?? [], sharedLanguage: mem.sharedLanguage ?? [],
           }) },
           { role: "user", content: PROBE_QUESTION },
         ], { temperature: 0.3, maxTokens: 320 });

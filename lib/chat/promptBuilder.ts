@@ -92,7 +92,7 @@ export function formatCoreMemoryBlock(cm: CoreMemory): string {
 /**
  * Everything that can go into a system prompt. An options object rather than
  * positionals: the list ran to eight arguments, five of them consecutive
- * `string[]`, so transposing lore and bits was silently type-correct.
+ * `string[]`, so transposing lore and sharedLanguage was silently type-correct.
  */
 export interface SystemPromptInput {
   character?:  Character | null;
@@ -105,7 +105,7 @@ export interface SystemPromptInput {
   /** Keyword-triggered lorebook entries */
   lore?:       string[];
   /** Shared language: nicknames, running jokes */
-  bits?:       string[];
+  sharedLanguage?: string[];
   /** Standing instructions from the active preset and the global settings */
   globalPrompt?:   string;
   customPrompt?:   string;
@@ -120,7 +120,7 @@ export interface SystemPromptInput {
  */
 export function buildSystemPrompt({
   character, coreMemory, persona,
-  knownFacts, episodes, insights, lore, bits,
+  knownFacts, episodes, insights, lore, sharedLanguage,
   globalPrompt, customPrompt, forbiddenWords,
 }: SystemPromptInput): string {
   if (!character) return "You are a helpful assistant.";
@@ -193,10 +193,10 @@ export function buildSystemPrompt({
   }
 
   // ── Shared language: the texture of the relationship ─────────────────────
-  if (bits && bits.length > 0) {
+  if (sharedLanguage && sharedLanguage.length > 0) {
     sections.push(
       `[Shared Language]\nNicknames, running jokes and little rituals between you two — use them the way old friends do, without explaining them:\n` +
-      bits.map((b) => `  - ${b}`).join("\n")
+      sharedLanguage.map((b) => `  - ${b}`).join("\n")
     );
   }
 

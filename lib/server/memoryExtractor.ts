@@ -10,7 +10,7 @@
 
 import { getStore } from "@/lib/db";
 import type { FableStore } from "@/lib/db/store";
-import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
+import { callLLM, parseLLMJson } from "@/lib/llm/callers";
 import { embedTexts, vecToBuffer } from "@/lib/llm/embeddings";
 import { syncStatsToCore, syncCommitmentsToCore } from "@/lib/server/coreMemoryStore";
 import type { EntityType, StatName } from "@/lib/db/models";
@@ -447,15 +447,15 @@ function writeBondCards(
   // ── Shared language (bond cards) ──────────────────────────────────────
   // Running gags / nicknames / rituals. upsert: a re-mention reinforces the
   // existing card instead of duplicating it.
-  const writtenBits: string[] = [];
+  const writtenSharedLanguage: string[] = [];
   const validKinds = ["nickname", "joke", "ritual", "phrase"];
   for (const bit of extracted.shared_language ?? []) {
     if (!bit.text?.trim()) continue;
     const kind = validKinds.includes(bit.kind) ? bit.kind : "phrase";
-    const { reinforced } = store.upsertBondCard(chatId, kind, bit.text.trim());
-    writtenBits.push(`${kind}:${bit.text.trim().slice(0, 40)}${reinforced ? " (reinforced)" : ""}`);
+    const { reinforced } = store.upsertSharedLanguageCard(chatId, kind, bit.text.trim());
+    writtenSharedLanguage.push(`${kind}:${bit.text.trim().slice(0, 40)}${reinforced ? " (reinforced)" : ""}`);
   }
-  return writtenBits;
+  return writtenSharedLanguage;
 }
 
 // ─── Route Handler ────────────────────────────────────────────────────────────
@@ -471,7 +471,7 @@ export type ExtractionResult =
       folded: number;
       stats: string[];
       commitments: string[];
-      bits: string[];
+      sharedLanguage: string[];
       remapped: string[];
       rawModel: string;
     };
@@ -529,13 +529,7 @@ export async function extractMemory(
 
   // ── Call LLM ──────────────────────────────────────────────────────────
 
-  let rawText: string;
-
-  if (providerType === "ollama") {
-    rawText = await callOllama(providerBaseUrl, modelId, prompt);
-  } else {
-    rawText = await callOpenAICompat(providerBaseUrl, modelId, prompt, apiKey);
-  }
+  const rawText = await callLLM({ providerType, providerBaseUrl, modelId, apiKey }, prompt);
 
   // Parse failure must be distinguishable from "nothing to extract" — an
   // empty-object fallback here would make a model that can't emit JSON look
@@ -563,7 +557,7 @@ export async function extractMemory(
   const foldedFacts        = await embedNewFacts(store, chatId, writtenFacts);
   const writtenCommitments = writeCommitments(store, chatId, extracted, resolver);
   resolveCommitments(store, chatId, extracted);
-  const writtenBits        = writeBondCards(store, chatId, extracted);
+  const writtenSharedLanguage        = writeBondCards(store, chatId, extracted);
 
   // ── Story clock ───────────────────────────────────────────────────────
   // The in-fiction "now" — lets the prompt surface commitments whose moment
@@ -589,7 +583,7 @@ export async function extractMemory(
     folded:      foldedFacts.length,
     stats:       writtenStats,
     commitments: writtenCommitments,
-    bits:        writtenBits,
+    sharedLanguage:        writtenSharedLanguage,
     // Which model-minted ids were folded onto existing entities. A large or
     // growing list means the prompt's identity anchoring is losing.
     remapped: resolver.remapped.map(([from, to]) => `${from}->${to}`),

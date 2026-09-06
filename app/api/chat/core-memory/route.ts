@@ -19,7 +19,7 @@ export interface CoreMemoryGetResponse {
   knownFacts: string[];
   episodes:   string[];
   insights:   string[];
-  bits:       string[];
+  sharedLanguage: string[];
 }
 
 // ─── GET /api/chat/core-memory ───────────────────────────────────────────────
@@ -54,10 +54,10 @@ export async function GET(req: NextRequest) {
     const insights = cards.filter((c) => c.tags.includes("reflection"))
       .slice(0, 2).map((c) => c.content);
     // Shared language: nicknames / running jokes / rituals, strongest first
-    const bits = store.listBondCards(chatId, 6).map((c) => c.content);
+    const sharedLanguage = store.listSharedLanguageCards(chatId, 6).map((c) => c.content);
     const body: CoreMemoryGetResponse = {
       coreMemory: cm.data, version: cm.version, updatedAt: cm.updatedAt,
-      knownFacts, episodes, insights, bits,
+      knownFacts, episodes, insights, sharedLanguage,
     };
     return Response.json(body);
   } catch (err) {

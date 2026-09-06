@@ -5,7 +5,7 @@
 // Called after a batch of messages.
 
 import { getStore } from "@/lib/db";
-import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
+import { callLLM, parseLLMJson } from "@/lib/llm/callers";
 import type { CoreMemory } from "@/lib/db/models";
 
 // ─── Rewrite prompt ───────────────────────────────────────────────────────────
@@ -113,11 +113,7 @@ export async function rewriteCoreMemory(opts: RewriteOptions): Promise<{
 
   let rawText: string;
   try {
-    if (opts.providerType === "ollama") {
-      rawText = await callOllama(opts.providerBaseUrl, opts.modelId, prompt);
-    } else {
-      rawText = await callOpenAICompat(opts.providerBaseUrl, opts.modelId, prompt, opts.apiKey);
-    }
+    rawText = await callLLM(opts, prompt);
   } catch (err) {
     return { ok: false, changed: false, error: String(err) };
   }

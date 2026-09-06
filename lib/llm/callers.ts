@@ -23,6 +23,25 @@ export function isProviderType(v: unknown): v is ProviderType {
  * as well as the host — file:, data: and friends — so the parse and the
  * protocol check are not optional.
  */
+/** What a server-side memory task needs to reach a model. */
+export interface LlmBackend {
+  providerType:    ProviderType;
+  providerBaseUrl: string;
+  modelId:         string;
+  apiKey?:         string;
+}
+
+/**
+ * Call whichever backend the request named. The ollama-vs-OpenAI-compatible
+ * branch was written out at three call sites, all of them one shape.
+ */
+export function callLLM(backend: LlmBackend, prompt: string): Promise<string> {
+  const { providerType, providerBaseUrl, modelId, apiKey } = backend;
+  return providerType === "ollama"
+    ? callOllama(providerBaseUrl, modelId, prompt)
+    : callOpenAICompat(providerBaseUrl, modelId, prompt, apiKey);
+}
+
 export function parseProviderBase(raw: string): string | null {
   let url: URL;
   try {

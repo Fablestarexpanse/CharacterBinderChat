@@ -257,12 +257,15 @@ function MemoryTraceDialog({
   trace: MemoryTrace;
   characterName: string;
 }) {
+  // `?? []` throughout: traces are persisted with the messages, so a chat
+  // written before a field existed (or was renamed — `bits` became
+  // `sharedLanguage`) still has to render.
   const sections: Array<{ label: string; items: string[] }> = [
-    { label: "Known facts",      items: trace.facts },
-    { label: "Memorable scenes", items: trace.episodes },
-    { label: "Understandings",   items: trace.insights },
-    { label: "Shared language",  items: trace.bits },
-    { label: "World lore",       items: trace.lore },
+    { label: "Known facts",      items: trace.facts ?? [] },
+    { label: "Memorable scenes", items: trace.episodes ?? [] },
+    { label: "Understandings",   items: trace.insights ?? [] },
+    { label: "Shared language",  items: trace.sharedLanguage ?? trace.bits ?? [] },
+    { label: "World lore",       items: trace.lore ?? [] },
   ].filter((s) => s.items.length > 0);
 
   return (

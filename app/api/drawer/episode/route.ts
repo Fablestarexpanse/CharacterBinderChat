@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
-import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
+import { callLLM, parseLLMJson } from "@/lib/llm/callers";
 import { embedText, vecToBuffer } from "@/lib/llm/embeddings";
 import { parseMemoryTaskRequest, routeError } from "@/lib/api";
 import { retrieveFactsForPrompt } from "@/lib/server/retrieval";
@@ -109,9 +109,7 @@ export async function POST(req: NextRequest) {
       prompt = episodePrompt(conversation, characterName ?? characterId, userLabel, entityIds);
     }
 
-    const rawText = providerType === "ollama"
-      ? await callOllama(providerBaseUrl, modelId, prompt)
-      : await callOpenAICompat(providerBaseUrl, modelId, prompt, apiKey);
+    const rawText = await callLLM({ providerType, providerBaseUrl, modelId, apiKey }, prompt);
 
     if (mode === "reflect") {
       const parsed = parseLLMJson<{ insights?: Array<{ title?: string; content?: string; importance?: number }> } | null>(rawText, null);

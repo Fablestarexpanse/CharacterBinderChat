@@ -767,7 +767,7 @@ export class FableStore {
    * (content-word Jaccard ≥ 0.5). Reinforcement bumps importance so the bits
    * a pair actually keeps using rise to the top of the injected list.
    */
-  upsertBondCard(chatId: string, kind: string, text: string): { id: number; reinforced: boolean } {
+  upsertSharedLanguageCard(chatId: string, kind: string, text: string): { id: number; reinforced: boolean } {
     const incoming = contentWords(text);
     const incomingNorm = normalizeText(text);
 
@@ -798,7 +798,7 @@ export class FableStore {
   }
 
   /** Bond cards, strongest (most-reinforced) first. */
-  listBondCards(chatId: string, limit = 6): DbMemoryCard[] {
+  listSharedLanguageCards(chatId: string, limit = 6): DbMemoryCard[] {
     return this.listMemoryCards(chatId)
       .filter((c) => c.tags.includes("bond"))
       .sort((a, b) => b.importance - a.importance || b.updatedAt - a.updatedAt)
