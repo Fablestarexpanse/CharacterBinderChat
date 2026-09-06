@@ -12,7 +12,7 @@ import { getStore } from "@/lib/db";
 import type { FableStore } from "@/lib/db/store";
 import { callLLM, parseLLMJson } from "@/lib/llm/callers";
 import { embedTexts, vecToBuffer } from "@/lib/llm/embeddings";
-import { syncStatsToCore, syncCommitmentsToCore } from "@/lib/server/coreMemoryStore";
+import { syncStatsToCore, syncCommitmentsToCore } from "@/lib/server/coreMemory";
 import type { EntityType, StatName } from "@/lib/db/models";
 import type { MemoryTaskRequest } from "@/lib/types";
 import type { ProviderType } from "@/lib/llm/callers";
