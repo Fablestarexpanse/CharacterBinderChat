@@ -46,7 +46,7 @@ function badRequest(error: string): { ok: false; response: Response } {
 export function parseMemoryTaskRequest(
   raw: unknown,
   { requireMessages = true }: { requireMessages?: boolean } = {}
-): Parsed<MemoryTaskRequest & { providerType: NonNullable<MemoryTaskRequest["providerType"]> }> {
+): Parsed<MemoryTaskRequest> {
   const body = (raw ?? {}) as MemoryTaskRequest;
   const { chatId, characterId, messages, providerType, providerBaseUrl, modelId } = body;
 

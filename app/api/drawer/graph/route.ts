@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { routeError } from "@/lib/api/server";
+import type { GraphPayload } from "@/lib/api/dto";
 
 export const dynamic = "force-dynamic";
 
@@ -89,7 +90,7 @@ export async function GET(req: NextRequest) {
       commitments,
       bond,
       mood,
-    });
+    } satisfies GraphPayload);
   } catch (err) {
     return routeError("[drawer/graph]", err);
   }

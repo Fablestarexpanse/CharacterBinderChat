@@ -931,7 +931,7 @@ export class FableStore {
          ON CONFLICT(chat_id, character_id)
          DO UPDATE SET data = excluded.data, version = excluded.version, updated_at = excluded.updated_at`
       )
-      .run(chatId, cm.characterId, JSON.stringify({ ...cm, updatedAt: new Date(t * 1000).toISOString() }), cm.version ?? 1, t);
+      .run(chatId, cm.characterId, JSON.stringify({ ...cm, updatedAt: new Date(t * 1000).toISOString() }), cm.version, t);
   }
 
   /** Partial update — merges top-level keys only (not nested objects) */
@@ -939,7 +939,7 @@ export class FableStore {
     const existing = this.getCoreMemory(chatId, characterId);
     if (!existing) return null;
     const merged: CoreMemory = { ...existing.data, ...patch, characterId };
-    merged.version = (existing.version ?? 0) + 1;
+    merged.version = existing.version + 1;
     this.setCoreMemory(chatId, merged);
     return this.getCoreMemory(chatId, characterId);
   }

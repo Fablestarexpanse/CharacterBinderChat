@@ -6,8 +6,7 @@
 // different ways. Types only: this file is safe on both runtimes, so a
 // component no longer has to reach into app/api/**/route.ts for a contract.
 
-import type { CoreMemory } from "@/lib/db/models";
-import type { StatName } from "@/lib/db/models";
+import type { CoreMemory, StatName, EntityType, CommitmentStatus } from "@/lib/db/models";
 
 /** GET /api/chat/core-memory */
 export interface CoreMemoryGetResponse {
@@ -56,7 +55,7 @@ export interface WorkflowSummary {
 
 /** GET /api/drawer/graph — the story web. */
 export interface GraphEntity {
-  id: string; name: string; type: string; kind: "entity";
+  id: string; name: string; type: EntityType; kind: "entity";
   isCharacter: boolean; isPlayer: boolean;
 }
 export interface GraphCard {
@@ -64,7 +63,7 @@ export interface GraphCard {
   kind: "episode" | "insight"; importance: number; entityIds: string[];
 }
 export interface GraphCommitment {
-  id: string; name: string; description: string; status: string;
+  id: string; name: string; description: string; status: CommitmentStatus;
   promisorId: string; promiseeId: string | null; kind: "commitment";
 }
 export interface GraphPayload {

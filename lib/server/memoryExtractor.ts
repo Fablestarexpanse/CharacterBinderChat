@@ -15,14 +15,14 @@ import { embedTexts, vecToBuffer } from "@/lib/llm/embeddings";
 import { syncStatsToCore, syncCommitmentsToCore } from "@/lib/server/coreMemory";
 import { isEntityType, isWritableStatName } from "@/lib/db/models";
 import type { StatName } from "@/lib/db/models";
-import type { MemoryTaskRequest } from "@/lib/types";
+import type { MemoryTaskRequest, MessageRole } from "@/lib/types";
 import type { ProviderType } from "@/lib/llm/callers";
 import { contentWords, coverage, jaccard } from "@/lib/text/overlap";
 
 // ─── Extraction Prompt ────────────────────────────────────────────────────────
 
 interface ExtractionPromptInput {
-  messages:       Array<{ role: string; content: string; speaker?: string }>;
+  messages:       Array<{ role: MessageRole; content: string; speaker?: string }>;
   characterName:  string;
   characterId:    string;
   /** Display name for the human side of the conversation */
@@ -168,10 +168,13 @@ ${conversation}`;
 
 // ─── Extraction result shape ──────────────────────────────────────────────────
 
+// Every member is optional because the model decides what to emit and
+// parseLLMJson casts whatever came back. The reads all guard with ?? [];
+// declaring these required made that guarding look like dead defence.
 interface RawExtraction {
-  entities:    Array<{ id: string; type: string; name: string; description?: string }>;
-  facts:       Array<{ subject: string; predicate: string; object: string; confidence?: number; importance?: number }>;
-  stat_changes:Array<{ observer: string; target: string; stat: StatName; delta: number }>;
+  entities?:    Array<{ id: string; type: string; name: string; description?: string }>;
+  facts?:       Array<{ subject: string; predicate: string; object: string; confidence?: number; importance?: number }>;
+  stat_changes?:Array<{ observer: string; target: string; stat: StatName; delta: number }>;
   commitments?: Array<{ promisor: string; promisee?: string; description: string }>;
   resolved_commitments?: Array<{ match: string; status: string }>;
   shared_language?: Array<{ kind: string; text: string }>;

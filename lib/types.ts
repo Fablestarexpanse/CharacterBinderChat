@@ -1,5 +1,7 @@
 // ─── Core Data Models ────────────────────────────────────────────────────────
 
+import type { ProviderType } from "@/lib/llm/callers";
+
 export type MessageRole = "user" | "assistant" | "system";
 
 export interface Character {
@@ -174,7 +176,9 @@ export interface ImageJob {
 
 // ─── Provider Types ───────────────────────────────────────────────────────────
 
-export type ProviderId = "ollama" | "lmstudio" | "openrouter" | "comfyui";
+/** Every backend the app talks to. ComfyUI is an image backend and stays
+ *  outside ProviderType, which is the union callLLM branches on. */
+export type ProviderId = ProviderType | "comfyui";
 
 export interface ModelInfo {
   id: string;
@@ -231,14 +235,14 @@ export interface MemoryTaskRequest {
   personaName?:    string;
   /** Recent turns. In groups each carries its speaker's display name, so the
    *  extractor never attributes one character's line to another. */
-  messages:        Array<{ role: string; content: string; speaker?: string }>;
+  messages:        Array<{ role: MessageRole; content: string; speaker?: string }>;
   /** Drift anchor for the persona rewrite — character sheet text only */
   characterAnchor?: string;
   /** Group chats: everyone present in the scene (characters + player).
    *  Extracted facts are stamped known_to with these ids, so absent members
    *  never "remember" what happened without them. */
   participants?:   Array<{ id: string; name: string }>;
-  providerType:    "ollama" | "lmstudio" | "openrouter";
+  providerType:    ProviderType;
   providerBaseUrl: string;
   modelId:         string;
   apiKey?:         string;

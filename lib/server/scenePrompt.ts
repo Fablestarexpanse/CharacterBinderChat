@@ -3,8 +3,10 @@
 // like, never what was said. Also the guard for the failure mode this prompt
 // has — an instruct model restating the rules instead of answering.
 
+import type { MessageRole } from "@/lib/types";
+
 export interface SceneDirectorInput {
-  messages:      Array<{ role: string; content: string; speaker?: string }>;
+  messages:      Array<{ role: MessageRole; content: string; speaker?: string }>;
   /** Optional user guidance after "/image", e.g. "close-up on her face" */
   focus?:        string;
   /** Appearance sheet for the character(s) so subjects are described, not named */
@@ -13,7 +15,7 @@ export interface SceneDirectorInput {
   modelId:       string;
 }
 
-export function buildDirectorMessages(b: SceneDirectorInput): Array<{ role: string; content: string }> {
+export function buildDirectorMessages(b: SceneDirectorInput): Array<{ role: MessageRole; content: string }> {
   const excerpt = b.messages
     .slice(-8)
     .map((m) => `${m.speaker ?? m.role}: ${m.content}`)

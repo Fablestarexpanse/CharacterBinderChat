@@ -102,11 +102,11 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
       // Server wins for lorebooks too: keeping the local copy when the
       // server list was empty resurrected deliberately-deleted books
       // (the localStorage seed re-pushed them after a cache clear).
-      lorebooks: lorebooks ?? s.lorebooks,
-      scenarios: scenarios ?? s.scenarios,
-      presets: presets ?? s.presets,
-      defaultPresetId: defaultPresetId !== undefined ? defaultPresetId : s.defaultPresetId,
-      globalInstructions: globalInstructions ?? s.globalInstructions,
+      lorebooks,
+      scenarios,
+      presets,
+      defaultPresetId,
+      globalInstructions,
       // null means "show the chat list". Only keep an active chat if it
       // still exists; don't invent one, or the app would always open into
       // an arbitrary conversation instead of letting you pick.
