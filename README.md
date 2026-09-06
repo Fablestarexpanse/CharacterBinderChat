@@ -238,12 +238,25 @@ Not yet built:
 ## Development
 
 ```bash
-npm run dev     # Turbopack dev server
-npm run build   # production build
-npm run lint    # ESLint (currently clean)
+npm run dev        # Turbopack dev server
+npm run build      # production build
+npm run lint       # ESLint
+npm run typecheck  # tsc --noEmit
+npm test           # unit tests (node --test, no server, no API key)
 ```
 
-The Python reference implementation of Drawer 2 — including a 77-test pytest suite that documents the intended bi-temporal semantics — lives in `../fable_drawer2/`.
+Those four run on every push (`.github/workflows/ci.yml`).
+
+Two suites need more than a checkout, so they stay manual:
+
+```bash
+FABLE_TEST_URL=http://localhost:3001 npm run test:api   # bi-temporal invariants against a running server
+npm run eval                                            # scripted scenarios through a real model (costs money)
+```
+
+`npm test` loads the app's own `.ts` modules through Node's type stripping — no build step and no test-only bundle, so nothing can pass there while the app fails. Modules that import through the `@/` alias can't be loaded that way yet, which is why the suite covers the pure ones (predicates, provider params, the prompt builder, lexical overlap, the schema).
+
+The Python reference implementation of Drawer 2 — including a 77-test pytest suite that documents the intended bi-temporal semantics — lives in `../fable_drawer2/`. `tests/unit/schema.test.mjs` and `tests/api/bitemporal.test.mjs` assert the parts of that spec the TypeScript port must honour.
 
 ---
 

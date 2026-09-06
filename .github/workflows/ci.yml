@@ -1,0 +1,30 @@
+# The free, deterministic checks — lint, typecheck, unit tests — so they stop
+# depending on someone remembering to run them.
+#
+# The eval harnesses are deliberately absent: they call a paid model and take
+# minutes, so they stay manual (`npm run eval`). The API suite is absent for
+# the same kind of reason — it needs a running server and writes to a database.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 24.x: the unit tests import the app's .ts modules directly, which
+      # relies on Node's type stripping.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
