@@ -87,7 +87,7 @@ export interface Chat {
    *  speak and don't witness facts extracted while they're away. */
   absentIds?: string[];
   modelId?: string;
-  providerId?: string;
+  providerId?: ProviderId;
   messages: Message[];
   createdAt: string;
   updatedAt: string;

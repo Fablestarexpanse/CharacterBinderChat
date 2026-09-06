@@ -4,7 +4,7 @@
 import type { StateCreator } from "zustand";
 import type { FableStore } from "../index";
 import type {
-  Character, Chat, GenerationParams, Message, MemoryTrace, PersistedAppState,
+  Character, Chat, GenerationParams, MemoryTrace, Message, PersistedAppState, ProviderId,
 } from "@/lib/types";
 
 export interface ChatsSlice {
@@ -32,7 +32,7 @@ export interface ChatsSlice {
   /** Collapse / expand an image card in the transcript */
   toggleMessageCollapsed: (chatId: string, messageId: string) => void;
   /** Update which model / provider a chat uses */
-  setChatModel: (chatId: string, modelId: string, providerId: string) => void;
+  setChatModel: (chatId: string, modelId: string, providerId: ProviderId) => void;
   /** Choose which lorebooks (worlds) apply to a chat; undefined = all */
   setChatLorebooks: (chatId: string, lorebookIds: string[] | undefined) => void;
   /** Update the real token accounting shown by the header context meter */

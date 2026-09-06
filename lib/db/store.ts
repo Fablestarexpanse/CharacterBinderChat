@@ -47,9 +47,37 @@ function now(): number {
 }
 
 // ─── Row → Model mappers ──────────────────────────────────────────────────────
+// The row shapes, spelled out. better-sqlite3 returns `unknown` from .all(),
+// so a cast happens somewhere; each mapper makes exactly one, to a declared
+// row shape, rather than taking `any` and hoping. Fields nullable in SQLite are
+// nullable here.
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function rowToEntity(r: any): DbEntity {
+interface EntityRow {
+  id: string; type: string; name: string; description: string | null; created_at: number;
+}
+interface FactRow {
+  id: number; subject_id: string; predicate: string;
+  object_id: string | null; object_literal: string | null;
+  t_valid_start: number; t_valid_end: number | null; t_ingested: number;
+  confidence: number; importance: number | null;
+  known_to: string | null; superseded_by: number | null;
+}
+interface StatRow {
+  id: number; observer_id: string; target_id: string; stat_name: string;
+  value: number; decay_rate: number; rupture_recovery: number | null; last_updated: number;
+}
+interface MemoryCardRow {
+  id: number; title: string; content: string;
+  tags: string | null; entity_ids: string | null; importance: number | null;
+  created_at: number; updated_at: number;
+}
+interface CommitmentRow {
+  id: number; promisor_id: string; promisee_id: string | null;
+  description: string; status: string; created_at: number; resolved_at: number | null;
+}
+
+export function rowToEntity(raw: unknown): DbEntity {
+  const r = raw as EntityRow;
   return {
     id:          r.id,
     type:        r.type as EntityType,
@@ -59,8 +87,8 @@ export function rowToEntity(r: any): DbEntity {
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function rowToFact(r: any): DbFact {
+export function rowToFact(raw: unknown): DbFact {
+  const r = raw as FactRow;
   return {
     id:            r.id,
     subjectId:     r.subject_id,
@@ -77,8 +105,8 @@ export function rowToFact(r: any): DbFact {
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function rowToStat(r: any): DbRelationshipStat {
+export function rowToStat(raw: unknown): DbRelationshipStat {
+  const r = raw as StatRow;
   return {
     id:          r.id,
     observerId:  r.observer_id,
@@ -91,8 +119,8 @@ export function rowToStat(r: any): DbRelationshipStat {
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function rowToMemoryCard(r: any): DbMemoryCard {
+export function rowToMemoryCard(raw: unknown): DbMemoryCard {
+  const r = raw as MemoryCardRow;
   return {
     id:         r.id,
     title:      r.title,
@@ -105,8 +133,8 @@ export function rowToMemoryCard(r: any): DbMemoryCard {
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function rowToCommitment(r: any): DbCommitment {
+export function rowToCommitment(raw: unknown): DbCommitment {
+  const r = raw as CommitmentRow;
   return {
     id:          r.id,
     promisorId:  r.promisor_id,

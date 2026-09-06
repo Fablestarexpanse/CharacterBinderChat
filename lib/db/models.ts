@@ -7,6 +7,17 @@ export type CommitmentStatus = "active" | "fulfilled" | "broken" | "forgotten";
 
 export const STAT_NAMES: StatName[] = ["affection", "trust", "desire", "connection", "mood"];
 
+/**
+ * Relationship stats the extractor is allowed to write. "mood" is excluded on
+ * purpose: mood lives in Drawer 1 as VAD, and letting the model write a mood
+ * row produced a stray -11 in the Tilly soak.
+ */
+export const WRITABLE_STAT_NAMES: StatName[] = ["affection", "trust", "desire", "connection"];
+
+export function isWritableStatName(v: unknown): v is StatName {
+  return typeof v === "string" && (WRITABLE_STAT_NAMES as string[]).includes(v);
+}
+
 /** The runtime companion to EntityType — the schema CHECK constraint's list. */
 export const ENTITY_TYPES: EntityType[] = ["character", "place", "object", "faction", "concept"];
 

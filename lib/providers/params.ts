@@ -9,7 +9,7 @@
 // Kept out of factory.ts deliberately: factory.ts imports the provider classes,
 // and the providers import this, so merging them would make an import cycle.
 
-import type { GenerationParams, ParamKey, ModelInfo } from "@/lib/types";
+import type { GenerationParams, ParamKey, ModelInfo, ProviderId } from "@/lib/types";
 
 export const DEFAULT_GENERATION_PARAMS: GenerationParams = {
   temperature:       0.8,
@@ -75,7 +75,7 @@ export const PARAM_MAP: Record<SupportedProvider, Partial<Record<ParamKey, Field
  * Unsupported keys are dropped silently — that is the point of the table.
  */
 export function buildRequestParams(
-  providerId: string,
+  providerId: ProviderId,
   params: Partial<GenerationParams>
 ): { root: Record<string, unknown>; options: Record<string, unknown> } {
   const map = PARAM_MAP[providerId as SupportedProvider] ?? PARAM_MAP.ollama;
@@ -97,7 +97,7 @@ export function buildRequestParams(
  * upstream may ignore it — we only know once /models has reported.
  */
 export function paramSupport(
-  providerId: string,
+  providerId: ProviderId,
   key: ParamKey,
   model?: ModelInfo
 ): "supported" | "unsupported" | "model-dependent" {

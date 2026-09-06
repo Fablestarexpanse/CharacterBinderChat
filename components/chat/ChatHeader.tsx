@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { GenerationSettingsDialog } from "./GenerationSettingsDialog";
 import { CustomModelDialog } from "./CustomModelDialog";
 import { regenerateLastReply } from "@/lib/chat/generation";
-import type { ModelInfo, ProviderId } from "@/lib/types";
+import type { ModelInfo } from "@/lib/types";
 import {
   PanelRightOpen,
   PanelRightClose,
@@ -83,7 +83,7 @@ export function ChatHeader() {
     !!chat.modelId && !knownModels.some((m) => m.id === chat.modelId);
   const allModels: ModelInfo[] = savedModelMissing
     ? [
-        { id: chat.modelId!, name: chat.modelId!, providerId: (chat.providerId ?? "ollama") as ProviderId },
+        { id: chat.modelId!, name: chat.modelId!, providerId: chat.providerId ?? "ollama" },
         ...knownModels,
       ]
     : knownModels;

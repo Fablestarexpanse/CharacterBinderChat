@@ -10,11 +10,12 @@ import { Section } from "./Section";
 import { ExternalLink, Edit2, Heart, Shield, Flame, Link2, CloudSun, UserRound, ChevronDown, Check } from "lucide-react";
 import { useUiStore } from "@/lib/store/ui";
 import { getJson } from "@/lib/api/client";
+import type { StatName } from "@/lib/db/models";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface StatRow {
-  name:        string;
+  name:        StatName;
   value:       number | null;
   decayRate:   number | null;
   lastUpdated: number | null;
@@ -23,7 +24,7 @@ interface StatRow {
 interface RelationshipGroup {
   targetId:   string;
   targetName: string;
-  stats:      Array<{ name: string; value: number; decayRate: number }>;
+  stats:      Array<{ name: StatName; value: number; decayRate: number }>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -44,7 +45,7 @@ const STAT_COLORS: Record<string, string> = {
   mood:       "#22d3ee",
 };
 
-function StatBar({ name, value }: { name: string; value: number }) {
+function StatBar({ name, value }: { name: StatName; value: number }) {
   const Icon    = STAT_ICONS[name] ?? Heart;
   const color   = STAT_COLORS[name] ?? "#7c5cbf";
   const pct     = Math.min(100, Math.max(0, ((value + 100) / 200) * 100));

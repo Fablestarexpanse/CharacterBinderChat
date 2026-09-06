@@ -13,7 +13,7 @@ import type { FableStore } from "@/lib/db/store";
 import { callLLM, parseLLMJson } from "@/lib/llm/callers";
 import { embedTexts, vecToBuffer } from "@/lib/llm/embeddings";
 import { syncStatsToCore, syncCommitmentsToCore } from "@/lib/server/coreMemory";
-import { isEntityType } from "@/lib/db/models";
+import { isEntityType, isWritableStatName } from "@/lib/db/models";
 import type { StatName } from "@/lib/db/models";
 import type { MemoryTaskRequest } from "@/lib/types";
 import type { ProviderType } from "@/lib/llm/callers";
@@ -171,7 +171,7 @@ ${conversation}`;
 interface RawExtraction {
   entities:    Array<{ id: string; type: string; name: string; description?: string }>;
   facts:       Array<{ subject: string; predicate: string; object: string; confidence?: number; importance?: number }>;
-  stat_changes:Array<{ observer: string; target: string; stat: string; delta: number }>;
+  stat_changes:Array<{ observer: string; target: string; stat: StatName; delta: number }>;
   commitments?: Array<{ promisor: string; promisee?: string; description: string }>;
   resolved_commitments?: Array<{ match: string; status: string }>;
   shared_language?: Array<{ kind: string; text: string }>;
@@ -323,9 +323,9 @@ function writeStatChanges(
   // Relationship stats only — mood lives in Drawer 1 (VAD), and letting the
   // model write a "mood" stat row produced a stray -11 in the Tilly soak.
   const writtenStats: string[] = [];
-  const validStats = ["affection", "trust", "desire", "connection"];
+
   for (const rawSc of extracted.stat_changes ?? []) {
-    if (!rawSc.observer || !rawSc.target || !validStats.includes(rawSc.stat)) continue;
+    if (!rawSc.observer || !rawSc.target || !isWritableStatName(rawSc.stat)) continue;
     if (typeof rawSc.delta !== "number" || !Number.isFinite(rawSc.delta)) continue;
     // The prompt asks for ±3-20; a model emitting 10000 must not rail a
     // stat past every carefully tuned dynamic in one write.
@@ -339,7 +339,7 @@ function writeStatChanges(
 
     store.ensureEntity(chatId, sc.observer, "character", sc.observer);
     store.ensureEntity(chatId, sc.target,   "character", sc.target);
-    store.deltaStat(chatId, sc.observer, sc.target, sc.stat as StatName, sc.delta);
+    store.deltaStat(chatId, sc.observer, sc.target, sc.stat, sc.delta);
     writtenStats.push(`${sc.observer}->${sc.target}:${sc.stat}(${sc.delta > 0 ? "+" : ""}${sc.delta})`);
   }
   return writtenStats;

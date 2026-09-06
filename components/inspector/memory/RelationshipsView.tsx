@@ -4,9 +4,10 @@ import { useState, useEffect } from "react";
 import { Loader2, Heart, Shield, Flame, Link2, CloudSun } from "lucide-react";
 import { formatAgeFromUnixSeconds } from "./utils";
 import { getJson } from "@/lib/api/client";
+import type { StatName } from "@/lib/db/models";
 
 interface StatRow {
-  name:        string;
+  name:        StatName;
   value:       number | null;
   decayRate:   number | null;
   lastUpdated: number | null;

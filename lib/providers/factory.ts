@@ -7,7 +7,7 @@
 import { OllamaProvider } from "./ollama";
 import { LMStudioProvider } from "./lmstudio";
 import { OpenRouterProvider } from "./openrouter";
-import type { ChatProvider, ProviderSettings } from "@/lib/types";
+import type { ChatProvider, ProviderId, ProviderSettings } from "@/lib/types";
 import type { ProviderType } from "@/lib/llm/callers";
 
 /**
@@ -16,7 +16,7 @@ import type { ProviderType } from "@/lib/llm/callers";
  * OpenRouter without an API key, which callers surface as a user-facing error.
  */
 export function createChatProvider(
-  providerId: string | undefined,
+  providerId: ProviderId | undefined,
   settings: ProviderSettings
 ): ChatProvider | null {
   switch (providerId) {
@@ -50,7 +50,7 @@ export function allChatProviders(settings: ProviderSettings): ChatProvider[] {
  * exists to prevent.
  */
 export function resolveRouteCredentials(
-  providerId: string | undefined,
+  providerId: ProviderId | undefined,
   settings: ProviderSettings
 ): { providerType: ProviderType; providerBaseUrl: string; apiKey?: string } {
   switch (providerId) {
