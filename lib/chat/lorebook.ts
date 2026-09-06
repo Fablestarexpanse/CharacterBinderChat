@@ -25,7 +25,7 @@ export function booksForChat(lorebooks: Lorebook[], chat: Pick<Chat, "lorebookId
 }
 
 /** Split an entry's key field into individual keywords ("Kaspar, Kaspar Division"). */
-export function entryKeywords(entry: LoreEntry): string[] {
+function entryKeywords(entry: LoreEntry): string[] {
   return entry.key
     .split(",")
     .map((k) => k.trim().toLowerCase())

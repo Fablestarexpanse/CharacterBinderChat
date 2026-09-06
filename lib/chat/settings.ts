@@ -7,7 +7,6 @@
 // to defaultPresetId), never snapshotted when the chat is created — so one
 // rule covers new chats, old chats, and chats made before presets existed.
 
-import { DEFAULT_GENERATION_PARAMS } from "@/lib/providers/params";
 import type { Chat, Preset, PromptInstructions, ResolvedGeneration } from "@/lib/types";
 import { normalizeForbiddenWords } from "@/lib/utils";
 
@@ -51,12 +50,4 @@ export function resolveGeneration(
     ),
     presetId: preset?.id ?? null,
   };
-}
-
-/** The value a control should display: override, else preset, else default. */
-export function effectiveParam<K extends keyof typeof DEFAULT_GENERATION_PARAMS>(
-  key: K,
-  params: Partial<typeof DEFAULT_GENERATION_PARAMS>
-): number {
-  return params[key] ?? DEFAULT_GENERATION_PARAMS[key];
 }

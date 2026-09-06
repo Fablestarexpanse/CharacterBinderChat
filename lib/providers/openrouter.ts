@@ -4,7 +4,7 @@
  * Docs: https://openrouter.ai/docs
  */
 
-import { parseOpenAIStream } from "./lmstudio";
+import { parseOpenAIStream } from "./openaiStream";
 import type { ChatProvider, GenerationParams, MessageRole, ModelInfo } from "@/lib/types";
 import { buildRequestParams } from "./params";
 

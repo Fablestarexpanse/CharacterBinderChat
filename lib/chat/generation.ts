@@ -375,7 +375,7 @@ export function flushPendingExtraction(): void {
  * reply is the one pending — so deleting an unrelated message can't silently
  * discard another turn's memory.
  */
-export function cancelPendingExtraction(messageId?: string): boolean {
+function cancelPendingExtraction(messageId?: string): boolean {
   if (!pending) return false;
   if (messageId && pending.messageId !== messageId) return false;
   clearTimeout(pending.timer);

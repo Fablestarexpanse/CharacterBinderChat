@@ -226,7 +226,7 @@ export class ComfyUIProvider {
  * class_type sweep for the knobs the mapping doesn't cover (sampler name,
  * scheduler, batch size). Returns a modified copy.
  */
-export function applySettingsToWorkflow(
+function applySettingsToWorkflow(
   workflow: Workflow,
   settings: ImageGenerationSettings
 ): Workflow {

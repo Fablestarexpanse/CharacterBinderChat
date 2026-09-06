@@ -157,26 +157,15 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
     return id;
   },
 
-  rateMessage: (chatId, messageId, rating) => {
-    set((state) => ({
-      chats: state.chats.map((c) =>
-        c.id === chatId
-          ? {
-              ...c,
-              messages: c.messages.map((m) => {
-                if (m.id !== messageId) return m;
-                if (rating === undefined) {
-                  const rest = { ...m };
-                  delete rest.rating;
-                  return rest;
-                }
-                return { ...m, rating };
-              }),
-            }
-          : c
-      ),
-    }));
-  },
+  rateMessage: (chatId, messageId, rating) =>
+    set((s) => patchMessage(s, chatId, messageId, (m) => {
+      // Passing the current rating clears it, and clearing means removing the
+      // key rather than storing undefined — the message is persisted as JSON.
+      if (rating !== undefined) return { ...m, rating };
+      const rest = { ...m };
+      delete rest.rating;
+      return rest;
+    })),
 
   updateMessageContent: (chatId, messageId, content) =>
     set((s) => patchMessage(s, chatId, messageId, (m) => ({ ...m, content }))),

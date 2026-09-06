@@ -821,21 +821,13 @@ export class FableStore {
     return {
       entity,
       relationships,
-      facts: facts.map((f) => {
-        const objectEntity = f.objectId ? this.getEntity(chatId, f.objectId) : null;
-        const objectDisplay = objectEntity
-          ? objectEntity.name + (f.objectLiteral ? ` / "${f.objectLiteral}"` : "")
-          : f.objectLiteral
-          ? `"${f.objectLiteral}"`
-          : f.objectId ?? "";
-        return {
-          id:            f.id,
-          predicate:     f.predicate,
-          objectDisplay,
-          confidence:    f.confidence,
-          tValidStart:   f.tValidStart,
-        };
-      }),
+      facts: facts.map((f) => ({
+        id:            f.id,
+        predicate:     f.predicate,
+        objectDisplay: this.formatFactObject(chatId, f),
+        confidence:    f.confidence,
+        tValidStart:   f.tValidStart,
+      })),
       commitments,
     };
   }

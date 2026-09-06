@@ -16,7 +16,7 @@ const MODEL_CONTEXT_MAP: Array<{ pattern: RegExp; tokens: number }> = [
   { pattern: /gemini-flash/i,         tokens:  32_000 },
 ];
 
-export function estimateContextSize(modelId: string): number {
+function estimateContextSize(modelId: string): number {
   for (const entry of MODEL_CONTEXT_MAP) {
     if (entry.pattern.test(modelId)) return entry.tokens;
   }

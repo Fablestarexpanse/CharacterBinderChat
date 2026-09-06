@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { useFableStore } from "@/lib/store";
 import { Loader2, Trash2, Plus, X } from "lucide-react";
 import { formatAgeFromUnixSeconds, formatDateFromUnixSeconds } from "./utils";
-import { getJson } from "@/lib/api/client";
+import { getJson, sendJson } from "@/lib/api/client";
 
 interface EnrichedFact {
   id:            number;
@@ -61,13 +61,9 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
     setBusyId(factId);
     setWriteError(null);
     try {
-      const res = await fetch(
-        `/api/drawer/facts?chatId=${encodeURIComponent(chatId)}&factId=${factId}`,
-        { method: "DELETE" }
-      );
-      const data = await res.json().catch(() => null) as { error?: string } | null;
-      if (!res.ok) setWriteError(data?.error ?? `delete failed (HTTP ${res.status})`);
-      else bumpExtraction();
+      await sendJson("DELETE",
+        `/api/drawer/facts?chatId=${encodeURIComponent(chatId)}&factId=${factId}`);
+      bumpExtraction();
     } catch (e) {
       setWriteError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -82,21 +78,12 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
     if (!predicate || !object) return;
     setWriteError(null);
     try {
-      const res = await fetch("/api/drawer/facts", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chatId,
-          subjectId:     characterId,
-          predicate,
-          objectLiteral: object,
-        }),
+      await sendJson("POST", "/api/drawer/facts", {
+        chatId,
+        subjectId:     characterId,
+        predicate,
+        objectLiteral: object,
       });
-      const data = await res.json().catch(() => null) as { error?: string } | null;
-      if (!res.ok) {
-        setWriteError(data?.error ?? `couldn't add fact (HTTP ${res.status})`);
-        return;
-      }
       setDraft({ predicate: "", object: "" });
       setAdding(false);
       bumpExtraction();

@@ -9,6 +9,7 @@ import { Section } from "./Section";
 import type { CoreMemory } from "@/lib/db/models";
 import type { CoreMemoryGetResponse } from "@/app/api/chat/core-memory/route";
 import { resolveRouteCredentials } from "@/lib/providers/factory";
+import { sendJson } from "@/lib/api/client";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -127,30 +128,22 @@ export function CoreMemoryTab() {
       resolveRouteCredentials(chat.providerId, providerSettings);
 
     try {
-      const res = await fetch("/api/chat/core-memory/refresh", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({
-          chatId:          chat.id,
-          characterId:     character.id,
-          characterName:   character.name,
-          messages:        chat.messages.slice(-16).map((m) => ({ role: m.role, content: m.content })),
-          providerType,
-          providerBaseUrl,
-          modelId:         chat.modelId ?? "llama3.2:latest",
-          apiKey,
-        }),
+      // sendJson throws on a non-2xx or an error envelope — an unchecked
+      // failure here used to spin, silently re-fetch the unchanged memory,
+      // and report nothing.
+      await sendJson("POST", "/api/chat/core-memory/refresh", {
+        chatId:          chat.id,
+        characterId:     character.id,
+        characterName:   character.name,
+        messages:        chat.messages.slice(-16).map((m) => ({ role: m.role, content: m.content })),
+        providerType,
+        providerBaseUrl,
+        modelId:         chat.modelId ?? "llama3.2:latest",
+        apiKey,
       });
-      // HTTP errors don't throw — an unchecked 500 here used to spin, silently
-      // re-fetch the unchanged memory, and report nothing.
-      const data = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;
-      if (!res.ok || data?.ok === false) {
-        setRefreshError(data?.error ?? `refresh failed (HTTP ${res.status})`);
-      } else {
-        setRefreshTick((t) => t + 1); // re-fetch the rewritten memory
-      }
+      setRefreshTick((t) => t + 1); // re-fetch the rewritten memory
     } catch (e) {
-      setRefreshError(String(e));
+      setRefreshError(e instanceof Error ? e.message : String(e));
     } finally {
       setRefreshing(false);
     }
