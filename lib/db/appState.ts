@@ -69,10 +69,23 @@ export function getAppState(db: DB): PersistedAppState {
   const msgStmt = db.prepare(
     "SELECT data FROM app_messages WHERE chat_id = ? ORDER BY seq"
   );
-  const chats = parseRows<Record<string, unknown>>(chatRows, "app_chats").map((meta, i) => ({
-    ...meta,
-    messages: parseRows(msgStmt.all(chatRows[i].id) as Array<{ data: string }>, "app_messages"),
-  })) as PersistedAppState["chats"];
+  // Each chat is paired with its own row id before anything can be dropped:
+  // parseRows skips a row it cannot parse, so indexing back into chatRows by
+  // the filtered position would hand every later chat the previous chat's
+  // messages — on exactly the corrupted-data path this is meant to survive.
+  const chats = chatRows.flatMap((row) => {
+    let meta: Record<string, unknown>;
+    try {
+      meta = JSON.parse(row.data) as Record<string, unknown>;
+    } catch {
+      console.error("[FableStore] skipping unreadable app_chats row");
+      return [];
+    }
+    return [{
+      ...meta,
+      messages: parseRows(msgStmt.all(row.id) as Array<{ data: string }>, "app_messages"),
+    }];
+  }) as PersistedAppState["chats"];
 
   return {
     characters: read("app_characters"),

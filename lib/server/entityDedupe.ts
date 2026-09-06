@@ -13,12 +13,16 @@ function stem(s: string): string {
 }
 
 /**
- * Return clusters of entity IDs that are likely duplicates.
- * Two entities are candidates when their stemmed names match or their
- * stemmed ids match — i.e. case/separator variants of the same word
- * ("Char-Ronan" ≈ "char_ronan"). Substring pairs like "ronan" vs
- * "ronan_voss" are NOT caught here; those are the EntityResolver's job at
- * write time, which matches by display name. Clusters of size ≥ 2 return.
+ * Return clusters of entity ids that are likely duplicates.
+ *
+ * Two entities are candidates when their stemmed names match, or their
+ * stemmed ids do — case and separator variants of the same word, so
+ * "Char-Ronan" clusters with "char_ronan". Substring pairs like "ronan" and
+ * "ronan_voss" are NOT caught: stemming only strips separators, and those two
+ * stem differently. Catching them is the write-side EntityResolver's job,
+ * which folds by display name before anything is stored.
+ *
+ * Clusters of two or more are returned; a merge is always the user's call.
  */
 export function findDuplicateClusters(entities: DbEntity[]): string[][] {
   // Key: stem(name) — primary signal
@@ -29,8 +33,9 @@ export function findDuplicateClusters(entities: DbEntity[]): string[][] {
     byName.get(k)!.push(e.id);
   }
 
-  // Also cluster by stem(id) for IDs like "ronan" vs "ronan_voss"
-  // Only merge into an existing name-cluster if the stems overlap
+  // Also cluster by stem(id), which catches a renamed entity whose id still
+  // matches. Both maps feed the same union-find below, so a pair related by
+  // either signal ends up in one cluster.
   const byIdStem = new Map<string, string[]>();
   for (const e of entities) {
     const k = stem(e.id);
@@ -67,7 +72,3 @@ export function findDuplicateClusters(entities: DbEntity[]): string[][] {
 
   return [...groups.values()].filter((g) => g.length >= 2);
 }
-
-// ─── Route ────────────────────────────────────────────────────────────────────
-
-// GET /api/drawer/entities/overview?chatId=<chatId>

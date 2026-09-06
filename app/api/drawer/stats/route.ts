@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { STAT_NAMES } from "@/lib/db/models";
 import { routeError } from "@/lib/api/server";
+import type { DrawerStat } from "@/lib/api/dto";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ export async function GET(req: NextRequest) {
         : { value: null, decayRate: null, lastUpdated: null }),
     }));
 
-    return Response.json({ stats });
+    return Response.json({ stats } satisfies { stats: DrawerStat[] });
   } catch (err) {
     return routeError("[drawer/stats GET]", err);
   }

@@ -70,9 +70,10 @@ export function StateSync() {
     };
 
     (async () => {
-      // Deliberately not sendJson: a rejected save must not throw out of the
-      // debounce timer, and the 409 wipe guard is a normal outcome here — it
-      // is reported and the local state is kept, not treated as an error.
+      // Deliberately not getJson: this read distinguishes three outcomes —
+      // data to hydrate, an empty server to seed, and a failure that must do
+      // NEITHER — so it reads the status itself rather than collapsing the
+      // last two into a thrown error.
       try {
         const res = await fetch("/api/state", { cache: "no-store" });
         // A failed read is not an empty database. Treating it as one would

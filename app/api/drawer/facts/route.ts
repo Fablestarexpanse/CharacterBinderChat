@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { routeError } from "@/lib/api/server";
+import type { DrawerFact } from "@/lib/api/dto";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest) {
       tValidEnd:     f.tValidEnd,
       supersededBy:  f.supersededBy,
     }));
-    return Response.json({ facts: enriched });
+    return Response.json({ facts: enriched } satisfies { facts: DrawerFact[] });
   } catch (err) {
     return routeError("[drawer/facts GET]", err);
   }

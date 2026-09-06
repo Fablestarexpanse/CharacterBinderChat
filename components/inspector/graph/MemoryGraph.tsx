@@ -340,8 +340,6 @@ export function MemoryGraph({ chatId, characterId, extractionVersion, full = fal
       if (hover !== null && nodes[hover].sub) {
         const n = nodes[hover];
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        const rect = canvas.getBoundingClientRect();
-        void rect;
         const text = n.sub!;
         ctx.font = "11px system-ui";
         const lines: string[] = [];

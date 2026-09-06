@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { routeError } from "@/lib/api/server";
 import { parseProviderBase } from "@/lib/llm/callers";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +43,10 @@ export async function POST(req: NextRequest) {
     }
     return Response.json({ ok: true, unloaded });
   } catch (err) {
-    // Best-effort: a failed unload should never block image generation
-    return Response.json({ ok: false, error: String(err) });
+    // Best-effort: a failed unload must never block image generation, and the
+    // caller treats it that way — but it is still a failed request, so it
+    // reports one. Answering ok:false at HTTP 200 was the app's only route
+    // that contradicted its own envelope.
+    return routeError("[ollama/unload]", err);
   }
 }

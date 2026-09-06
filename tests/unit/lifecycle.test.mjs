@@ -127,3 +127,25 @@ test("id-keyed writes are scoped to their chat", () => {
   store.supersedeFact(CHAT, theirs.factId, theirs.factId);       // wrong chat
   assert.equal(store.queryFacts(other, "ash").length, 1, "and must not be closed by id alone");
 });
+
+test("one unreadable chat row cannot shift another chat's messages onto it", () => {
+  const store = new FableStore(":memory:");
+  store.replaceAppState({
+    characters: [],
+    chats: [
+      { id: "chat-a", name: "A", messages: [{ id: "a1", role: "user", content: "from A" }] },
+      { id: "chat-b", name: "B", messages: [{ id: "b1", role: "user", content: "from B" }] },
+      { id: "chat-c", name: "C", messages: [{ id: "c1", role: "user", content: "from C" }] },
+    ],
+  });
+
+  // Corrupt the middle chat's JSON the way a half-finished write would.
+  store.db.prepare("UPDATE app_chats SET data = ? WHERE id = ?").run("{not json", "chat-b");
+
+  const state = store.getAppState();
+  assert.deepEqual(state.chats.map((c) => c.id), ["chat-a", "chat-c"], "the unreadable row is dropped");
+  for (const chat of state.chats) {
+    assert.equal(chat.messages[0].content, `from ${chat.id.slice(-1).toUpperCase()}`,
+      `${chat.id} kept its own messages`);
+  }
+});
