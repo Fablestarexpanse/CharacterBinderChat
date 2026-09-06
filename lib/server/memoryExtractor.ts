@@ -215,8 +215,12 @@ class EntityResolver {
     }
   }
 
-  /** Record that the model's `id` (with display `name`) means an existing entity */
-  learn(id: string, name: string): string | null {
+  /**
+   * Fold a model-minted id onto an existing entity of the same name, or
+   * register it as new. Returns the canonical id when it was folded — a
+   * non-null result means the caller must NOT create an entity.
+   */
+  aliasIfKnown(id: string, name: string): string | null {
     const canonical = this.byName.get(normKey(name));
     if (canonical && canonical !== id) {
       this.alias.set(id, canonical);
@@ -257,7 +261,7 @@ function writeEntities(
   const writtenEntities: string[] = [];
   for (const e of extracted.entities ?? []) {
     if (!e.id || !e.name) continue;
-    if (resolver.learn(e.id, e.name)) continue; // aliased to an existing entity
+    if (resolver.aliasIfKnown(e.id, e.name)) continue; // folded onto an existing entity
     const validTypes = ["character", "place", "object", "faction", "concept"];
     const type = validTypes.includes(e.type) ? (e.type as EntityType) : "character";
     store.ensureEntity(chatId, e.id, type, e.name, e.description ?? "");

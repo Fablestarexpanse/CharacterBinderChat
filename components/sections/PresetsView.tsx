@@ -144,7 +144,7 @@ function ForbiddenWords({
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
 
-function Group({
+function SettingsSection({
   title, action, children,
 }: {
   title: string;
@@ -310,7 +310,7 @@ export function PresetsView() {
                   placeholder="Preset name"
                 />
 
-                <Group title="Instructions">
+                <SettingsSection title="Instructions">
                   <div className="space-y-1">
                     <span className="text-xs font-medium text-[var(--foreground)]">Custom prompt</span>
                     <Textarea
@@ -345,9 +345,9 @@ export function PresetsView() {
                     words={selected.forbiddenWords ?? []}
                     onChange={(next) => updatePreset(selected.id, { forbiddenWords: next })}
                   />
-                </Group>
+                </SettingsSection>
 
-                <Group
+                <SettingsSection
                   title="Generation settings"
                   action={
                     <Button
@@ -386,9 +386,9 @@ export function PresetsView() {
                         : "How much conversation is kept in the prompt. Trims old messages to fit; the model's own window is fixed and set by the provider."
                     }
                   />
-                </Group>
+                </SettingsSection>
 
-                <Group title="Advanced settings">
+                <SettingsSection title="Advanced settings">
                   {shown.map((a) => (
                     <ParamRow
                       key={a.key}
@@ -405,7 +405,7 @@ export function PresetsView() {
                       {model ? "doesn't support" : "isn't known to support"} them.
                     </p>
                   )}
-                </Group>
+                </SettingsSection>
               </div>
             )}
           </div>

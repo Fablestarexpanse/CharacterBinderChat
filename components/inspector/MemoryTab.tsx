@@ -10,9 +10,9 @@ import { RelationshipsView } from "./memory/RelationshipsView";
 import { EntitiesView }      from "./memory/EntitiesView";
 import { saveBlob } from "@/lib/utils";
 
-type KGTab = "facts" | "relationships" | "entities";
+type MemorySubTab = "facts" | "relationships" | "entities";
 
-const KG_TABS: { id: KGTab; label: string }[] = [
+const MEMORY_SUB_TABS: { id: MemorySubTab; label: string }[] = [
   { id: "relationships", label: "Relationships" },
   { id: "facts",         label: "Facts" },
   { id: "entities",      label: "Entities" },
@@ -22,7 +22,7 @@ export function MemoryTab() {
   const { extractionVersion, isExtracting, lastExtractionError } = useFableStore();
   const { chat, character } = useInspectedCharacter();
 
-  const [kgTab, setKgTab] = useState<KGTab>("relationships");
+  const [memorySubTab, setMemorySubTab] = useState<MemorySubTab>("relationships");
 
   if (!character) {
     return (
@@ -59,12 +59,12 @@ export function MemoryTab() {
 
         {/* Segmented control */}
         <div className="flex rounded-lg border border-[var(--border)] overflow-hidden mb-3 bg-[var(--muted)]">
-          {KG_TABS.map((tab) => (
+          {MEMORY_SUB_TABS.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setKgTab(tab.id)}
+              onClick={() => setMemorySubTab(tab.id)}
               className={`flex-1 py-1 text-[10px] font-medium transition-colors ${
-                kgTab === tab.id
+                memorySubTab === tab.id
                   ? "bg-white text-[var(--purple-fg)] shadow-sm"
                   : "text-[var(--muted-fg)] hover:text-[var(--foreground)]"
               }`}
@@ -75,7 +75,7 @@ export function MemoryTab() {
         </div>
 
         {/* Sub-views — all scoped to this chat's memory */}
-        {kgTab === "facts" && chat && (
+        {memorySubTab === "facts" && chat && (
           <FactsView
             chatId={chat.id}
             characterId={character.id}
@@ -83,14 +83,14 @@ export function MemoryTab() {
             isExtracting={isExtracting}
           />
         )}
-        {kgTab === "relationships" && chat && (
+        {memorySubTab === "relationships" && chat && (
           <RelationshipsView
             chatId={chat.id}
             characterId={character.id}
             extractionVersion={extractionVersion}
           />
         )}
-        {kgTab === "entities" && chat && (
+        {memorySubTab === "entities" && chat && (
           <EntitiesView
             chatId={chat.id}
             extractionVersion={extractionVersion}
