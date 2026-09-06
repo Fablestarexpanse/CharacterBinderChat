@@ -234,17 +234,6 @@ async function fetchMemory(context = "") {
 }
 
 // ─── Prompt assembly ──────────────────────────────────────────────────────────
-// Mirrors lib/chat/promptBuilder.ts. Kept in step by hand; if that file changes
-// shape this must follow.
-
-function describeVAD(v, a, d) {
-  const mood = v > 0.5 ? "happy" : v > 0.1 ? "content" : v > -0.1 ? "neutral" : v > -0.5 ? "melancholy" : "distressed";
-  const energy = a > 0.7 ? "highly energised" : a > 0.4 ? "alert" : a > 0.2 ? "calm" : "very calm";
-  const control = d > 0.7 ? "assertive" : d > 0.4 ? "balanced" : "deferential";
-  return `${mood}, ${energy}, ${control}`;
-}
-const signedPct = (v) =>
-  v - 50 > 20 ? "high" : v - 50 > 5 ? "above avg" : v - 50 < -20 ? "low" : v - 50 < -5 ? "below avg" : "neutral";
 
 // The real builder, imported rather than mirrored: the suite exists to
 // validate the prompt the app sends, and a copy validates the copy. It has no
