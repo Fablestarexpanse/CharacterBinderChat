@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useFableStore } from "@/lib/store";
 import { useInspectedCharacter } from "@/lib/hooks/useInspectedCharacter";
 import { Brain, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Section } from "./Section";
-import type { CoreMemory } from "@/lib/db/models";
 import type { CoreMemoryGetResponse } from "@/lib/api/dto";
 import { resolveRouteCredentials } from "@/lib/providers/factory";
-import { getJson, sendJson } from "@/lib/api/client";
+import { sendJson } from "@/lib/api/client";
+import { useDrawerRead } from "@/lib/hooks/useDrawerRead";
+import { formatAgeFromUnixSeconds } from "./memory/utils";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -57,58 +58,28 @@ export function CoreMemoryTab() {
   const { extractionVersion, providerSettings } = useFableStore();
   const { chat, character } = useInspectedCharacter();
 
-  // Result keyed by what was fetched; `loading` is derived so the effect
-  // never calls setState synchronously. relAge is computed at fetch time
-  // (Date.now() is impure during render). `refreshTick` re-fetches after an
-  // LLM rewrite.
-  interface MemoryResult {
-    key:     string;
-    cm:      CoreMemory | null;
-    version: number | null;
-    relAge:  string | null;
-    error:   string | null;
-  }
+  // `refreshTick` is part of the fetch key, so an LLM rewrite re-reads.
   const [refreshTick,  setRefreshTick]  = useState(0);
-  const [result,       setResult]       = useState<MemoryResult | null>(null);
   const [refreshing,   setRefreshing]   = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const characterId   = character?.id;
   const characterName = character?.name;
   const chatId        = chat?.id;
-  const fetchKey      = `${chatId}:${characterId}:${extractionVersion}:${refreshTick}`;
 
-  useEffect(() => {
-    if (!chatId || !characterId || !characterName) return;
-    let cancelled = false;
-    const key = `${chatId}:${characterId}:${extractionVersion}:${refreshTick}`;
-    (async () => {
-      try {
-        const data = await getJson<CoreMemoryGetResponse>(
-          `/api/chat/core-memory?chatId=${encodeURIComponent(chatId)}&characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}`
-        );
-        if (cancelled) return;
-        const relAge = data.updatedAt
-          ? Math.round((Date.now() / 1000 - data.updatedAt) / 60) + "m ago"
-          : null;
-        setResult({ key, cm: data.coreMemory, version: data.version, relAge, error: null });
-      } catch (e) {
-        if (!cancelled) {
-          setResult({
-            key, cm: null, version: null, relAge: null,
-            error: e instanceof Error ? e.message : "Failed to load core memory",
-          });
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [chatId, characterId, characterName, extractionVersion, refreshTick]);
+  const { data, error: readError, loading } = useDrawerRead<CoreMemoryGetResponse>(
+    `${chatId}:${characterId}:${extractionVersion}:${refreshTick}`,
+    chatId && characterId && characterName
+      ? `/api/chat/core-memory?chatId=${encodeURIComponent(chatId)}&characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}`
+      : null
+  );
 
-  const loading = !!characterId && result?.key !== fetchKey;
-  const cm      = result?.cm ?? null;
-  const version = result?.version ?? null;
-  const relAge  = result?.relAge ?? null;
-  const error   = refreshError ?? result?.error ?? null;
+  const cm      = data?.coreMemory ?? null;
+  const version = data?.version ?? null;
+  // Through the shared helper rather than a Date.now() in the render body,
+  // which the React Compiler lint rejects as impure.
+  const relAge  = data?.updatedAt ? formatAgeFromUnixSeconds(data.updatedAt) : null;
+  const error   = refreshError ?? readError;
 
   const handleRefresh = async () => {
     if (!character || !chat) return;

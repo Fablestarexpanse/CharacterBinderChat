@@ -7,9 +7,9 @@
 // zoom, drag empty space to pan, hover for edge labels, click to highlight
 // a node's neighbourhood.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
-import { getJson } from "@/lib/api/client";
+import { useDrawerRead } from "@/lib/hooks/useDrawerRead";
 import type { GraphPayload } from "@/lib/api/dto";
 
 // ─── Simulation types ─────────────────────────────────────────────────────────
@@ -156,27 +156,13 @@ interface Props {
 export function MemoryGraph({ chatId, characterId, extractionVersion, full = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef   = useRef<HTMLDivElement>(null);
-  const [payload, setPayload] =
-    useState<{ key: string; data: GraphPayload | null; error: string | null } | null>(null);
-
-  const fetchKey = `${chatId}:${characterId}:${extractionVersion}`;
-
-  useEffect(() => {
-    let cancelled = false;
-    const key = `${chatId}:${characterId}:${extractionVersion}`;
-    const url = `/api/drawer/graph?chatId=${encodeURIComponent(chatId)}` +
-      (characterId ? `&characterId=${encodeURIComponent(characterId)}` : "");
-    // A failed read used to render the same "nothing mapped yet" as an empty
-    // graph, so a broken endpoint read as a story with no memories.
-    getJson<GraphPayload>(url)
-      .then((d) => { if (!cancelled) setPayload({ key, data: d, error: null }); })
-      .catch((e: Error) => { if (!cancelled) setPayload({ key, data: null, error: e.message }); });
-    return () => { cancelled = true; };
-  }, [chatId, characterId, extractionVersion]);
-
-  const loading = payload?.key !== fetchKey;
-  const data = payload?.data ?? null;
-  const error = payload?.error ?? null;
+  // A failed read used to render the same "nothing mapped yet" as an empty
+  // graph, so a broken endpoint read as a story with no memories.
+  const { data, error, loading } = useDrawerRead<GraphPayload>(
+    `${chatId}:${characterId}:${extractionVersion}`,
+    `/api/drawer/graph?chatId=${encodeURIComponent(chatId)}` +
+      (characterId ? `&characterId=${encodeURIComponent(characterId)}` : "")
+  );
 
   // ── Simulation + rendering ────────────────────────────────────────────────
   useEffect(() => {

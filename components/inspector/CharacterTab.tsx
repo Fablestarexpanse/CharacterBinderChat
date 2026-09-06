@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useFableStore } from "@/lib/store";
 import { useInspectedCharacter } from "@/lib/hooks/useInspectedCharacter";
 import { Avatar } from "@/components/ui/avatar";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Section } from "./Section";
 import { ExternalLink, Edit2, Heart, Shield, Flame, Link2, CloudSun, UserRound, ChevronDown, Check } from "lucide-react";
 import { useUiStore } from "@/lib/store/ui";
-import { getJson } from "@/lib/api/client";
+import { useDrawerRead } from "@/lib/hooks/useDrawerRead";
 import type { DrawerStat } from "@/lib/api/dto";
 import type { StatName } from "@/lib/db/models";
 
@@ -75,53 +75,22 @@ export function CharacterTab() {
 
   const characterId = character?.id;
 
-  // One result object keyed by what was fetched — the pattern the other
-  // inspector views use. Separate state per fetch let the previous character's
-  // stats stay on screen after a switch, and let a late success from one
-  // request clear the other's error.
-  const [result, setResult] = useState<{
-    key:           string;
-    relationships: RelationshipGroup[];
-    stats:         DrawerStat[];
-    error:         string | null;
-  } | null>(null);
+  const key       = `${activeChatId}:${characterId}:${extractionVersion}`;
+  const chatParam = `chatId=${encodeURIComponent(activeChatId ?? "")}`;
+  const ready     = !!characterId && !!activeChatId;
 
-  const fetchKey = `${activeChatId}:${characterId}:${extractionVersion}`;
-  const relationships = result?.key === fetchKey ? result.relationships : [];
-  const stats         = result?.key === fetchKey ? result.stats : [];
-  const drawerError   = result?.key === fetchKey ? result.error : null;
+  // Two reads, one key: the summary carries the relationships, the stats call
+  // is how this character feels about the player specifically. Keyed together
+  // so a switch can't leave the previous character's stats on screen, and a
+  // late success from one can't clear the other's error.
+  const summary = useDrawerRead<{ relationships?: RelationshipGroup[] }>(
+    key, ready ? `/api/drawer/summary/${encodeURIComponent(characterId!)}?${chatParam}` : null);
+  const playerStatsRead = useDrawerRead<{ stats?: DrawerStat[] }>(
+    key, ready ? `/api/drawer/stats?${chatParam}&observer=${encodeURIComponent(characterId!)}&target=player` : null);
 
-  useEffect(() => {
-    if (!characterId || !activeChatId) return;
-    const key = `${activeChatId}:${characterId}:${extractionVersion}`;
-    const chatParam = `chatId=${encodeURIComponent(activeChatId)}`;
-    // Cancelled guard as well as the key: without it, rapid chat switching let
-    // the older chat's slower response resolve last.
-    let cancelled = false;
-
-    // The summary carries the relationships; the stats call is how this
-    // character feels about the player specifically.
-    Promise.all([
-      getJson<{ relationships?: RelationshipGroup[] }>(
-        `/api/drawer/summary/${encodeURIComponent(characterId)}?${chatParam}`),
-      getJson<{ stats?: DrawerStat[] }>(
-        `/api/drawer/stats?${chatParam}&observer=${encodeURIComponent(characterId)}&target=player`),
-    ])
-      .then(([summary, statsRes]) => {
-        if (cancelled) return;
-        setResult({
-          key,
-          relationships: summary.relationships ?? [],
-          stats:         statsRes.stats ?? [],
-          error:         null,
-        });
-      })
-      .catch((e: Error) => {
-        if (!cancelled) setResult({ key, relationships: [], stats: [], error: e.message });
-      });
-
-    return () => { cancelled = true; };
-  }, [characterId, activeChatId, extractionVersion]);
+  const relationships = summary.data?.relationships ?? [];
+  const stats         = playerStatsRead.data?.stats ?? [];
+  const drawerError   = summary.error ?? playerStatsRead.error;
 
   if (!character) {
     return (
