@@ -79,6 +79,9 @@ export function CharacterTab() {
 
   const [relationships, setRelationships] = useState<RelationshipGroup[]>([]);
   const [stats, setStats]                 = useState<StatRow[]>([]);
+  // A failed drawer read used to be indistinguishable from a character with no
+  // memory yet — the panel simply rendered nothing.
+  const [drawerError, setDrawerError]     = useState<string | null>(null);
 
   const characterId = character?.id;
 
@@ -92,18 +95,20 @@ export function CharacterTab() {
     // Fetch summary (which includes relationships + stats)
     fetch(`/api/drawer/summary/${encodeURIComponent(characterId)}?${chatParam}`)
       .then((r) => r.json())
-      .then((data: { relationships?: RelationshipGroup[] }) => {
-        if (!cancelled) setRelationships(data.relationships ?? []);
+      .then((data: { relationships?: RelationshipGroup[]; error?: string }) => {
+        if (data.error) throw new Error(data.error);
+        if (!cancelled) { setRelationships(data.relationships ?? []); setDrawerError(null); }
       })
-      .catch(() => {/* silently ignore */});
+      .catch((e: Error) => { if (!cancelled) setDrawerError(e.message); });
 
     // character -> player: how this character feels about the user
     fetch(`/api/drawer/stats?${chatParam}&observer=${encodeURIComponent(characterId)}&target=player`)
       .then((r) => r.json())
-      .then((data: { stats?: StatRow[] }) => {
+      .then((data: { stats?: StatRow[]; error?: string }) => {
+        if (data.error) throw new Error(data.error);
         if (!cancelled) setStats(data.stats ?? []);
       })
-      .catch(() => {/* silently ignore */});
+      .catch((e: Error) => { if (!cancelled) setDrawerError(e.message); });
 
     return () => { cancelled = true; };
   }, [characterId, activeChatId, extractionVersion]);
@@ -192,6 +197,12 @@ export function CharacterTab() {
           </div>
         )}
       </div>
+
+      {drawerError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-600">
+          Memory could not be loaded — {drawerError}
+        </div>
+      )}
 
       {/* What the memory system is tracking — the reason this tab exists */}
       {playerStats.length > 0 && (

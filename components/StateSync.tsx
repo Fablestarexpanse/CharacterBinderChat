@@ -64,7 +64,17 @@ export function StateSync() {
 
     (async () => {
       try {
-        const res  = await fetch("/api/state", { cache: "no-store" });
+        const res = await fetch("/api/state", { cache: "no-store" });
+        // A failed read is not an empty database. Treating it as one would
+        // hydrate nothing and then SAVE local state over the durable copy —
+        // the one path in this file that can destroy data.
+        if (!res.ok) {
+          console.warn(`[state-sync] initial load failed: HTTP ${res.status} —`,
+            (await res.text()).slice(0, 200));
+          // Skip hydration AND the first-run save; later edits still sync, and
+          // the route's own wipe guard covers a mass delete.
+          throw new Error(`GET /api/state returned ${res.status}`);
+        }
         const data = (await res.json()) as Partial<PersistedAppState>;
         // Presets count too: they're often the first thing configured, and a
         // durable copy holding only presets would otherwise be treated as

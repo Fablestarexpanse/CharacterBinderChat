@@ -111,7 +111,8 @@ export function MemoryTab() {
                 new Blob([JSON.stringify(d, null, 2)], { type: "application/json" }),
                 "fablestore-export.json"
               ))
-              .catch(console.error);
+              .catch((e: Error) =>
+                console.warn("[/api/drawer/entities] export failed:", e.message));
           }}
         >
           Export Graph JSON

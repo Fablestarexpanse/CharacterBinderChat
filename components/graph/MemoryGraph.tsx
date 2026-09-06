@@ -179,7 +179,8 @@ interface Props {
 export function MemoryGraph({ chatId, characterId, extractionVersion, full = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef   = useRef<HTMLDivElement>(null);
-  const [payload, setPayload] = useState<{ key: string; data: GraphPayload | null } | null>(null);
+  const [payload, setPayload] =
+    useState<{ key: string; data: GraphPayload | null; error: string | null } | null>(null);
 
   const fetchKey = `${chatId}:${characterId}:${extractionVersion}`;
 
@@ -190,13 +191,19 @@ export function MemoryGraph({ chatId, characterId, extractionVersion, full = fal
       (characterId ? `&characterId=${encodeURIComponent(characterId)}` : "");
     fetch(url)
       .then((r) => r.json())
-      .then((d: GraphPayload) => { if (!cancelled) setPayload({ key, data: d.error ? null : d }); })
-      .catch(() => { if (!cancelled) setPayload({ key, data: null }); });
+      .then((d: GraphPayload) => {
+        if (d.error) throw new Error(d.error);
+        if (!cancelled) setPayload({ key, data: d, error: null });
+      })
+      // A failed read used to render the same "nothing mapped yet" as an empty
+      // graph, so a broken endpoint read as a story with no memories.
+      .catch((e: Error) => { if (!cancelled) setPayload({ key, data: null, error: e.message }); });
     return () => { cancelled = true; };
   }, [chatId, characterId, extractionVersion]);
 
   const loading = payload?.key !== fetchKey;
   const data = payload?.data ?? null;
+  const error = payload?.error ?? null;
 
   // ── Simulation + rendering ────────────────────────────────────────────────
   useEffect(() => {
@@ -449,6 +456,13 @@ export function MemoryGraph({ chatId, characterId, extractionVersion, full = fal
       <div className="flex h-full items-center justify-center gap-2 text-[var(--muted-fg)]">
         <Loader2 className="h-4 w-4 animate-spin" />
         <span className="text-xs">Mapping the story…</span>
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center p-6 text-center">
+        <p className="text-xs text-red-600">The memory graph could not be loaded — {error}</p>
       </div>
     );
   }

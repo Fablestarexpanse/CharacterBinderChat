@@ -44,7 +44,7 @@ async function fetchCoreMemory(
       `/api/chat/core-memory?chatId=${encodeURIComponent(chatId)}&characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}${ctxParam}`,
       { cache: "no-store" }
     );
-    if (!res.ok) return { coreMemory: null, knownFacts: [], episodes: [], insights: [], bits: [] };
+    if (!res.ok) return degraded(`HTTP ${res.status} — ${(await res.text()).slice(0, 200)}`);
     const data = (await res.json()) as CoreMemoryGetResponse;
     return {
       coreMemory: data.coreMemory ?? null,
@@ -53,9 +53,23 @@ async function fetchCoreMemory(
       insights:   data.insights ?? [],
       bits:       data.bits ?? [],
     };
-  } catch {
-    return { coreMemory: null, knownFacts: [], episodes: [], insights: [], bits: [] };
+  } catch (e) {
+    return degraded(String(e));
   }
+}
+
+/**
+ * Generate without memory rather than not at all — but say so.
+ *
+ * Silently returning empties made a broken memory API look exactly like a
+ * brand-new character: the reply comes back fluent, remembering nothing, and
+ * nothing anywhere says why. The inspector already surfaces
+ * `lastExtractionError`, so the failure lands where a user would look.
+ */
+function degraded(reason: string): CoreMemoryResponse {
+  console.warn("[core-memory] fetch failed, generating without memory:", reason);
+  useFableStore.getState().setLastExtractionError(`memory could not be loaded — ${reason}`);
+  return { coreMemory: null, knownFacts: [], episodes: [], insights: [], bits: [] };
 }
 
 // ─── Group helpers ────────────────────────────────────────────────────────────

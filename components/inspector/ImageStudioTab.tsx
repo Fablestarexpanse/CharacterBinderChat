@@ -53,7 +53,9 @@ export function ImageStudioTab() {
       .then((d: { workflows?: Array<{ slug: string; title: string; error?: string }> }) => {
         if (!cancelled) setWorkflows((d.workflows ?? []).filter((w) => !w.error));
       })
-      .catch(() => {/* picker falls back to the saved slug below */});
+      // The picker falls back to the saved slug, so this stays non-fatal —
+      // but a silent catch made a broken endpoint look like "no workflows".
+      .catch((e: Error) => console.warn("[/api/workflows] list failed:", e.message));
     return () => { cancelled = true; };
   }, []);
 
