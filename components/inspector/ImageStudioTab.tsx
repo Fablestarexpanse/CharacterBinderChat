@@ -93,7 +93,13 @@ export function ImageStudioTab() {
     setImageSettings({ loras: imageSettings.loras.filter((l) => l.name !== name) });
   };
 
-  const workflowSupportsLoras = imageSettings.workflow === "krea2-lora-pipeline";
+  // Asked of the template rather than hardcoded: /api/workflows publishes each
+  // one's controls, and applySettingsToWorkflow keys LoRA injection off the
+  // same loraSyntaxNode. A hardcoded slug meant a new LoRA-capable template
+  // silently offered no LoRA panel.
+  const workflowSupportsLoras = workflows
+    .find((w) => w.slug === imageSettings.workflow)
+    ?.controls.includes("loraSyntax") ?? false;
 
   const recentJobs = imageJobs.slice(0, 4);
   const runningCount = imageJobs.filter((j) => j.status === "queued" || j.status === "generating").length;

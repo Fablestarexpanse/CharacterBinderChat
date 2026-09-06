@@ -13,18 +13,26 @@ import { getJson, sendJson } from "@/lib/api/client";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function MoodBar({
+/**
+ * One labelled bar. `range` rescales a value onto 0..100 for the fill — the
+ * VAD mood axes run -1..1 or 0..1 while the relationship stats are already a
+ * percentage — and `format` decides what the number beside it reads as.
+ *
+ * This was two byte-identical components differing only in those two details.
+ */
+function Bar({
   label,
   value,
-  min = 0,
-  max = 1,
+  range = [0, 100],
+  format = (v: number) => String(Math.round(v)),
 }: {
-  label: string;
-  value: number;
-  min?: number;
-  max?: number;
+  label:   string;
+  value:   number;
+  range?:  [number, number];
+  format?: (value: number) => string;
 }) {
-  const pct = Math.round(((value - min) / (max - min)) * 100);
+  const [min, max] = range;
+  const pct = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
   const color =
     pct > 65 ? "bg-green-500" :
     pct < 35 ? "bg-red-400"   :
@@ -37,25 +45,8 @@ function MoodBar({
         <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${pct}%` }} />
       </div>
       <span className="text-[10px] tabular-nums text-[var(--muted-fg)] w-8 text-right">
-        {value.toFixed(2)}
+        {format(value)}
       </span>
-    </div>
-  );
-}
-
-function StatBar({ label, value }: { label: string; value: number }) {
-  const pct   = Math.max(0, Math.min(100, value));
-  const color =
-    pct > 65 ? "bg-green-500" :
-    pct < 35 ? "bg-red-400"   :
-               "bg-[var(--purple)]";
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-[10px] text-[var(--muted-fg)] w-20 flex-shrink-0">{label}</span>
-      <div className="flex-1 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
-        <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-[10px] tabular-nums text-[var(--muted-fg)] w-8 text-right">{Math.round(pct)}</span>
     </div>
   );
 }
@@ -196,18 +187,18 @@ export function CoreMemoryTab() {
 
           {/* Tracked stats lead; prose folds below them */}
           <Section title="Relationship with User">
-            <StatBar label="Affection"  value={cm.relationship_with_user.affection} />
-            <StatBar label="Trust"      value={cm.relationship_with_user.trust} />
-            <StatBar label="Desire"     value={cm.relationship_with_user.desire} />
-            <StatBar label="Connection" value={cm.relationship_with_user.connection} />
-            <StatBar label="Mood"       value={cm.relationship_with_user.mood} />
+            <Bar label="Affection"  value={cm.relationship_with_user.affection} />
+            <Bar label="Trust"      value={cm.relationship_with_user.trust} />
+            <Bar label="Desire"     value={cm.relationship_with_user.desire} />
+            <Bar label="Connection" value={cm.relationship_with_user.connection} />
+            <Bar label="Mood"       value={cm.relationship_with_user.mood} />
           </Section>
 
           {/* Mood */}
           <Section title="Mood (VAD)">
-            <MoodBar label="Valence"   value={cm.mood.valence}   min={-1} max={1} />
-            <MoodBar label="Arousal"   value={cm.mood.arousal}   min={0}  max={1} />
-            <MoodBar label="Dominance" value={cm.mood.dominance} min={0}  max={1} />
+            <Bar label="Valence"   value={cm.mood.valence}   range={[-1, 1]} format={(v) => v.toFixed(2)} />
+            <Bar label="Arousal"   value={cm.mood.arousal}   range={[0, 1]}  format={(v) => v.toFixed(2)} />
+            <Bar label="Dominance" value={cm.mood.dominance} range={[0, 1]}  format={(v) => v.toFixed(2)} />
           </Section>
 
           {/* Persona */}
