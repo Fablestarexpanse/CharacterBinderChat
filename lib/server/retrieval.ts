@@ -11,7 +11,7 @@
 import type { FableStore } from "@/lib/db/store";
 import type { DbFact, DbMemoryCard } from "@/lib/db/models";
 import { isDurableFact, isIdentityCoreFact } from "@/lib/db/predicates";
-import { cosine } from "@/lib/llm/embeddings";
+import { embeddingRelevance } from "@/lib/llm/embeddings";
 import { contentWords, coverage } from "@/lib/text/overlap";
 
 /**
@@ -68,17 +68,21 @@ export function retrieveFactsForPrompt(
   // Relevance: cosine similarity against the current exchange when both
   // sides have embeddings (semantic — "the crossing" matches "afraid of deep
   // water"), keyword overlap otherwise (lexical fallback).
+  //
+  // Scored once per fact, before any sorting. The comparator used to call
+  // this, and it opened a SQLite query per call — a per-row read run
+  // O(n log n) times.
   const contextWords = contentWords(context);
-  const relevanceOf = (f: DbFact): number => {
-    if (queryEmbedding) {
-      const v = store.factEmbedding(f.id);
-      // Rescale cosine (~0.3..0.9 in practice) onto roughly the same 0..1
-      // band lexical overlap produces, so mixed corpora rank sanely
-      if (v) return Math.max(0, (cosine(queryEmbedding, v) - 0.3) / 0.6);
-    }
-    if (contextWords.size === 0) return 0;
-    return coverage(contentWords(`${f.predicate} ${f.objectId ?? ""} ${f.objectLiteral ?? ""}`), contextWords);
-  };
+  const vectors = queryEmbedding ? store.embeddings("facts", all.map((f) => f.id)) : null;
+  const relevance = new Map<number, number>(all.map((f) => [
+    f.id,
+    queryEmbedding
+      ? embeddingRelevance(queryEmbedding, vectors!.get(f.id))
+      : contextWords.size === 0
+        ? 0
+        : coverage(contentWords(`${f.predicate} ${f.objectId ?? ""} ${f.objectLiteral ?? ""}`), contextWords),
+  ]));
+  const relevanceOf = (f: DbFact) => relevance.get(f.id) ?? 0;
 
   // Importance first (with the durable-predicate heuristic as a floor, so a
   // model that under-scores kinship/fear/promise facts can't age them out),
@@ -167,17 +171,20 @@ export function retrieveEpisodesForPrompt(
   const cards = store.listMemoryCards(chatId).filter((c) => !c.tags.includes("bond"));
   if (cards.length === 0) return [];
   const contextWords = contentWords(context);
-  const relevance = (c: DbMemoryCard): number => {
-    if (queryEmbedding) {
-      const v = store.cardEmbedding(c.id);
-      if (v) return Math.max(0, (cosine(queryEmbedding, v) - 0.3) / 0.6);
-    }
-    if (contextWords.size === 0) return 0;
-    return coverage(contentWords(`${c.title} ${c.content}`), contextWords);
-  };
-  return [...cards]
-    .sort((a, b) =>
-      (b.importance + relevance(b)) - (a.importance + relevance(a)) ||
-      b.createdAt - a.createdAt)
-    .slice(0, limit);
+  const vectors = queryEmbedding ? store.embeddings("memory_cards", cards.map((c) => c.id)) : null;
+  // Scored once, then sorted — same reason as the facts path above.
+  const scored = cards.map((card) => ({
+    card,
+    score: card.importance + (
+      queryEmbedding
+        ? embeddingRelevance(queryEmbedding, vectors!.get(card.id))
+        : contextWords.size === 0
+          ? 0
+          : coverage(contentWords(`${card.title} ${card.content}`), contextWords)
+    ),
+  }));
+  return scored
+    .sort((a, b) => (b.score - a.score) || (b.card.createdAt - a.card.createdAt))
+    .slice(0, limit)
+    .map((s) => s.card);
 }

@@ -84,6 +84,7 @@ function rowToStat(r: any): DbRelationshipStat {
     statName:    r.stat_name as StatName,
     value:       r.value,
     decayRate:   r.decay_rate,
+    ruptureRecovery: r.rupture_recovery ?? 0,
     lastUpdated: r.last_updated,
   };
 }
@@ -403,6 +404,25 @@ export class FableStore {
     return bufferToVec(row?.embedding ?? null);
   }
 
+  /**
+   * Embeddings for many rows in one query. Retrieval scores every candidate,
+   * so the per-row accessors above meant one SQLite round trip per fact —
+   * from inside a sort comparator, so the count was O(n log n), not O(n).
+   */
+  embeddings(table: "facts" | "memory_cards", ids: number[]): Map<number, Float32Array> {
+    const map = new Map<number, Float32Array>();
+    if (ids.length === 0) return map;
+    const placeholders = ids.map(() => "?").join(",");
+    const rows = this.db
+      .prepare(`SELECT id, embedding FROM ${table} WHERE id IN (${placeholders})`)
+      .all(...ids) as Array<{ id: number; embedding: Buffer | null }>;
+    for (const row of rows) {
+      const vec = bufferToVec(row.embedding);
+      if (vec) map.set(row.id, vec);
+    }
+    return map;
+  }
+
   /** Entities by id, in one query — retrieval renders many facts at once. */
   getEntities(chatId: string, ids: string[]): Map<string, DbEntity> {
     const map = new Map<string, DbEntity>();
@@ -542,23 +562,36 @@ export class FableStore {
 
   // ── Relationship Stats ────────────────────────────────────────────────────
 
+  /**
+   * Write a stat's value, and optionally its rupture window, in one statement.
+   *
+   * `ruptureRecovery` is deliberately part of the same write: the two describe
+   * one row, and updating them separately meant a single stat change ran four
+   * statements — read, upsert, read back, update.
+   */
   setStat(
     chatId:     string,
     observerId: string,
     targetId:   string,
     statName:   StatName,
-    value:      number
+    value:      number,
+    ruptureRecovery?: number
   ): DbRelationshipStat {
     const decayRate = DEFAULT_DECAY_RATES[statName];
     const t = now();
     this.db
       .prepare(
-        `INSERT INTO relationship_stats (chat_id, observer_id, target_id, stat_name, value, decay_rate, last_updated)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO relationship_stats
+           (chat_id, observer_id, target_id, stat_name, value, decay_rate, rupture_recovery, last_updated)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(chat_id, observer_id, target_id, stat_name)
-         DO UPDATE SET value = excluded.value, last_updated = excluded.last_updated`
+         DO UPDATE SET
+           value            = excluded.value,
+           rupture_recovery = COALESCE(?, relationship_stats.rupture_recovery),
+           last_updated     = excluded.last_updated`
       )
-      .run(chatId, observerId, targetId, statName, value, decayRate, t);
+      .run(chatId, observerId, targetId, statName, value, decayRate,
+           ruptureRecovery ?? 0, t, ruptureRecovery ?? null);
 
     return this.getStat(chatId, observerId, targetId, statName)!;
   }
@@ -589,10 +622,8 @@ export class FableStore {
 
     // Rupture refractory: after a large drop, the next several positive deltas
     // land at reduced strength — trust rebuilds slowly after being broken.
-    const recovery = this.db
-      .prepare("SELECT rupture_recovery FROM relationship_stats WHERE chat_id = ? AND observer_id = ? AND target_id = ? AND stat_name = ?")
-      .get(chatId, observerId, targetId, statName) as { rupture_recovery: number } | undefined;
-    const inRecovery = (recovery?.rupture_recovery ?? 0) > 0;
+    const recovery   = existing?.ruptureRecovery ?? 0;
+    const inRecovery = recovery > 0;
 
     let effective = delta;
     if (delta < 0 && bondStat) {
@@ -606,36 +637,23 @@ export class FableStore {
       effective *= 1 - Math.abs(current) / 100;
     }
 
-    const updated = this.setStat(chatId, observerId, targetId, statName,
-      Math.max(-100, Math.min(100, current + effective)));
-
-    // Bookkeeping: a big hit opens a recovery window; positive movement
-    // consumes it one step at a time.
+    // A big hit opens a recovery window; positive movement consumes it one
+    // step at a time. Written with the value, not after it.
+    let nextRecovery: number | undefined;
     if (bondStat) {
-      if (effective <= -12) {
-        this.db.prepare(
-          "UPDATE relationship_stats SET rupture_recovery = 6 WHERE chat_id = ? AND observer_id = ? AND target_id = ? AND stat_name = ?"
-        ).run(chatId, observerId, targetId, statName);
-      } else if (delta > 0 && inRecovery) {
-        this.db.prepare(
-          "UPDATE relationship_stats SET rupture_recovery = rupture_recovery - 1 WHERE chat_id = ? AND observer_id = ? AND target_id = ? AND stat_name = ? AND rupture_recovery > 0"
-        ).run(chatId, observerId, targetId, statName);
-      }
+      if (effective <= -12) nextRecovery = 6;
+      else if (delta > 0 && inRecovery) nextRecovery = recovery - 1;
     }
 
-    return updated;
+    return this.setStat(chatId, observerId, targetId, statName,
+      Math.max(-100, Math.min(100, current + effective)), nextRecovery);
   }
 
   /** True while any bond stat of the pair is inside its post-rupture window */
   isRecentlyRuptured(chatId: string, observerId: string, targetId: string): boolean {
-    const row = this.db
-      .prepare(
-        `SELECT MAX(rupture_recovery) AS r FROM relationship_stats
-         WHERE chat_id = ? AND observer_id = ? AND target_id = ?
-           AND stat_name IN ('trust','affection','connection')`
-      )
-      .get(chatId, observerId, targetId) as { r: number | null } | undefined;
-    return (row?.r ?? 0) > 0;
+    const stats = this.queryStats(chatId, observerId, targetId);
+    return (["trust", "affection", "connection"] as const)
+      .some((name) => (stats[name]?.ruptureRecovery ?? 0) > 0);
   }
 
   getStat(

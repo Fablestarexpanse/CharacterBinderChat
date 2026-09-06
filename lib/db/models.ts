@@ -51,6 +51,8 @@ export interface DbRelationshipStat {
   statName:    StatName;
   value:       number;
   decayRate:   number;
+  /** Steps left in the post-rupture window; 0 when the bond is not wounded. */
+  ruptureRecovery: number;
   lastUpdated: number;
 }
 

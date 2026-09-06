@@ -82,3 +82,13 @@ export function bufferToVec(buf: Buffer | Uint8Array | null): Float32Array | nul
 export function vecToBuffer(v: Float32Array): Buffer {
   return Buffer.from(v.buffer, v.byteOffset, v.byteLength);
 }
+
+/**
+ * Cosine similarity rescaled onto roughly the 0..1 band lexical overlap
+ * produces, so a corpus with some embedded rows and some not ranks sanely.
+ * Real cosines here sit around 0.3..0.9.
+ */
+export function embeddingRelevance(query: Float32Array, row: Float32Array | undefined): number {
+  if (!row) return 0;
+  return Math.max(0, (cosine(query, row) - 0.3) / 0.6);
+}
