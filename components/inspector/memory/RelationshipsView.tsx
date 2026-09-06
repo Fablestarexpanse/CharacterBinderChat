@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Loader2, Heart, Shield, Flame, Link2, CloudSun } from "lucide-react";
-import { formatRelativeTime } from "./utils";
+import { formatAgeFromUnixSeconds } from "./utils";
 import { getJson } from "@/lib/api/client";
 
 interface StatRow {
@@ -109,7 +109,7 @@ export function RelationshipsView({ chatId, characterId, extractionVersion }: Pr
                 )}
                 {s.lastUpdated !== null && (
                   <span className="text-[9px] text-[var(--muted-fg)]">
-                    {formatRelativeTime(s.lastUpdated)}
+                    {formatAgeFromUnixSeconds(s.lastUpdated)}
                   </span>
                 )}
               </div>

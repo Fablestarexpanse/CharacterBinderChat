@@ -22,7 +22,7 @@ export function formatAge(msAgo: number): string {
   return `${Math.floor(msAgo / 86_400_000)}d ago`;
 }
 
-export function formatRelative(isoString: string): string {
+export function formatAgeFromIso(isoString: string): string {
   return formatAge(Date.now() - new Date(isoString).getTime());
 }
 

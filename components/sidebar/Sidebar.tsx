@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { NavItem } from "./NavItem";
 import { SystemStatus } from "./SystemStatus";
 import { useHydrated } from "@/lib/hooks/useHydrated";
-import { truncate, formatRelative } from "@/lib/utils";
+import { truncate, formatAgeFromIso } from "@/lib/utils";
 import type { Chat, Character } from "@/lib/types";
 import {
   Users,
@@ -199,7 +199,7 @@ function ChatRow({
         <>
           {/* Timestamp — swapped for actions on hover */}
           <div className="text-[10px] text-[var(--muted-fg)] flex-shrink-0 group-hover:hidden">
-            {hydrated ? formatRelative(chat.updatedAt) : ""}
+            {hydrated ? formatAgeFromIso(chat.updatedAt) : ""}
           </div>
           <div
             className="hidden group-hover:flex items-center gap-0.5 flex-shrink-0"

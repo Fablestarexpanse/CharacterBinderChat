@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
       ? store.getCoreMemory(chatId, characterId)?.data.mood ?? null
       : null;
 
-    const commitments = store.allCommitments(chatId).map((c) => ({
+    const commitments = store.listAllCommitments(chatId).map((c) => ({
       id:          `commit:${c.id}`,
       name:        c.description.length > 40 ? c.description.slice(0, 38) + "…" : c.description,
       description: c.description,

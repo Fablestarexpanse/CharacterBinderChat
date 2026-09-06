@@ -412,7 +412,7 @@ function writeCommitments(
     if (promisee) store.ensureEntity(chatId, promisee, "character", promisee);
 
     // Dedup among the promisor's active commitments
-    const dup = store.allCommitments(chatId, "active")
+    const dup = store.listAllCommitments(chatId, "active")
       .some((c) => c.promisorId === promisor && isRestatement(rawC.description, c.description));
     if (dup) continue;
 
@@ -433,7 +433,7 @@ function resolveCommitments(
     // Coverage, not Jaccard: the model quotes a fragment of a longer promise,
     // so what matters is how much of the fragment the commitment contains —
     // scoring symmetrically would penalise the commitment for being longer.
-    const active = store.allCommitments(chatId, "active");
+    const active = store.listAllCommitments(chatId, "active");
     let best: { id: number; score: number } | null = null;
     for (const c of active) {
       const score = coverage(words, contentWords(c.description));

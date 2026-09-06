@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useFableStore } from "@/lib/store";
 import { Loader2, Trash2, Plus, X } from "lucide-react";
-import { formatRelativeTime, formatAbsTime } from "./utils";
+import { formatAgeFromUnixSeconds, formatDateFromUnixSeconds } from "./utils";
 import { getJson } from "@/lib/api/client";
 
 interface EnrichedFact {
@@ -246,7 +246,7 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
                   <Badge variant="default">{Math.round(f.confidence * 100)}%</Badge>
                 )}
                 <span className="text-[10px] text-[var(--muted-fg)]">
-                  {formatRelativeTime(f.tValidStart)}
+                  {formatAgeFromUnixSeconds(f.tValidStart)}
                 </span>
               </div>
 
@@ -263,7 +263,7 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
                       <div className="flex items-center gap-2 mt-0.5">
                         <Badge variant="default" className="text-[9px] opacity-70">superseded</Badge>
                         <span className="text-[9px] text-[var(--muted-fg)]">
-                          {formatAbsTime(old.tValidStart)} → {old.tValidEnd ? formatAbsTime(old.tValidEnd) : "?"}
+                          {formatDateFromUnixSeconds(old.tValidStart)} → {old.tValidEnd ? formatDateFromUnixSeconds(old.tValidEnd) : "?"}
                         </span>
                       </div>
                     </div>
@@ -293,7 +293,7 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
                       <span className="font-medium">{f.predicate}</span> {f.objectDisplay}
                     </p>
                     <span className="text-[9px] text-[var(--muted-fg)]">
-                      {formatAbsTime(f.tValidStart)} → {f.tValidEnd ? formatAbsTime(f.tValidEnd) : "?"}
+                      {formatDateFromUnixSeconds(f.tValidStart)} → {f.tValidEnd ? formatDateFromUnixSeconds(f.tValidEnd) : "?"}
                     </span>
                   </div>
                 ))}

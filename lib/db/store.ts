@@ -136,6 +136,11 @@ export class FableStore {
     this._ensureColumns();
   }
 
+  /** Release the file handle. Used when a dev hot reload replaces this class. */
+  close(): void {
+    this.db.close();
+  }
+
   // The upgrade path for databases created before a column existed. Every
   // column here is also in CREATE_TABLES_SQL, which describes the real shape
   // of a fresh table; CREATE TABLE IF NOT EXISTS never alters an existing one,
@@ -843,7 +848,7 @@ export class FableStore {
   }
 
   /** Every commitment in the chat, either direction, newest first */
-  allCommitments(chatId: string, status?: CommitmentStatus): DbCommitment[] {
+  listAllCommitments(chatId: string, status?: CommitmentStatus): DbCommitment[] {
     const rows = this.db
       .prepare("SELECT * FROM commitments WHERE chat_id = ? ORDER BY created_at DESC")
       .all(chatId)
@@ -859,7 +864,7 @@ export class FableStore {
 
   // ── Character Summary ─────────────────────────────────────────────────────
 
-  characterSummary(chatId: string, entityId: string): CharacterSummaryData {
+  getCharacterSummary(chatId: string, entityId: string): CharacterSummaryData {
     const entity = this.getEntity(chatId, entityId);
     const facts  = this.queryFacts(chatId, entityId);
 
@@ -1294,7 +1299,7 @@ export class FableStore {
    * the batch it already fetched, so rendering twenty facts doesn't mean
    * twenty more queries.
    */
-  factObjectDisplay(
+  formatFactObject(
     chatId: string,
     fact: DbFact,
     lookup: (id: string) => DbEntity | null = (id) => this.getEntity(chatId, id)

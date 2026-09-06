@@ -144,7 +144,7 @@ export function retrieveFactsForPrompt(
 
   return topFacts.map((f) => {
     const subj = entityMap.get(f.subjectId)?.name ?? f.subjectId;
-    const obj  = store.factObjectDisplay(chatId, f, (id) => entityMap.get(id) ?? null);
+    const obj  = store.formatFactObject(chatId, f, (id) => entityMap.get(id) ?? null);
     return `${subj} ${f.predicate} ${obj}`;
   });
 }

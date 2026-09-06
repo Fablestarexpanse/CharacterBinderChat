@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
     const enriched = facts.map((f) => ({
       id:            f.id,
       predicate:     f.predicate,
-      objectDisplay: store.factObjectDisplay(chatId, f),
+      objectDisplay: store.formatFactObject(chatId, f),
       confidence:    f.confidence,
       tValidStart:   f.tValidStart,
       tValidEnd:     f.tValidEnd,

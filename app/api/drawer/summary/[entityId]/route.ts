@@ -16,7 +16,7 @@ export async function GET(
       return Response.json({ ok: false, error: "chatId param required" }, { status: 400 });
     }
     const store   = getStore();
-    const summary = store.characterSummary(chatId, entityId);
+    const summary = store.getCharacterSummary(chatId, entityId);
     return Response.json(summary);
   } catch (err) {
     return routeError("[drawer/summary/[entityId] GET]", err);

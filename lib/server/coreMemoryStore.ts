@@ -17,7 +17,7 @@ export function syncStatsToCore(chatId: string, characterId: string): void {
 
   // Direction is character -> player: relationship_with_user means how *this
   // character* feels about the user, which is also what the system prompt
-  // injects and what characterSummary() reads.
+  // injects and what getCharacterSummary() reads.
   const stats = store.queryStats(chatId, characterId, "player");
   const rel   = { ...existing.data.relationship_with_user };
 
@@ -48,7 +48,7 @@ export function syncCommitmentsToCore(chatId: string, characterId: string, perso
   const existing = store.getCoreMemory(chatId, characterId);
   if (!existing) return;
 
-  const active = store.allCommitments(chatId, "active");
+  const active = store.listAllCommitments(chatId, "active");
   const mine   = active.filter((c) => c.promisorId === characterId);
   const theirs = active.filter((c) => c.promisorId !== characterId);
   // Third-party promisors render by display name, not raw entity id
