@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
-import { routeError } from "@/lib/api/server";
+import { routeError, badRequest } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   try {
     const characterId = req.nextUrl.searchParams.get("characterId");
     if (!characterId) {
-      return Response.json({ ok: false, error: "characterId param required" }, { status: 400 });
+      return badRequest("characterId param required");
     }
     const store = getStore();
     const sources = store.listMemorySources(characterId);
@@ -34,10 +34,10 @@ export async function POST(req: NextRequest) {
     const { fromChatId, toChatId } = body;
 
     if (!fromChatId || !toChatId) {
-      return Response.json({ ok: false, error: "fromChatId and toChatId are required" }, { status: 400 });
+      return badRequest("fromChatId and toChatId are required");
     }
     if (fromChatId === toChatId) {
-      return Response.json({ ok: false, error: "fromChatId and toChatId must be different" }, { status: 400 });
+      return badRequest("fromChatId and toChatId must be different");
     }
 
     const store  = getStore();

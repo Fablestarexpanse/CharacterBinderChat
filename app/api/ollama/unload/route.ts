@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { routeError } from "@/lib/api/server";
+import { routeError, badRequest } from "@/lib/api/server";
 import { parseProviderBase } from "@/lib/llm/callers";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => null)) as { baseUrl?: string } | null;
     const base = parseProviderBase(body?.baseUrl ?? "http://localhost:11434");
     if (!base) {
-      return Response.json({ ok: false, error: "baseUrl must be an http(s) URL" }, { status: 400 });
+      return badRequest("baseUrl must be an http(s) URL");
     }
 
     const ps = await fetch(`${base}/api/ps`, {

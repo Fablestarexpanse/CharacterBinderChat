@@ -68,22 +68,29 @@ export interface ChatsSlice {
 }
 
 /**
- * Replace one message inside one chat, leaving every other object identity
- * alone — four actions differed only in the patch they applied.
+ * Replace one chat, leaving every other object identity alone. Eleven actions
+ * differed only in the patch they applied; the ones with an extra bail-out
+ * condition opt out by returning their argument unchanged.
  */
+function patchChat(
+  state: { chats: Chat[] },
+  chatId: string,
+  patch: (c: Chat) => Chat
+): { chats: Chat[] } {
+  return { chats: state.chats.map((c) => (c.id === chatId ? patch(c) : c)) };
+}
+
+/** The same, one level down: replace one message inside one chat. */
 function patchMessage(
   state: { chats: Chat[] },
   chatId: string,
   messageId: string,
   patch: (m: Message) => Message
 ): { chats: Chat[] } {
-  return {
-    chats: state.chats.map((c) =>
-      c.id !== chatId
-        ? c
-        : { ...c, messages: c.messages.map((m) => (m.id === messageId ? patch(m) : m)) }
-    ),
-  };
+  return patchChat(state, chatId, (c) => ({
+    ...c,
+    messages: c.messages.map((m) => (m.id === messageId ? patch(m) : m)),
+  }));
 }
 
 export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (set, get) => ({
@@ -126,13 +133,9 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
       id,
       timestamp: new Date().toISOString(),
     };
-    set((state) => ({
-      chats: state.chats.map((c) =>
-        c.id === chatId
-          ? { ...c, messages: [...c.messages, message], updatedAt: new Date().toISOString() }
-          : c
-      ),
-    }));
+    set((state) => patchChat(state, chatId, (c) => ({
+      ...c, messages: [...c.messages, message], updatedAt: new Date().toISOString(),
+    })));
     return id;
   },
 
@@ -143,16 +146,13 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
       id,
       timestamp: new Date().toISOString(),
     };
-    set((state) => ({
-      chats: state.chats.map((c) => {
-        if (c.id !== chatId) return c;
-        const idx = c.messages.findIndex((m) => m.id === afterMessageId);
-        const messages =
-          idx === -1
-            ? [...c.messages, message]
-            : [...c.messages.slice(0, idx + 1), message, ...c.messages.slice(idx + 1)];
-        return { ...c, messages, updatedAt: new Date().toISOString() };
-      }),
+    set((state) => patchChat(state, chatId, (c) => {
+      const idx = c.messages.findIndex((m) => m.id === afterMessageId);
+      const messages =
+        idx === -1
+          ? [...c.messages, message]
+          : [...c.messages.slice(0, idx + 1), message, ...c.messages.slice(idx + 1)];
+      return { ...c, messages, updatedAt: new Date().toISOString() };
     }));
     return id;
   },
@@ -171,30 +171,27 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
     set((s) => patchMessage(s, chatId, messageId, (m) => ({ ...m, content }))),
 
   setMessageMemoryTrace: (chatId, messageId, trace) => {
-    set((state) => ({
-      chats: state.chats.map((c) => {
-        if (c.id !== chatId) return c;
-        // Traces duplicate the injected memory strings per message; keep
-        // them only on the most recent assistant replies or long chats
-        // blow the localStorage quota and bloat every state sync.
-        const KEEP_TRACES = 20;
-        const assistantIds = c.messages
-          .filter((m) => m.role === "assistant" && (m.memoryTrace || m.id === messageId))
-          .map((m) => m.id);
-        const dropBefore = new Set(assistantIds.slice(0, Math.max(0, assistantIds.length - KEEP_TRACES)));
-        return {
-          ...c,
-          messages: c.messages.map((m) => {
-            if (m.id === messageId) return { ...m, memoryTrace: trace };
-            if (dropBefore.has(m.id) && m.memoryTrace) {
-              const rest = { ...m };
-              delete rest.memoryTrace;
-              return rest;
-            }
-            return m;
-          }),
-        };
-      }),
+    set((state) => patchChat(state, chatId, (c) => {
+      // Traces duplicate the injected memory strings per message; keep
+      // them only on the most recent assistant replies or long chats
+      // blow the localStorage quota and bloat every state sync.
+      const KEEP_TRACES = 20;
+      const assistantIds = c.messages
+        .filter((m) => m.role === "assistant" && (m.memoryTrace || m.id === messageId))
+        .map((m) => m.id);
+      const dropBefore = new Set(assistantIds.slice(0, Math.max(0, assistantIds.length - KEEP_TRACES)));
+      return {
+        ...c,
+        messages: c.messages.map((m) => {
+          if (m.id === messageId) return { ...m, memoryTrace: trace };
+          if (dropBefore.has(m.id) && m.memoryTrace) {
+            const rest = { ...m };
+            delete rest.memoryTrace;
+            return rest;
+          }
+          return m;
+        }),
+      };
     }));
   },
 
@@ -208,41 +205,26 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
     set((s) => patchMessage(s, chatId, messageId, (m) => ({ ...m, collapsed: !m.collapsed }))),
 
   setChatLorebooks: (chatId, lorebookIds) => {
-    set((state) => ({
-      chats: state.chats.map((c) => {
-        if (c.id !== chatId) return c;
-        if (lorebookIds === undefined) {
-          const rest = { ...c };
-          delete rest.lorebookIds;
-          return rest;
-        }
-        return { ...c, lorebookIds };
-      }),
+    set((state) => patchChat(state, chatId, (c) => {
+      if (lorebookIds === undefined) {
+        const rest = { ...c };
+        delete rest.lorebookIds;
+        return rest;
+      }
+      return { ...c, lorebookIds };
     }));
   },
 
   setChatModel: (chatId, modelId, providerId) => {
-    set((state) => ({
-      chats: state.chats.map((c) =>
-        c.id === chatId ? { ...c, modelId, providerId } : c
-      ),
-    }));
+    set((state) => patchChat(state, chatId, (c) => ({ ...c, modelId, providerId })));
   },
 
   setChatContext: (chatId, contextUsed, contextMax) => {
-    set((state) => ({
-      chats: state.chats.map((c) =>
-        c.id === chatId ? { ...c, contextUsed, contextMax } : c
-      ),
-    }));
+    set((state) => patchChat(state, chatId, (c) => ({ ...c, contextUsed, contextMax })));
   },
 
   updateChatSettings: (chatId, settings) => {
-    set((state) => ({
-      chats: state.chats.map((c) =>
-        c.id === chatId ? { ...c, settings: { ...c.settings, ...settings } } : c
-      ),
-    }));
+    set((state) => patchChat(state, chatId, (c) => ({ ...c, settings: { ...c.settings, ...settings } })));
   },
 
   createChat: (characterId) => {
@@ -351,14 +333,12 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
   },
 
   toggleMemberPresence: (chatId, characterId) => {
-    set((state) => ({
-      chats: state.chats.map((c) => {
-        if (c.id !== chatId || !c.memberIds?.includes(characterId)) return c;
-        const absent = new Set(c.absentIds ?? []);
-        if (absent.has(characterId)) absent.delete(characterId);
-        else if (absent.size < c.memberIds.length - 1) absent.add(characterId); // never empty the scene
-        return { ...c, absentIds: [...absent] };
-      }),
+    set((state) => patchChat(state, chatId, (c) => {
+      if (!c.memberIds?.includes(characterId)) return c;
+      const absent = new Set(c.absentIds ?? []);
+      if (absent.has(characterId)) absent.delete(characterId);
+      else if (absent.size < c.memberIds.length - 1) absent.add(characterId); // never empty the scene
+      return { ...c, absentIds: [...absent] };
     }));
   },
 
@@ -376,41 +356,32 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
   renameChat: (chatId, name) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    set((state) => ({
-      chats: state.chats.map((c) =>
-        c.id === chatId ? { ...c, name: trimmed, updatedAt: new Date().toISOString() } : c
-      ),
-    }));
+    set((state) => patchChat(state, chatId, (c) => ({
+      ...c, name: trimmed, updatedAt: new Date().toISOString(),
+    })));
   },
 
   clearChat: (chatId) => {
-    set((state) => ({
-      chats: state.chats.map((c) => {
-        if (c.id !== chatId) return c;
-        const character = state.characters.find((ch) => ch.id === c.characterId);
-        const messages: Message[] = character?.firstMessage?.trim()
-          ? [{
-              id:          `msg-${Date.now()}-first`,
-              chatId,
-              role:        "assistant",
-              content:     character.firstMessage,
-              characterId: character.id,
-              timestamp:   new Date().toISOString(),
-            }]
-          : [];
-        return { ...c, messages, contextUsed: 0, updatedAt: new Date().toISOString() };
-      }),
+    set((state) => patchChat(state, chatId, (c) => {
+      const character = state.characters.find((ch) => ch.id === c.characterId);
+      const messages: Message[] = character?.firstMessage?.trim()
+        ? [{
+            id:          `msg-${Date.now()}-first`,
+            chatId,
+            role:        "assistant",
+            content:     character.firstMessage,
+            characterId: character.id,
+            timestamp:   new Date().toISOString(),
+          }]
+        : [];
+      return { ...c, messages, contextUsed: 0, updatedAt: new Date().toISOString() };
     }));
   },
 
   removeMessage: (chatId, messageId) => {
-    set((state) => ({
-      chats: state.chats.map((c) =>
-        c.id === chatId
-          ? { ...c, messages: c.messages.filter((m) => m.id !== messageId) }
-          : c
-      ),
-    }));
+    set((state) => patchChat(state, chatId, (c) => ({
+      ...c, messages: c.messages.filter((m) => m.id !== messageId),
+    })));
   },
 
   isGenerating: false,

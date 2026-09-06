@@ -28,8 +28,9 @@ export type Parsed<T> =
   | { ok: true;  value: T }
   | { ok: false; response: Response };
 
-function badRequest(error: string): { ok: false; response: Response } {
-  return { ok: false, response: Response.json({ ok: false, error }, { status: 400 }) };
+/** The 400 half of the envelope, so route files stop writing it out by hand. */
+export function badRequest(error: string): Response {
+  return Response.json({ ok: false, error }, { status: 400 });
 }
 
 /**
@@ -51,18 +52,18 @@ export function parseMemoryTaskRequest(
   const { chatId, characterId, messages, providerType, providerBaseUrl, modelId } = body;
 
   if (!chatId || !characterId || !providerBaseUrl || !modelId || (requireMessages && !messages?.length)) {
-    return badRequest(
+    return { ok: false, response: badRequest(
       requireMessages
         ? "chatId, characterId, messages, providerBaseUrl and modelId are required"
         : "chatId, characterId, providerBaseUrl and modelId are required"
-    );
+    ) };
   }
   if (!isProviderType(providerType)) {
-    return badRequest(`providerType must be one of: ${PROVIDER_TYPES.join(", ")}`);
+    return { ok: false, response: badRequest(`providerType must be one of: ${PROVIDER_TYPES.join(", ")}`) };
   }
   const baseUrl = parseProviderBase(providerBaseUrl);
   if (!baseUrl) {
-    return badRequest("providerBaseUrl must be an http(s) URL");
+    return { ok: false, response: badRequest("providerBaseUrl must be an http(s) URL") };
   }
   return { ok: true, value: { ...body, providerType, providerBaseUrl: baseUrl } };
 }

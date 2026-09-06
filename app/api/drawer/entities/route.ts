@@ -5,7 +5,7 @@ import { getStore } from "@/lib/db";
 // queries for a type that cannot exist on read.
 import { ENTITY_TYPES, isEntityType } from "@/lib/db/models";
 import type { EntityType } from "@/lib/db/models";
-import { routeError } from "@/lib/api/server";
+import { routeError, badRequest } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +16,11 @@ export async function GET(req: NextRequest) {
     const store  = getStore();
     const chatId = req.nextUrl.searchParams.get("chatId");
     if (!chatId) {
-      return Response.json({ ok: false, error: "chatId param required" }, { status: 400 });
+      return badRequest("chatId param required");
     }
     const type = req.nextUrl.searchParams.get("type");
     if (type !== null && !isEntityType(type)) {
-      return Response.json({ ok: false, error: `type must be one of: ${ENTITY_TYPES.join(", ")}` }, { status: 400 });
+      return badRequest(`type must be one of: ${ENTITY_TYPES.join(", ")}`);
     }
     const entities = store.listEntities(chatId, type ?? undefined);
     return Response.json({ entities });
@@ -38,10 +38,10 @@ export async function POST(req: NextRequest) {
       chatId: string; id: string; type: EntityType; name: string; description?: string;
     };
     if (!chatId || !id || !type || !name) {
-      return Response.json({ ok: false, error: "chatId, id, type and name are required" }, { status: 400 });
+      return badRequest("chatId, id, type and name are required");
     }
     if (!isEntityType(type)) {
-      return Response.json({ ok: false, error: `type must be one of: ${ENTITY_TYPES.join(", ")}` }, { status: 400 });
+      return badRequest(`type must be one of: ${ENTITY_TYPES.join(", ")}`);
     }
     const store = getStore();
     const entity = store.ensureEntity(chatId, id, type, name, description);

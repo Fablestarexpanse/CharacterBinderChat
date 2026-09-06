@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { routeError } from "@/lib/api/server";
+import { routeError, badRequest } from "@/lib/api/server";
 import { parseProviderBase } from "@/lib/llm/callers";
 import {
   buildDirectorMessages, looksLikeInstructionLeak,
@@ -18,17 +18,11 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as SceneDirectorInput;
     if (!body.messages?.length || !body.ollamaBaseUrl || !body.modelId) {
-      return Response.json(
-        { ok: false, error: "messages, ollamaBaseUrl and modelId are required" },
-        { status: 400 }
-      );
+      return badRequest("messages, ollamaBaseUrl and modelId are required");
     }
     const baseUrl = parseProviderBase(body.ollamaBaseUrl);
     if (!baseUrl) {
-      return Response.json(
-        { ok: false, error: "ollamaBaseUrl must be an http(s) URL" },
-        { status: 400 }
-      );
+      return badRequest("ollamaBaseUrl must be an http(s) URL");
     }
 
     // Chat format (system/user split) — instruct models follow it far more

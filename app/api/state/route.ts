@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
-import { routeError } from "@/lib/api/server";
+import { routeError, badRequest } from "@/lib/api/server";
 import type { PersistedAppState } from "@/lib/types";
 import { APP_COLLECTIONS } from "@/lib/db/appState";
 
@@ -53,16 +53,13 @@ export async function PUT(req: NextRequest) {
     ) as { [K in (typeof APP_COLLECTIONS)[number][0]]: PersistedAppState[K] };
 
     if (!chats || !Array.isArray(body.characters)) {
-      return Response.json({ ok: false, error: "characters and chats arrays are required" }, { status: 400 });
+      return badRequest("characters and chats arrays are required");
     }
     const missingId =
       chats.some((c) => !c?.id) ||
       APP_COLLECTIONS.some(([field]) => collections[field].some((row) => !row?.id));
     if (missingId) {
-      return Response.json(
-        { ok: false, error: "every chat and every characters/personas/lorebooks/scenarios/presets entry needs an id" },
-        { status: 400 }
-      );
+      return badRequest("every chat and every characters/personas/lorebooks/scenarios/presets entry needs an id");
     }
 
     // Singletons: absent means "leave alone", so distinguish undefined from null

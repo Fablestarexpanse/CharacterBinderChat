@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
-import { routeError } from "@/lib/api/server";
+import { routeError, badRequest } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 
@@ -14,10 +14,10 @@ export async function POST(req: NextRequest) {
     const { chatId, fromId, toId } = body;
 
     if (!chatId || !fromId || !toId) {
-      return Response.json({ ok: false, error: "chatId, fromId and toId are required" }, { status: 400 });
+      return badRequest("chatId, fromId and toId are required");
     }
     if (fromId === toId) {
-      return Response.json({ ok: false, error: "fromId and toId must be different" }, { status: 400 });
+      return badRequest("fromId and toId must be different");
     }
 
     const store = getStore();

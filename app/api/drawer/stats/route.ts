@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { STAT_NAMES } from "@/lib/db/models";
-import { routeError } from "@/lib/api/server";
+import { routeError, badRequest } from "@/lib/api/server";
 import type { DrawerStat } from "@/lib/api/dto";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     const observer = params.get("observer");
     const target   = params.get("target");
     if (!chatId || !observer || !target) {
-      return Response.json({ ok: false, error: "chatId, observer and target params required" }, { status: 400 });
+      return badRequest("chatId, observer and target params required");
     }
     const store = getStore();
     const statsMap = store.queryStats(chatId, observer, target);

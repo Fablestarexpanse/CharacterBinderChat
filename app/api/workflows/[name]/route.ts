@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
-import { routeError } from "@/lib/api/server";
+import { routeError, badRequest } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,7 @@ export async function GET(
   try {
     const { name } = await params;
     if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) {
-      return Response.json({ ok: false, error: "invalid workflow name" }, { status: 400 });
+      return badRequest("invalid workflow name");
     }
     const file = path.join(process.cwd(), "workflows", `${name}.json`);
     let raw: string;

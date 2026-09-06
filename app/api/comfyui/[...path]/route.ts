@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { parseProviderBase } from "@/lib/llm/callers";
+import { badRequest } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ async function proxy(
   const base = parseProviderBase(
     req.nextUrl.searchParams.get("base") ?? "http://127.0.0.1:8188");
   if (!base) {
-    return Response.json({ ok: false, error: "base must be an http(s) URL" }, { status: 400 });
+    return badRequest("base must be an http(s) URL");
   }
 
   const search = new URLSearchParams(req.nextUrl.searchParams);

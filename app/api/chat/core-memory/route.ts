@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { embedText } from "@/lib/llm/embeddings";
 import type { CoreMemory } from "@/lib/db/models";
-import { routeError } from "@/lib/api/server";
+import { routeError, badRequest } from "@/lib/api/server";
 import type { CoreMemoryGetResponse } from "@/lib/api/dto";
 import { retrieveEpisodesForPrompt, retrieveFactsForPrompt } from "@/lib/server/retrieval";
 
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   const context       = searchParams.get("context") ?? "";
 
   if (!chatId || !characterId) {
-    return Response.json({ ok: false, error: "chatId and characterId are required" }, { status: 400 });
+    return badRequest("chatId and characterId are required");
   }
 
   try {
@@ -154,7 +154,7 @@ export async function PATCH(req: NextRequest) {
     const { chatId, characterId, ...rawPatch } = body;
 
     if (!chatId || typeof chatId !== "string" || !characterId || typeof characterId !== "string") {
-      return Response.json({ ok: false, error: "chatId and characterId are required" }, { status: 400 });
+      return badRequest("chatId and characterId are required");
     }
 
     // Ensure the record exists before patching
@@ -166,7 +166,7 @@ export async function PATCH(req: NextRequest) {
 
     const patch = sanitizePatch(rawPatch);
     if (typeof patch === "string") {
-      return Response.json({ ok: false, error: patch }, { status: 400 });
+      return badRequest(patch);
     }
 
     const updated = store.patchCoreMemory(chatId, characterId, patch);

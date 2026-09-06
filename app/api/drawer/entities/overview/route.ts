@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
-import { routeError } from "@/lib/api/server";
+import { routeError, badRequest } from "@/lib/api/server";
 import { findDuplicateClusters } from "@/lib/server/entityDedupe";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     const store  = getStore();
     const chatId = req.nextUrl.searchParams.get("chatId");
     if (!chatId) {
-      return Response.json({ ok: false, error: "chatId param required" }, { status: 400 });
+      return badRequest("chatId param required");
     }
     const entities = store.listEntities(chatId);
 

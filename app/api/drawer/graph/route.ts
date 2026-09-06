@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
-import { routeError } from "@/lib/api/server";
+import { routeError, badRequest } from "@/lib/api/server";
 import type { GraphPayload } from "@/lib/api/dto";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     const chatId      = req.nextUrl.searchParams.get("chatId");
     const characterId = req.nextUrl.searchParams.get("characterId");
     if (!chatId) {
-      return Response.json({ ok: false, error: "chatId param required" }, { status: 400 });
+      return badRequest("chatId param required");
     }
 
     const store = getStore();
