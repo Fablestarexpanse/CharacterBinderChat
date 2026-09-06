@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     const store = getStore();
     const statsMap = store.queryStats(chatId, observer, target);
 
-    // Return all five axes (null value for axes not yet set)
+    // null value for axes not yet set
     const stats = STAT_NAMES.map((name) => ({
       name,
       ...(statsMap[name]

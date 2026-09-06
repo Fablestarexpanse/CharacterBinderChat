@@ -1,5 +1,4 @@
 // ─── Provider settings, live status, and the model catalogue. ───────────────────
-// Provider settings, live status, and the model catalogue.
 
 import type { StateCreator } from "zustand";
 import { DEFAULT_UTILITY_MODEL } from "../defaults";

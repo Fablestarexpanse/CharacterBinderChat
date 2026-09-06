@@ -1,5 +1,4 @@
 // ─── Image jobs and the Image Studio's settings. ────────────────────────────────
-// Image jobs and the Image Studio's settings.
 
 import type { StateCreator } from "zustand";
 import { defaultImageSettings } from "../defaults";

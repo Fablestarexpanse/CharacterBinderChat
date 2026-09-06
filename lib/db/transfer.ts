@@ -39,15 +39,14 @@ export function listMemorySources(db: DB, characterId: string): Array<{
 /**
  * Copy one chat's entire memory into another chat. Used for the explicit
  * "continue with memories" option when starting a new chat — memory NEVER
- * carries over implicitly. Existing rows in the target chat are preserved;
- * colliding entities/stats keep the target's version.
- * Fact supersession links are remapped onto the copied ids.
- */
-/**
- * Copy one chat's memory into another. Takes the store as well as the handle:
- * the entity and fact copies go through the store's own write paths (so
- * predicate canonicalisation and the witness stamp still apply), while the
- * commitment, card and core-memory copies are raw row moves.
+ * carries over implicitly. Existing rows in the target are preserved and
+ * colliding entities and stats keep the target's version; fact supersession
+ * links are remapped onto the copied ids.
+ *
+ * Takes the store as well as the handle: the entity and fact copies go through
+ * the store's own write paths, so predicate canonicalisation and the witness
+ * stamp still apply, while the commitment, card and core-memory copies are raw
+ * row moves.
  */
 export function transferMemory(
   store: FableStore, db: DB, fromChatId: string, toChatId: string

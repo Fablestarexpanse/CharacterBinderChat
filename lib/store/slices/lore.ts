@@ -1,5 +1,4 @@
 // ─── Lorebooks and their keyword-triggered entries. ─────────────────────────────
-// Lorebooks and their keyword-triggered entries.
 
 import type { StateCreator } from "zustand";
 import type { FableStore } from "../index";

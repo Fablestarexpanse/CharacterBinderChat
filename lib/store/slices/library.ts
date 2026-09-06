@@ -1,5 +1,4 @@
 // ─── Presets and the standing instructions that layer under them. ───────────────
-// Presets and the standing instructions that layer under them.
 
 import type { StateCreator } from "zustand";
 import { normalizeForbiddenWords } from "@/lib/utils";

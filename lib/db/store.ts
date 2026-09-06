@@ -40,7 +40,6 @@ export class FableStore {
   private db: DB;
 
   constructor(dbPath: string) {
-    // Ensure parent directory exists
     const dir = path.dirname(dbPath);
     if (dir && dir !== "." && !fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });

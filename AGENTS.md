@@ -12,8 +12,8 @@ Single-user, local-first app. Next.js 16 + React 19 + Tailwind 4 + Zustand, with
 
 Two memory layers, both per-character:
 
-- **Drawer 1** — `core_memory` table, one JSON document per character, always injected into the prompt.
-- **Drawer 2** — bi-temporal graph (`entities` / `facts` / `relationship_stats` / `commitments`), retrieved into the prompt.
+- **Drawer 1** — `core_memory` table, one JSON document per character, always injected into the prompt. Served by `app/api/chat/core-memory/route.ts` (GET plus the key-whitelisting PATCH) and `app/api/chat/core-memory/refresh/route.ts` (POST).
+- **Drawer 2** — bi-temporal graph (`entities` / `facts` / `relationship_stats` / `commitments`), retrieved into the prompt. Served by everything under `app/api/drawer/`: entities, entities/merge, entities/overview, episode, extract, facts, graph, stats, stats/decay, summary/[entityId] and transfer.
 
 `fable_drawer2/` (sibling directory, tracked in the parent repo) is the Python reference implementation with 77 passing tests. Treat its semantics as the spec when changing bi-temporal behaviour, and keep `lib/db/schema.ts` in step with `schema.py`.
 

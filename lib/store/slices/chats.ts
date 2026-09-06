@@ -1,5 +1,4 @@
 // ─── Chats and their messages, plus the one-at-a-time generation flag. ──────────
-// Chats and their messages, plus the one-at-a-time generation flag.
 
 import type { StateCreator } from "zustand";
 import type { FableStore } from "../index";
