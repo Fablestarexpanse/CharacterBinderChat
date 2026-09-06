@@ -6,7 +6,7 @@ import { CharacterTab } from "./CharacterTab";
 import { MemoryTab } from "./MemoryTab";
 import { GraphTab } from "./GraphTab";
 import { LoreTab } from "./LoreTab";
-import { ImageStudioTab } from "./ImageStudioTab";
+import { ImageStudioTab } from "@/components/image/ImageStudioTab";
 import { CoreMemoryTab } from "./CoreMemoryTab";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/lib/store/ui";

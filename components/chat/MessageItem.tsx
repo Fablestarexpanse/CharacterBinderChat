@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useFableStore } from "@/lib/store";
 import { regenerateLastReply } from "@/lib/chat/generation";
-import { startImageJob } from "@/lib/providers/comfyui";
+import { queueImage } from "@/lib/chat/imageGen";
 import { generateSceneImage } from "@/lib/chat/imageGen";
 import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { formatTime, downloadFromUrl } from "@/lib/utils";
@@ -307,7 +307,7 @@ function MemoryTraceDialog({
 
 function ImageCard({ message }: { message: Message }) {
   const {
-    imageJobs, providerSettings, addImageJob, updateImageJob, setMessageImageJob,
+    imageJobs, setMessageImageJob,
     updateMessageContent, toggleMessageCollapsed, removeMessage,
   } = useFableStore();
   const job = imageJobs.find((j) => j.id === message.imageJobId);
@@ -319,13 +319,7 @@ function ImageCard({ message }: { message: Message }) {
   const [promptDraft, setPromptDraft] = useState("");
 
   const runWithSettings = (settings: NonNullable<typeof job>["settings"]) => {
-    const newJob = startImageJob(
-      providerSettings.comfyui.baseUrl,
-      settings,
-      message.chatId,
-      updateImageJob
-    );
-    addImageJob(newJob);
+    const newJob = queueImage(settings, message.chatId);
     setMessageImageJob(message.chatId, message.id, newJob.id);
   };
 

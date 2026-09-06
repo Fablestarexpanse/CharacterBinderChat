@@ -11,6 +11,13 @@ export type ProviderType = "ollama" | "lmstudio" | "openrouter";
 
 export const PROVIDER_TYPES: ProviderType[] = ["ollama", "lmstudio", "openrouter"];
 
+// OpenRouter's host is fixed, so it is derived here rather than taken from the
+// request body. Forwarding a caller-supplied base URL alongside the caller's
+// key meant a hand-crafted body could name any host and receive that key in an
+// Authorization header. The two local providers still need their configured
+// base, and neither is sent a key.
+const OPENROUTER_API_BASE = "https://openrouter.ai/api";
+
 export function isProviderType(v: unknown): v is ProviderType {
   return typeof v === "string" && (PROVIDER_TYPES as string[]).includes(v);
 }
@@ -29,9 +36,11 @@ export interface LlmBackend {
  */
 export function callLLM(backend: LlmBackend, prompt: string): Promise<string> {
   const { providerType, providerBaseUrl, modelId, apiKey } = backend;
-  return providerType === "ollama"
-    ? callOllama(providerBaseUrl, modelId, prompt)
-    : callOpenAICompat(providerBaseUrl, modelId, prompt, apiKey);
+  if (providerType === "ollama") return callOllama(providerBaseUrl, modelId, prompt);
+  if (providerType === "openrouter") {
+    return callOpenAICompat(OPENROUTER_API_BASE, modelId, prompt, apiKey);
+  }
+  return callOpenAICompat(providerBaseUrl, modelId, prompt);
 }
 
 /**

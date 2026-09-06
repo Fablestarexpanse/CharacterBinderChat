@@ -7,7 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
-import { startImageJob, dimensionsForRatio, ComfyUIProvider } from "@/lib/providers/comfyui";
+import { dimensionsForRatio, ComfyUIProvider } from "@/lib/providers/comfyui";
+import { queueImage } from "@/lib/chat/imageGen";
 import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { useEffect, useState } from "react";
 import {
@@ -26,7 +27,7 @@ const SAMPLERS = ["euler", "euler_a", "dpmpp_2m", "dpmpp_2m_karras", "ddim", "lc
 const ASPECT_RATIOS: AspectRatio[] = ["1:1", "16:9", "9:16", "4:3", "3:4", "2:1", "custom"];
 
 export function ImageStudioTab() {
-  const { imageSettings, setImageSettings, imageJobs, addImageJob, updateImageJob, providerSettings, activeChatId } =
+  const { imageSettings, setImageSettings, imageJobs, providerSettings, activeChatId } =
     useFableStore();
   const [newLora, setNewLora] = useState("");
   const [loraWeight, setLoraWeight] = useState("0.8");
@@ -61,15 +62,9 @@ export function ImageStudioTab() {
   }, []);
 
   const handleGenerate = () => {
-    // startImageJob returns immediately; connection check, queueing and
-    // polling all happen in the background and land via updateImageJob.
-    const job = startImageJob(
-      providerSettings.comfyui.baseUrl,
-      imageSettings,
-      activeChatId ?? undefined,
-      updateImageJob
-    );
-    addImageJob(job);
+    // queueImage returns immediately; connection check, queueing and polling
+    // all happen in the background and land through the store.
+    queueImage(imageSettings, activeChatId ?? undefined);
   };
 
   // Choosing a ratio resolves to real pixels; typing a dimension by hand flips

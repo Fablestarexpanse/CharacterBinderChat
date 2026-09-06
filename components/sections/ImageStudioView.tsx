@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 import { useFableStore } from "@/lib/store";
-import { ImageStudioTab } from "@/components/inspector/ImageStudioTab";
+import { ImageStudioTab } from "@/components/image/ImageStudioTab";
 import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
