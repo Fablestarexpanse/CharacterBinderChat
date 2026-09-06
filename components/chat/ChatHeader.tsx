@@ -2,13 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useFableStore, DEFAULT_UTILITY_MODEL } from "@/lib/store";
+import { useUiStore } from "@/lib/store/ui";
+import { useModelCatalog } from "@/lib/hooks/useModelCatalog";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { allChatProviders } from "@/lib/providers/factory";
-import { DEFAULT_GENERATION_PARAMS } from "@/lib/providers/params";
+import { GenerationSettingsDialog } from "./GenerationSettingsDialog";
+import { CustomModelDialog } from "./CustomModelDialog";
 import { regenerateLastReply } from "@/lib/chat/generation";
 import type { ModelInfo, ProviderId } from "@/lib/types";
 import {
@@ -18,24 +17,8 @@ import {
   RefreshCw,
   Trash2,
   Loader2,
-  X,
   ChevronLeft,
 } from "lucide-react";
-import { useUiStore } from "@/lib/store/ui";
-
-// ─── Fallback static list (shown before dynamic load or when offline) ─────────
-
-const FALLBACK_MODELS: ModelInfo[] = [
-  { id: "llama3.2:latest",             name: "Llama 3.2",              providerId: "ollama" },
-  { id: "llama3.1:latest",             name: "Llama 3.1",              providerId: "ollama" },
-  { id: "mistral:latest",              name: "Mistral 7B",             providerId: "ollama" },
-  { id: "lmstudio-model",              name: "LM Studio (loaded model)",providerId: "lmstudio" },
-  { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet",      providerId: "openrouter" },
-  { id: "anthropic/claude-3-haiku",    name: "Claude 3 Haiku",         providerId: "openrouter" },
-  { id: "openai/gpt-4o",               name: "GPT-4o",                 providerId: "openrouter" },
-  { id: "openai/gpt-4o-mini",          name: "GPT-4o Mini",            providerId: "openrouter" },
-  { id: "google/gemini-flash-1.5",     name: "Gemini Flash 1.5",       providerId: "openrouter" },
-];
 
 const PROVIDER_LABELS: Record<string, string> = {
   ollama:      "Ollama",
@@ -44,71 +27,30 @@ const PROVIDER_LABELS: Record<string, string> = {
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
+// The bar itself: who is in the scene, which model answers, and the actions.
+// Model discovery lives in useModelCatalog and the two dialogs are their own
+// components — this file used to hold all three.
 
 export function ChatHeader() {
-  const { activeChatId, chats, characters, setChatModel, providerSettings, providerStatuses, clearChat, isGenerating, customModels, addCustomModel, removeCustomModel, updateChatSettings, toggleMemberPresence, presets, defaultPresetId, setChatPreset, resetChatOverrides, setActiveChatId } = useFableStore();
-  const { inspectorOpen, setInspectorOpen, setActiveSection } = useUiStore();
-
-  const defaultPreset = presets.find((p) => p.id === defaultPresetId);
+  const {
+    activeChatId, chats, characters, setChatModel, clearChat, isGenerating,
+    customModels, toggleMemberPresence, setActiveChatId,
+  } = useFableStore();
+  const { inspectorOpen, setInspectorOpen } = useUiStore();
 
   const chat      = chats.find((c) => c.id === activeChatId);
   const character = characters.find((c) => c.id === chat?.characterId);
 
-  const [models,        setModels]        = useState<ModelInfo[]>(FALLBACK_MODELS);
-  const [loadingModels, setLoadingModels] = useState(false);
-  const [confirmClear,  setConfirmClear]  = useState(false);
+  const { models, loading: loadingModels, loaded: realModelsLoaded } = useModelCatalog();
 
-  // Custom model entry
-  const [customOpen,     setCustomOpen]     = useState(false);
-  const [customId,       setCustomId]       = useState("");
-  const [customProvider, setCustomProvider] = useState<ProviderId>("openrouter");
-
-  // Generation settings dialog
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [customOpen,   setCustomOpen]   = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-
-  // ── Fetch real model lists whenever providers change ──────────────────────
-
-  // Flattened so the deps array holds a plain string (statically checkable)
-  const providerConnectivity = providerStatuses.map((p) => `${p.id}:${p.connected}`).join(",");
-
-  useEffect(() => {
-    let cancelled = false;
-    const fetchAll = async () => {
-      setLoadingModels(true);
-
-      // Every reachable provider is queried in parallel
-      const lists = await Promise.all(
-        allChatProviders(providerSettings).map((p) =>
-          p.listModels().catch(() => [] as ModelInfo[])
-        )
-      );
-
-      if (!cancelled) {
-        const collected = lists.flat();
-        setModels(collected.length > 0 ? collected : FALLBACK_MODELS);
-        // Publish for other views (Presets reads supportedParameters from here
-        // rather than running a second discovery pass).
-        useFableStore.getState().setAvailableModels(collected);
-        setLoadingModels(false);
-      }
-    };
-
-    fetchAll();
-    return () => { cancelled = true; };
-    // Deps are the three fields that actually change the model lists, not the
-    // whole providerSettings object — ComfyUI's URL and the utility model live
-    // there too, and neither should trigger a chat-model refetch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    providerSettings.ollama.baseUrl,
-    providerSettings.lmstudio.baseUrl,
-    providerSettings.openrouter.apiKey,
-    providerConnectivity,
-  ]);
 
   // Backend models never belong in the chat selector: the image scene
   // director is configured in Settings, and embedding models can't chat at
   // all. They still RUN — just not as a conversational choice here.
+  const providerSettings = useFableStore((s) => s.providerSettings);
   const utilityModel = providerSettings.ollama.utilityModel ?? DEFAULT_UTILITY_MODEL;
   const isBackendModel = (m: ModelInfo) => m.id === utilityModel || /embed/i.test(m.id);
   const chatModels = models.filter((m) => !isBackendModel(m));
@@ -119,7 +61,6 @@ export function ChatHeader() {
   // before the early return below.)
   // Only commit once the REAL provider lists have loaded — committing while
   // the static fallback list is showing wrote a model that isn't installed.
-  const realModelsLoaded = models !== FALLBACK_MODELS;
   const firstAvailable = customModels[0] ?? (realModelsLoaded ? chatModels[0] : undefined);
   useEffect(() => {
     if (chat && !chat.modelId && firstAvailable) {
@@ -129,13 +70,6 @@ export function ChatHeader() {
   }, [chat?.id, chat?.modelId, firstAvailable?.id]);
 
   if (!chat) return null;
-
-  // What a slider should show: this chat's override, else the preset's value,
-  // else the shared default — so the dialog never displays a number that isn't
-  // what would actually be sent.
-  const activePreset = presets.find((p) => p.id === (chat.presetId ?? defaultPresetId));
-  const effective = (key: keyof typeof DEFAULT_GENERATION_PARAMS): number =>
-    chat.settings?.[key] ?? activePreset?.params?.[key] ?? DEFAULT_GENERATION_PARAMS[key];
 
   const contextPct = chat.contextMax
     ? Math.round(((chat.contextUsed ?? 0) / chat.contextMax) * 100)
@@ -161,7 +95,6 @@ export function ChatHeader() {
   const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const modelId = e.target.value;
     if (modelId === CUSTOM_SENTINEL) {
-      setCustomId("");
       setCustomOpen(true);
       return;
     }
@@ -170,15 +103,6 @@ export function ChatHeader() {
     // carries its own provider, so cloud models can't get routed locally.
     const provider = model?.providerId ?? "ollama";
     setChatModel(chat.id, modelId, provider);
-  };
-
-  const handleCustomSave = () => {
-    const id = customId.trim();
-    if (!id) return;
-    addCustomModel({ id, name: id, providerId: customProvider });
-    setChatModel(chat.id, id, customProvider);
-    setCustomOpen(false);
-    setCustomId("");
   };
 
   // Group models by provider for <optgroup>
@@ -330,170 +254,16 @@ export function ChatHeader() {
         </Button>
       </div>
 
-      {/* Generation settings dialog */}
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="max-w-sm" aria-describedby={undefined}>
-          <div className="border-b border-[var(--border)] px-5 py-4">
-            <DialogTitle>Generation settings — {chat.name}</DialogTitle>
-          </div>
-          <div className="space-y-5 px-5 py-4">
-            {/* Which preset backs this chat. Values below layer on top of it. */}
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-[var(--foreground)]">Preset</label>
-              <select
-                value={chat.presetId ?? ""}
-                onChange={(e) => setChatPreset(chat.id, e.target.value || undefined)}
-                className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--purple)]"
-              >
-                <option value="">
-                  {defaultPreset ? `Default (${defaultPreset.name})` : "None — built-in defaults"}
-                </option>
-                {presets.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-              <button
-                onClick={() => { setSettingsOpen(false); setActiveSection("presets"); }}
-                className="text-[11px] text-[var(--purple-fg)] hover:underline cursor-pointer"
-              >
-                Edit presets…
-              </button>
-            </div>
+      <GenerationSettingsDialog
+        chatId={chat.id}
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+      />
 
-            <div className="border-t border-[var(--border)] pt-4 space-y-5">
-              <p className="text-[11px] leading-snug text-[var(--muted-fg)]">
-                These override the preset for this chat only.
-              </p>
-              <Slider
-                label={`Temperature — ${effective("temperature") < 0.5 ? "focused" : effective("temperature") > 1.1 ? "wild" : "balanced"}`}
-                value={effective("temperature")}
-                onChange={(v) => updateChatSettings(chat.id, { temperature: v })}
-                min={0} max={2} step={0.05}
-              />
-              <Slider
-                label="Top P"
-                value={effective("topP")}
-                onChange={(v) => updateChatSettings(chat.id, { topP: v })}
-                min={0.1} max={1} step={0.05}
-              />
-              <Slider
-                label="Max response tokens"
-                value={effective("maxTokens")}
-                onChange={(v) => updateChatSettings(chat.id, { maxTokens: v })}
-                min={256} max={8192} step={256}
-              />
-            </div>
-          </div>
-          <div className="flex items-center justify-between border-t border-[var(--border)] px-5 py-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={!chat.settings || Object.keys(chat.settings).length === 0}
-              title="Drop this chat's overrides so the preset shows through again"
-              onClick={() => resetChatOverrides(chat.id)}
-            >
-              Clear overrides
-            </Button>
-            <Button variant="purple" size="sm" onClick={() => setSettingsOpen(false)}>
-              Done
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Custom model ID dialog */}
-      <Dialog open={customOpen} onOpenChange={setCustomOpen}>
-        <DialogContent className="max-w-md" aria-describedby={undefined}>
-          <div className="border-b border-[var(--border)] px-5 py-4">
-            <DialogTitle>Use a custom model</DialogTitle>
-          </div>
-
-          <div className="space-y-4 px-5 py-4">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-[var(--foreground)]">Model ID</label>
-              <Input
-                autoFocus
-                value={customId}
-                onChange={(e) => setCustomId(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleCustomSave(); }}
-                placeholder="deepseek/deepseek-chat"
-                className="font-mono text-xs"
-              />
-              <p className="text-[11px] text-[var(--muted-fg)]">
-                Exactly as the provider names it. OpenRouter uses{" "}
-                <code className="bg-[var(--muted)] px-1 rounded">vendor/model</code> slugs — copy
-                the ID from{" "}
-                <a
-                  href="https://openrouter.ai/models"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[var(--purple-fg)] underline"
-                >
-                  openrouter.ai/models
-                </a>
-                . Ollama uses{" "}
-                <code className="bg-[var(--muted)] px-1 rounded">name:tag</code>.
-              </p>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-[var(--foreground)]">Provider</label>
-              <select
-                value={customProvider}
-                onChange={(e) => setCustomProvider(e.target.value as ProviderId)}
-                className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--purple)]"
-              >
-                <option value="openrouter">OpenRouter</option>
-                <option value="ollama">Ollama</option>
-                <option value="lmstudio">LM Studio</option>
-              </select>
-              {customProvider === "openrouter" && !providerSettings.openrouter.apiKey && (
-                <p className="text-[11px] text-amber-600">
-                  No OpenRouter API key set — add one in Settings or the request will fail.
-                </p>
-              )}
-            </div>
-
-            {/* Without this a mistyped id stayed in the dropdown forever */}
-            {customModels.length > 0 && (
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-[var(--foreground)]">Your custom models</label>
-                <div className="space-y-1">
-                  {customModels.map((m) => (
-                    <div
-                      key={m.id}
-                      className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-2 py-1"
-                    >
-                      <span className="flex-1 min-w-0 truncate font-mono text-[11px] text-[var(--foreground)]">
-                        {m.id}
-                      </span>
-                      <span className="text-[10px] text-[var(--muted-fg)] flex-shrink-0">
-                        {PROVIDER_LABELS[m.providerId ?? ""] ?? m.providerId}
-                      </span>
-                      <button
-                        onClick={() => removeCustomModel(m.id)}
-                        title="Remove from the model list"
-                        className="flex-shrink-0 rounded p-0.5 text-[var(--muted-fg)] hover:text-red-500 transition-colors cursor-pointer"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center justify-end gap-2 border-t border-[var(--border)] px-5 py-3">
-            <Button variant="outline" size="sm" onClick={() => setCustomOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="purple" size="sm" onClick={handleCustomSave} disabled={!customId.trim()}>
-              Use model
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Mounted only while open so the typed id starts empty each time */}
+      {customOpen && (
+        <CustomModelDialog chatId={chat.id} open onOpenChange={setCustomOpen} />
+      )}
     </div>
   );
 }
