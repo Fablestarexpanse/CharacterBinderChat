@@ -43,7 +43,6 @@ export type SidebarSection =
   | "image-studio"
   | "gallery"
   | "workflows"
-  | "extensions"
   | "settings";
 
 // ─── Inspector Panel ──────────────────────────────────────────────────────────

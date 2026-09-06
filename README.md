@@ -146,14 +146,21 @@ fablechat/
 ├── components/
 │   ├── characters/               # CharacterEditorDialog, PersonaEditorDialog
 │   ├── chat/                     # ChatHeader, ChatInput, MessageItem
+│   ├── graph/                    # MemoryGraph — the story-web canvas
 │   ├── inspector/                # CharacterTab, CoreMemoryTab, MemoryTab…
+│   ├── sections/                 # One screen per sidebar entry
 │   ├── sidebar/                  # Sidebar, SystemStatus
+│   ├── ui/                       # Hand-rolled primitives (dialog is the one Radix wrapper)
 │   └── StateSync.tsx             # Hydrate from SQLite, mirror edits back
 ├── lib/
-│   ├── chat/                     # generation, promptBuilder, tokenBudget, memoryRewriter
+│   ├── chat/                     # generation, promptBuilder, tokenBudget — client-safe
+│   ├── server/                   # memoryRewriter, retrieval, coreMemoryStore — SQLite-side
 │   ├── db/                       # FableStore (better-sqlite3), schema, models, predicates
+│   ├── hooks/                    # useHydrated, useModelCatalog, useInspectedCharacter
+│   ├── import/                   # CharacterBinder / SillyTavern card parsing
+│   ├── llm/                      # Shared LLM transport, JSON parsing, embeddings
 │   ├── providers/                # Ollama, LMStudio, OpenRouter, ComfyUI adapters
-│   └── store/                    # Zustand client store
+│   └── store/                    # Zustand client store (domain) + ui.ts (transient)
 └── data/
     └── fablestore.db             # auto-created SQLite database
 ```
@@ -201,9 +208,10 @@ Chats, characters, and personas are written to SQLite a moment after every chang
 
 Working end to end: chat + streaming, both memory drawers (with embeddings, episodic memory, shared language, story clock, and reply provenance), characters, personas, PNG/JSON card import, lorebooks with keyword injection, real ComfyUI image generation, per-chat generation settings, persistence, chat management, the model selector, the memory inspector, and the story-web mind map.
 
+Every sidebar section is a working screen: Characters, Chats, Groups, Lorebooks, Scenarios, Presets, Image Studio, Gallery, Workflows and Settings.
+
 Not yet built:
 
-- **Placeholder sections**: Presets, Gallery, Workflows, Extensions (and the full-screen Image Studio section — the inspector's Image Studio tab is the real one) are navigable but empty.
 - **Some image-studio controls are decorative**: the LoRA stack, ControlNet, refiner, aspect-ratio and character-reference controls don't reach the workflow yet — prompt, dimensions, steps, CFG, sampler, seed and batch do.
 - **The OpenRouter API key is stored in browser localStorage** and used directly from the client. Fine for a single-user local app; a server-side proxy would be better.
 
