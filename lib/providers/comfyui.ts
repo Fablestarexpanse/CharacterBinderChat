@@ -152,8 +152,13 @@ export class ComfyUIProvider {
       const nodes = data?.node_errors ? ` (nodes: ${Object.keys(data.node_errors).join(", ")})` : "";
       throw new Error(`ComfyUI rejected the workflow: ${detail}${nodes}`);
     }
-    const data = await res.json();
-    return data.prompt_id as string;
+    // A 200 with no prompt_id would otherwise poll history/undefined until the timeout.
+    const data = (await res.json().catch(() => null)) as { prompt_id?: unknown } | null;
+    const promptId = data?.prompt_id;
+    if (typeof promptId !== "string" || !promptId) {
+      throw new Error("ComfyUI accepted the workflow but returned no prompt_id.");
+    }
+    return promptId;
   }
 
   /** Poll /history until the prompt completes; returns direct image URLs. */

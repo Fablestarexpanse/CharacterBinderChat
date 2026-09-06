@@ -70,3 +70,18 @@ test("a lorebook payload is recognised as a lorebook, not a character", () => {
   assert.ok(book);
   assert.equal(book.entries.length, 1);
 });
+
+// A v2 card whose `data` is null used to reach convertPayload's own unwrap,
+// which cast without checking and then read `character_book` off null.
+test("a v2 card with a null data field falls back to the flat object", () => {
+  const result = convertPayload({ spec: "chara_card_v2", data: null, name: "Ash" }, null);
+  assert.equal(result.kind, "character");
+  assert.equal(result.draft.name, "Ash");
+  assert.equal(result.embeddedBook, undefined);
+});
+
+test("a v2 card with no data field at all is still readable", () => {
+  const result = convertPayload({ spec: "chara_card_v2", name: "Briar" }, null);
+  assert.equal(result.kind, "character");
+  assert.equal(result.draft.name, "Briar");
+});

@@ -112,14 +112,15 @@ export function decodePngPayload(bytes: Uint8Array): { key: string; json: unknow
 type Obj = Record<string, unknown>;
 const str = (o: Obj, k: string) => (typeof o[k] === "string" ? (o[k] as string) : undefined);
 
+/** A v2 card nests everything under `data`; a malformed one falls back to the flat object. */
+const cardData = (o: Obj): Obj =>
+  o.spec === "chara_card_v2" && o.data && typeof o.data === "object" ? (o.data as Obj) : o;
+
 /** SillyTavern v1/v2 card (or CharacterBinder character) → Character draft. */
 function parseCharacterCard(json: unknown): Partial<Character> | null {
   if (!json || typeof json !== "object") return null;
   const obj = json as Obj;
-  const data =
-    obj.spec === "chara_card_v2" && obj.data && typeof obj.data === "object"
-      ? (obj.data as Obj)
-      : obj;
+  const data = cardData(obj);
 
   const name = str(data, "name");
   if (!name?.trim()) return null;
@@ -265,7 +266,7 @@ export function convertPayload(json: unknown, key: string | null): ImportedCard 
   // Character (chara_card_v2, v1 flat, or FableChat's own JSON)
   const draft = parseCharacterCard(json);
   if (draft) {
-    const data = obj.spec === "chara_card_v2" ? (obj.data as Obj) : obj;
+    const data = cardData(obj);
     const embeddedBook =
       data.character_book ? parseLorebook(data.character_book, `${draft.name} Lore`) ?? undefined : undefined;
     return { kind: "character", draft, embeddedBook };
