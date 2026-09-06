@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useFableStore } from "@/lib/store";
 import { Loader2, Trash2, Plus, X } from "lucide-react";
 import { formatAgeFromUnixSeconds, formatDateFromUnixSeconds } from "./utils";
-import { getJson, sendJson } from "@/lib/api/client";
+import { sendJson } from "@/lib/api/client";
 import type { DrawerFact } from "@/lib/api/dto";
+import { useDrawerRead } from "@/lib/hooks/useDrawerRead";
 
 interface Props {
   chatId:         string;
@@ -26,25 +27,10 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ predicate: "", object: "" });
   const [writeError, setWriteError] = useState<string | null>(null);
-  // Result keyed by what was fetched; `loading` is derived so the effect
-  // never calls setState synchronously (react-hooks/set-state-in-effect).
-  const [result, setResult] = useState<{ key: string; facts: DrawerFact[]; error: string | null } | null>(null);
-
-  const fetchKey = `${chatId}:${characterId}:${extractionVersion}:${showHistory ? 1 : 0}`;
-
-  useEffect(() => {
-    let cancelled = false;
-    const key = `${chatId}:${characterId}:${extractionVersion}:${showHistory ? 1 : 0}`;
-    const url = `/api/drawer/facts?chatId=${encodeURIComponent(chatId)}&subject=${encodeURIComponent(characterId)}${showHistory ? "&includeSuperseded=1" : ""}`;
-    getJson<{ facts?: DrawerFact[] }>(url)
-      .then((data) => { if (!cancelled) setResult({ key, facts: data.facts ?? [], error: null }); })
-      .catch((e: Error) => { if (!cancelled) setResult({ key, facts: [], error: e.message }); });
-    return () => { cancelled = true; };
-  }, [chatId, characterId, extractionVersion, showHistory]);
-
-  const loading = result?.key !== fetchKey;
-  const facts   = result?.facts ?? [];
-  const error   = result?.error ?? null;
+  const url = `/api/drawer/facts?chatId=${encodeURIComponent(chatId)}&subject=${encodeURIComponent(characterId)}${showHistory ? "&includeSuperseded=1" : ""}`;
+  const { data, error, loading } = useDrawerRead<{ facts?: DrawerFact[] }>(
+    `${chatId}:${characterId}:${extractionVersion}:${showHistory ? 1 : 0}`, url);
+  const facts = data?.facts ?? [];
 
   // bumpExtraction is the app-wide "memory changed" signal — every inspector
   // view keys its fetch off it, so one bump refreshes the graph and stats too.

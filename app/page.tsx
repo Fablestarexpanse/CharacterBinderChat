@@ -33,12 +33,18 @@ export default function Home() {
   // No open chat means we're browsing the list, which has nothing to inspect
   const showInspector = activeSection === "chats" && !!activeChatId;
 
-  // StateSync must mount before the gate below — it is what sets syncReady —
-  // so it renders on its own while the app is still waiting.
-  if (!hydrated || !syncReady) return <StateSync />;
+  // StateSync stays mounted at ONE position across the gate: it is what sets
+  // syncReady, and returning it as a bare early return meant the root element
+  // type changed the moment the flag flipped, remounting it and re-running the
+  // whole hydrate-or-seed effect — a second GET /api/state and, on an empty
+  // server, a second seed PUT.
+  const ready = hydrated && syncReady;
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">
+      {/* Hydrates from SQLite on load, then mirrors edits back (debounced) */}
+      <StateSync />
+      {!ready ? null : <>
       <Sidebar />
 
       <main className="flex flex-1 min-w-0 overflow-hidden">
@@ -62,12 +68,9 @@ export default function Home() {
       {/* New-chat builder — opened by the sidebar's New Chat button */}
       <NewChatDialog />
 
-      {/* Hydrates from SQLite on load, then mirrors edits back (debounced).
-          Also rendered while the app waits — it is what ends that wait. */}
-      <StateSync />
-
       {/* Window-wide drag-and-drop for CharacterBinder PNG / JSON cards */}
       <DropImport />
+      </>}
     </div>
   );
 }
