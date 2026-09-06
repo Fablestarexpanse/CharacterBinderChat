@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { routeError } from "@/lib/api";
 import type { PersistedAppState } from "@/lib/types";
-import { APP_COLLECTIONS } from "@/lib/db/store";
+import { APP_COLLECTIONS } from "@/lib/db/appState";
 
 export const dynamic = "force-dynamic";
 

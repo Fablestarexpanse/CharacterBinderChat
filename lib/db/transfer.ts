@@ -6,7 +6,7 @@
 
 import type { Database as DB } from "better-sqlite3";
 import type { FableStore } from "./store";
-import { rowToCommitment, rowToFact, rowToMemoryCard, rowToStat } from "./store";
+import { rowToCommitment, rowToFact, rowToMemoryCard, rowToStat } from "./rows";
 
 /**
  * Chats that hold memories involving a character — candidates for

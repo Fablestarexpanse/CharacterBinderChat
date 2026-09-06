@@ -9,8 +9,23 @@
 // ever needed the handle.
 
 import type { Database as DB } from "better-sqlite3";
-import { APP_COLLECTIONS } from "./store";
+
 import type { PersistedAppState } from "@/lib/types";
+
+// ─── App state collections ────────────────────────────────────────────────────
+// The flat collections of the durable app state, paired with their tables. Every
+// place that reads, wipes, writes, validates or counts them drives off this list
+// rather than repeating five near-identical statements — a new collection is one
+// row here plus its table in the schema. Chats are absent on purpose: their
+// messages live in a second table, so they are handled separately.
+
+export const APP_COLLECTIONS = [
+  ["characters", "app_characters"],
+  ["personas",   "app_personas"],
+  ["lorebooks",  "app_lorebooks"],
+  ["scenarios",  "app_scenarios"],
+  ["presets",    "app_presets"],
+] as const satisfies ReadonlyArray<readonly [keyof PersistedAppState, string]>;
 
 /** Small singleton values that aren't collections (default preset, global
  *  instructions). Upserted rather than wiped so a client that omits one
@@ -27,10 +42,26 @@ function getKv<T>(db: DB, key: string, fallback: T): T {
   }
 }
 
+/**
+ * A row whose JSON no longer parses is dropped rather than throwing: one
+ * corrupted character must not make the whole state unreadable, which would
+ * look to StateSync exactly like an empty database.
+ */
+function parseRows<T>(rows: Array<{ data: string }>, table: string): T[] {
+  const out: T[] = [];
+  for (const r of rows) {
+    try {
+      out.push(JSON.parse(r.data) as T);
+    } catch {
+      console.error(`[FableStore] skipping unreadable ${table} row`);
+    }
+  }
+  return out;
+}
+
 export function getAppState(db: DB): PersistedAppState {
-  const read = (table: string) =>
-    (db.prepare(`SELECT data FROM ${table} ORDER BY seq`).all() as Array<{ data: string }>)
-      .map((r) => JSON.parse(r.data));
+  const read = <T,>(table: string): T[] =>
+    parseRows<T>(db.prepare(`SELECT data FROM ${table} ORDER BY seq`).all() as Array<{ data: string }>, table);
 
   const chatRows = db
     .prepare("SELECT id, data FROM app_chats ORDER BY seq")
@@ -38,9 +69,9 @@ export function getAppState(db: DB): PersistedAppState {
   const msgStmt = db.prepare(
     "SELECT data FROM app_messages WHERE chat_id = ? ORDER BY seq"
   );
-  const chats = chatRows.map((row) => ({
-    ...(JSON.parse(row.data) as Record<string, unknown>),
-    messages: (msgStmt.all(row.id) as Array<{ data: string }>).map((m) => JSON.parse(m.data)),
+  const chats = parseRows<Record<string, unknown>>(chatRows, "app_chats").map((meta, i) => ({
+    ...meta,
+    messages: parseRows(msgStmt.all(chatRows[i].id) as Array<{ data: string }>, "app_messages"),
   })) as PersistedAppState["chats"];
 
   return {

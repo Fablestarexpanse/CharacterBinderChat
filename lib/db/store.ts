@@ -6,6 +6,9 @@ import Database, { type Database as DB } from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 import { CREATE_TABLES_SQL } from "./schema";
+import {
+  rowToEntity, rowToFact, rowToStat, rowToMemoryCard, rowToCommitment,
+} from "./rows";
 import { isSingleValued, normPredicate, predicateFamily } from "./predicates";
 import { bufferToVec, cosine } from "@/lib/llm/embeddings";
 import { contentWords, jaccard, normalizeText } from "@/lib/text/overlap";
@@ -27,123 +30,8 @@ import type {
 } from "./models";
 import { DEFAULT_DECAY_RATES } from "./models";
 
-// ─── App state collections ────────────────────────────────────────────────────
-// The flat collections of the durable app state, paired with their tables. Every
-// place that reads, wipes, writes, validates or counts them drives off this list
-// rather than repeating five near-identical statements — a new collection is one
-// row here plus its table in the schema. Chats are absent on purpose: their
-// messages live in a second table, so they are handled separately.
-
-export const APP_COLLECTIONS = [
-  ["characters", "app_characters"],
-  ["personas",   "app_personas"],
-  ["lorebooks",  "app_lorebooks"],
-  ["scenarios",  "app_scenarios"],
-  ["presets",    "app_presets"],
-] as const satisfies ReadonlyArray<readonly [keyof PersistedAppState, string]>;
-
 function now(): number {
   return Math.floor(Date.now() / 1000);
-}
-
-// ─── Row → Model mappers ──────────────────────────────────────────────────────
-// The row shapes, spelled out. better-sqlite3 returns `unknown` from .all(),
-// so a cast happens somewhere; each mapper makes exactly one, to a declared
-// row shape, rather than taking `any` and hoping. Fields nullable in SQLite are
-// nullable here.
-
-interface EntityRow {
-  id: string; type: string; name: string; description: string | null; created_at: number;
-}
-interface FactRow {
-  id: number; subject_id: string; predicate: string;
-  object_id: string | null; object_literal: string | null;
-  t_valid_start: number; t_valid_end: number | null; t_ingested: number;
-  confidence: number; importance: number | null;
-  known_to: string | null; superseded_by: number | null;
-}
-interface StatRow {
-  id: number; observer_id: string; target_id: string; stat_name: string;
-  value: number; decay_rate: number; rupture_recovery: number | null; last_updated: number;
-}
-interface MemoryCardRow {
-  id: number; title: string; content: string;
-  tags: string | null; entity_ids: string | null; importance: number | null;
-  created_at: number; updated_at: number;
-}
-interface CommitmentRow {
-  id: number; promisor_id: string; promisee_id: string | null;
-  description: string; status: string; created_at: number; resolved_at: number | null;
-}
-
-export function rowToEntity(raw: unknown): DbEntity {
-  const r = raw as EntityRow;
-  return {
-    id:          r.id,
-    type:        r.type as EntityType,
-    name:        r.name,
-    description: r.description ?? "",
-    createdAt:   r.created_at,
-  };
-}
-
-export function rowToFact(raw: unknown): DbFact {
-  const r = raw as FactRow;
-  return {
-    id:            r.id,
-    subjectId:     r.subject_id,
-    predicate:     r.predicate,
-    objectId:      r.object_id ?? null,
-    objectLiteral: r.object_literal ?? null,
-    tValidStart:   r.t_valid_start,
-    tValidEnd:     r.t_valid_end ?? null,
-    tIngested:     r.t_ingested,
-    confidence:    r.confidence,
-    importance:    r.importance ?? 0.5,
-    knownTo:       r.known_to ? (JSON.parse(r.known_to) as string[]) : [],
-    supersededBy:  r.superseded_by ?? null,
-  };
-}
-
-export function rowToStat(raw: unknown): DbRelationshipStat {
-  const r = raw as StatRow;
-  return {
-    id:          r.id,
-    observerId:  r.observer_id,
-    targetId:    r.target_id,
-    statName:    r.stat_name as StatName,
-    value:       r.value,
-    decayRate:   r.decay_rate,
-    ruptureRecovery: r.rupture_recovery ?? 0,
-    lastUpdated: r.last_updated,
-  };
-}
-
-export function rowToMemoryCard(raw: unknown): DbMemoryCard {
-  const r = raw as MemoryCardRow;
-  return {
-    id:         r.id,
-    title:      r.title,
-    content:    r.content,
-    tags:       r.tags ? (JSON.parse(r.tags) as string[]) : [],
-    entityIds:  r.entity_ids ? (JSON.parse(r.entity_ids) as string[]) : [],
-    importance: r.importance ?? 0.5,
-    createdAt:  r.created_at,
-    updatedAt:  r.updated_at,
-  };
-}
-
-export function rowToCommitment(raw: unknown): DbCommitment {
-  const r = raw as CommitmentRow;
-  return {
-    id:          r.id,
-    promisorId:  r.promisor_id,
-    promiseeId:  r.promisee_id ?? null,
-    description: r.description,
-    status:      r.status as CommitmentStatus,
-    createdAt:   r.created_at,
-    resolvedAt:  r.resolved_at ?? null,
-  };
 }
 
 // ─── FableStore ───────────────────────────────────────────────────────────────
@@ -1012,9 +900,19 @@ export class FableStore {
       .prepare("SELECT * FROM core_memory WHERE chat_id = ? AND character_id = ?")
       .get(chatId, characterId) as { character_id: string; data: string; version: number; updated_at: number } | undefined;
     if (!row) return null;
+    let data: CoreMemory;
+    try {
+      data = JSON.parse(row.data) as CoreMemory;
+    } catch {
+      // A corrupted document reads as "no core memory yet", which the callers
+      // already handle by writing defaults — better than throwing out of every
+      // prompt build for this character.
+      console.error("[FableStore] core_memory JSON is unreadable", { chatId, characterId });
+      return null;
+    }
     return {
       characterId: row.character_id,
-      data:        JSON.parse(row.data) as CoreMemory,
+      data,
       version:     row.version,
       updatedAt:   row.updated_at,
     };
