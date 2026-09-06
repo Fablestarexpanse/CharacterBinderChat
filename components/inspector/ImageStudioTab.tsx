@@ -19,6 +19,8 @@ import {
   Layers,
 } from "lucide-react";
 import type { AspectRatio } from "@/lib/types";
+import { getJson } from "@/lib/api/client";
+import type { WorkflowSummary } from "@/app/api/workflows/route";
 
 const SAMPLERS = ["euler", "euler_a", "dpmpp_2m", "dpmpp_2m_karras", "ddim", "lcm"];
 const ASPECT_RATIOS: AspectRatio[] = ["1:1", "16:9", "9:16", "4:3", "3:4", "2:1", "custom"];
@@ -45,14 +47,13 @@ export function ImageStudioTab() {
 
   // Templates actually present in workflows/ — a hardcoded list here meant a
   // template you added never appeared and a deleted one stayed selectable.
-  const [workflows, setWorkflows] = useState<Array<{ slug: string; title: string }>>([]);
+  const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/workflows", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d: { workflows?: Array<{ slug: string; title: string; error?: string }> }) => {
-        if (!cancelled) setWorkflows((d.workflows ?? []).filter((w) => !w.error));
-      })
+    getJson<{ workflows?: WorkflowSummary[] }>("/api/workflows")
+      // A template that failed to parse is listed with an `error` and has no
+      // usable controls, so it is not offered as a choice.
+      .then((d) => { if (!cancelled) setWorkflows((d.workflows ?? []).filter((w) => !w.error)); })
       // The picker falls back to the saved slug, so this stays non-fatal —
       // but a silent catch made a broken endpoint look like "no workflows".
       .catch((e: Error) => console.warn("[/api/workflows] list failed:", e.message));

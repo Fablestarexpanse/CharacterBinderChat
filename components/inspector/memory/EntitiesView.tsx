@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Loader2, AlertTriangle, GitMerge } from "lucide-react";
-import { getJson } from "@/lib/api/client";
+import { getJson, sendJson } from "@/lib/api/client";
 
 interface EntityOverview {
   id:          string;
@@ -73,13 +73,10 @@ export function EntitiesView({ chatId, extractionVersion }: Props) {
     if (!ms) return;
     setMergeState((prev) => ({ ...prev, [clusterId]: { ...ms, merging: true } }));
     try {
-      const res = await fetch("/api/drawer/entities/merge", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ chatId, fromId: ms.fromId, toId: ms.toId }),
-      });
-      const result = await res.json() as { ok?: boolean; error?: string };
-      if (!result.ok) throw new Error(result.error ?? "Merge failed");
+      // sendJson throws on a non-2xx or an error envelope; the unguarded
+      // res.json() here turned an HTML error page into "SyntaxError:
+      // Unexpected token <".
+      await sendJson("POST", "/api/drawer/entities/merge", { chatId, fromId: ms.fromId, toId: ms.toId });
       setMergeState((prev) => ({ ...prev, [clusterId]: { ...ms, merging: false, done: true, confirming: false } }));
       // Refresh to reflect the merge
       setRefreshTick((t) => t + 1);

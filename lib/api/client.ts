@@ -20,3 +20,23 @@ export async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
   if (data.error) throw new Error(data.error);
   return data;
 }
+
+/**
+ * POST/PATCH/DELETE JSON under the same rule, for the mutation half.
+ *
+ * Five write sites were each checking the envelope their own way — one read
+ * `result.ok`, one read `res.ok`, one parsed the body unguarded (so an HTML
+ * error page surfaced as "SyntaxError: Unexpected token <"), and one never
+ * looked at the response at all, reporting success for a failed write.
+ */
+export async function sendJson<T>(
+  method: "POST" | "PATCH" | "PUT" | "DELETE",
+  url: string,
+  body?: unknown,
+): Promise<T> {
+  return getJson<T>(url, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+}

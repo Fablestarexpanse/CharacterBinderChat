@@ -31,5 +31,3 @@ export function getStore(): FableStore {
   globalForStore._fableStoreCache = { store, builtBy: FableStore };
   return store;
 }
-
-export * from "./models";

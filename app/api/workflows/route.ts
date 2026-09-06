@@ -9,7 +9,8 @@ export const dynamic = "force-dynamic";
 // array in the Image Studio, so dropping a template into the folder never
 // surfaced it and deleting one left a dead option. This reads the truth.
 
-interface WorkflowSummary {
+/** The shape this route returns — imported by both views that render it. */
+export interface WorkflowSummary {
   slug:        string;
   title:       string;
   description: string | null;

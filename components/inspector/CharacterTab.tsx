@@ -79,36 +79,52 @@ export function CharacterTab() {
   const persona = personas.find((p) => p.id === activePersonaId);
   const [personaPickerOpen, setPersonaPickerOpen] = useState(false);
 
-  const [relationships, setRelationships] = useState<RelationshipGroup[]>([]);
-  const [stats, setStats]                 = useState<StatRow[]>([]);
-  // A failed drawer read used to be indistinguishable from a character with no
-  // memory yet — the panel simply rendered nothing.
-  const [drawerError, setDrawerError]     = useState<string | null>(null);
-
   const characterId = character?.id;
+
+  // One result object keyed by what was fetched — the pattern the other
+  // inspector views use. Separate state per fetch let the previous character's
+  // stats stay on screen after a switch, and let a late success from one
+  // request clear the other's error.
+  const [result, setResult] = useState<{
+    key:           string;
+    relationships: RelationshipGroup[];
+    stats:         StatRow[];
+    error:         string | null;
+  } | null>(null);
+
+  const fetchKey = `${activeChatId}:${characterId}:${extractionVersion}`;
+  const relationships = result?.key === fetchKey ? result.relationships : [];
+  const stats         = result?.key === fetchKey ? result.stats : [];
+  const drawerError   = result?.key === fetchKey ? result.error : null;
 
   useEffect(() => {
     if (!characterId || !activeChatId) return;
+    const key = `${activeChatId}:${characterId}:${extractionVersion}`;
     const chatParam = `chatId=${encodeURIComponent(activeChatId)}`;
-    // Cancelled guard: without it, rapid chat switching let the older chat's
-    // slower response resolve last and display the wrong chat's stats.
+    // Cancelled guard as well as the key: without it, rapid chat switching let
+    // the older chat's slower response resolve last.
     let cancelled = false;
 
-    // Fetch summary (which includes relationships + stats)
-    getJson<{ relationships?: RelationshipGroup[] }>(
-      `/api/drawer/summary/${encodeURIComponent(characterId)}?${chatParam}`
-    )
-      .then((data) => {
-        if (!cancelled) { setRelationships(data.relationships ?? []); setDrawerError(null); }
+    // The summary carries the relationships; the stats call is how this
+    // character feels about the player specifically.
+    Promise.all([
+      getJson<{ relationships?: RelationshipGroup[] }>(
+        `/api/drawer/summary/${encodeURIComponent(characterId)}?${chatParam}`),
+      getJson<{ stats?: StatRow[] }>(
+        `/api/drawer/stats?${chatParam}&observer=${encodeURIComponent(characterId)}&target=player`),
+    ])
+      .then(([summary, statsRes]) => {
+        if (cancelled) return;
+        setResult({
+          key,
+          relationships: summary.relationships ?? [],
+          stats:         statsRes.stats ?? [],
+          error:         null,
+        });
       })
-      .catch((e: Error) => { if (!cancelled) setDrawerError(e.message); });
-
-    // character -> player: how this character feels about the user
-    getJson<{ stats?: StatRow[] }>(
-      `/api/drawer/stats?${chatParam}&observer=${encodeURIComponent(characterId)}&target=player`
-    )
-      .then((data) => { if (!cancelled) setStats(data.stats ?? []); })
-      .catch((e: Error) => { if (!cancelled) setDrawerError(e.message); });
+      .catch((e: Error) => {
+        if (!cancelled) setResult({ key, relationships: [], stats: [], error: e.message });
+      });
 
     return () => { cancelled = true; };
   }, [characterId, activeChatId, extractionVersion]);

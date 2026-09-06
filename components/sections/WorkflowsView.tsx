@@ -12,17 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { GitBranch, Check, AlertTriangle, Loader2 } from "lucide-react";
 import { useUiStore } from "@/lib/store/ui";
-
-interface WorkflowSummary {
-  slug:        string;
-  title:       string;
-  description: string | null;
-  nodeCount:   number;
-  controls:    string[];
-  steps:       number | null;
-  cfg:         number | null;
-  error?:      string;
-}
+import { getJson } from "@/lib/api/client";
+import type { WorkflowSummary } from "@/app/api/workflows/route";
 
 export function WorkflowsView() {
   const { imageSettings, setImageSettings } = useFableStore();
@@ -31,11 +22,8 @@ export function WorkflowsView() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/workflows", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d: { workflows?: WorkflowSummary[]; error?: string }) => {
-        if (!cancelled) setResult({ list: d.workflows ?? [], error: d.error ?? null });
-      })
+    getJson<{ workflows?: WorkflowSummary[] }>("/api/workflows")
+      .then((d) => { if (!cancelled) setResult({ list: d.workflows ?? [], error: null }); })
       .catch((e: Error) => { if (!cancelled) setResult({ list: [], error: e.message }); });
     return () => { cancelled = true; };
   }, []);

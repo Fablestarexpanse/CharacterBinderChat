@@ -9,6 +9,7 @@ import { FactsView }         from "./memory/FactsView";
 import { RelationshipsView } from "./memory/RelationshipsView";
 import { EntitiesView }      from "./memory/EntitiesView";
 import { saveBlob } from "@/lib/utils";
+import { getJson } from "@/lib/api/client";
 
 type MemorySubTab = "facts" | "relationships" | "entities";
 
@@ -23,6 +24,7 @@ export function MemoryTab() {
   const { chat, character } = useInspectedCharacter();
 
   const [memorySubTab, setMemorySubTab] = useState<MemorySubTab>("relationships");
+  const [exportError, setExportError] = useState<string | null>(null);
 
   if (!character) {
     return (
@@ -105,18 +107,23 @@ export function MemoryTab() {
           size="sm"
           className="w-full text-xs"
           onClick={() => {
-            fetch(`/api/drawer/entities?chatId=${encodeURIComponent(chat.id)}`)
-              .then((r) => r.json())
+            // Through getJson so a failed read throws instead of being saved:
+            // the unguarded version wrote the 500's own {"ok":false,...} body
+            // into the user's export file.
+            getJson<unknown>(`/api/drawer/entities?chatId=${encodeURIComponent(chat.id)}`)
               .then((d) => saveBlob(
                 new Blob([JSON.stringify(d, null, 2)], { type: "application/json" }),
                 "fablestore-export.json"
               ))
-              .catch((e: Error) =>
-                console.warn("[/api/drawer/entities] export failed:", e.message));
+              .catch((e: Error) => setExportError(e.message));
           }}
         >
           Export Graph JSON
         </Button>
+      )}
+
+      {exportError && (
+        <p className="text-[10px] text-red-600">Export failed — {exportError}</p>
       )}
     </div>
   );
