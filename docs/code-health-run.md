@@ -1,11 +1,13 @@
 # Code-health run — desloppify, branch `desloppify/code-health`
 
-NEXT: the target is met — strict 86.0 against a target of 85.0 (plan start
-20.4). The queue holds one planning step: `desloppify plan triage` walks seven
-stages that sort the 101 remaining review findings into clusters. Those findings
-are the next cycle's backlog, not defects waiting on a fix; the ones that were
-live defects are fixed and listed below. Run `desloppify plan triage` from
-`F:\Cursor Projects\WaffleChat` to continue, or start a new cycle with a scan.
+NEXT: triage is complete. All seven stages are recorded and confirmed, and
+the execution queue now holds nine clusters and 28 steps in dependency order,
+starting with `unsafe-cast-hardening`. Of the 101 open review findings, 58
+verified as already fixed by the commits below and were resolved with per-issue
+notes, 9 were permanently skipped with specific reasons, and 34 became the
+clustered work. Run `desloppify next` from the workspace root to start
+executing, or `desloppify plan cluster show <name>` to read a cluster's steps.
+See "Triage outcome" below for what the verification found.
 
 ## Where it ended
 
@@ -80,3 +82,42 @@ Strict score counts both as open, which is the honest signal.
 - Editing `lib/db/store.ts` in dev used to leave routes calling the previous
   class through the globalThis cache. `getStore()` now rebuilds when the class
   changes, but a hard restart is still the fastest way to be sure.
+
+## Triage outcome
+
+The blind review that produced the 101 findings ran before the remediation
+commits landed, so most of it described code that no longer exists. Five
+subagents re-read the source behind every finding: 59 verified as false
+positives (58 of them "already fixed", one a reviewer misread), 26 as genuine,
+9 as exaggerated, 6 as not worth the churn and 1 as over-engineering. The 58
+fixed ones were resolved rather than skipped, so the record of the work
+survives; the 9 judgment calls were skipped one at a time with their own
+reasons rather than in bulk.
+
+Two auto-clusters were decided. Both `json_parse_unguarded` findings are false
+positives: `lib/db/transfer.ts:33` already has a try/catch, and
+`lib/import/applyCards.ts:50` sits inside `importCardFiles`' per-file handler,
+which turns a throw into an `ok: false` result. The `untested_module` cluster
+was broken up: six of its fifteen members are covered by `tests/unit`, which
+the detector cannot see because those tests load app modules through a dynamic
+import plus a resolve hook rather than a colocated file.
+
+A second adversarial pass over the 28 executor-ready steps corrected 17 of
+them. Three would have broken the build or the app: a step that deleted the
+`/image` director state along with the decay effect it meant to move, one that
+assumed `applySettingsToWorkflow` was exported from `lib/providers/comfyui.ts`
+when it is a bare function, and one that would have pasted a block-level banner
+into the flex row in `app/page.tsx` and squeezed the sidebar.
+
+### A tool bug, fixed
+
+`desloppify plan triage --stage organize` reconciles the reflect ledger against
+plan state, where an issue is either clustered or in `plan["skipped"]`. An issue
+resolved as fixed is neither, so all 58 read as "not skipped, not clustered" and
+the stage refused to record — and `plan skip` is a no-op on an already-resolved
+issue, so the state it demanded was unreachable. The fix teaches the validator
+that a `fixed` or `auto_resolved` work item satisfies whatever the ledger
+intended, since resolving is a stronger outcome than skipping. It is committed
+with four tests as `tooling/desloppify-organize-resolved-issues.patch` in the
+workspace root, and still needs pushing upstream — `gh` was not authenticated
+when it was written.
