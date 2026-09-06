@@ -21,6 +21,23 @@ import type { PersistedAppState } from "@/lib/types";
 const DEBOUNCE_MS = 800;   // trailing quiet-period before a save
 const MAX_WAIT_MS = 5000;  // during constant streaming, save at least this often
 
+/**
+ * What this component syncs, in one place.
+ *
+ * The collections were written out four separate times — the save body, the
+ * "does the server have anything" test, the hydrate call and the subscription
+ * diff. A collection missing from any one of them breaks silently and
+ * differently: never saved, treated as empty, dropped on load, or saved only
+ * when something else changes. lib/db/appState.ts drives the server half off
+ * its own table for the same reason.
+ */
+const SYNCED_COLLECTIONS = [
+  "characters", "chats", "personas", "lorebooks", "scenarios", "presets",
+] as const;
+
+/** Singletons: not arrays, so they are counted and copied differently. */
+const SYNCED_SINGLETONS = ["defaultPresetId", "globalInstructions"] as const;
+
 export function StateSync() {
   const started = useRef(false);
 
@@ -38,10 +55,11 @@ export function StateSync() {
 
     const save = async () => {
       lastSaveAt = Date.now();
-      const {
-        characters, chats, personas, lorebooks, scenarios,
-        presets, defaultPresetId, globalInstructions,
-      } = useFableStore.getState();
+      const state = useFableStore.getState();
+      const payload = Object.fromEntries([
+        ...SYNCED_COLLECTIONS.map((key) => [key, state[key]]),
+        ...SYNCED_SINGLETONS.map((key) => [key, state[key]]),
+      ]);
       // Deliberately not sendJson: a rejected save must not throw out of the
       // debounce timer, and the 409 wipe guard is a normal outcome here — it
       // is reported and the local state is kept, not treated as an error.
@@ -49,10 +67,7 @@ export function StateSync() {
         const res = await fetch("/api/state", {
           method:  "PUT",
           headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({
-            characters, chats, personas, lorebooks, scenarios,
-            presets, defaultPresetId, globalInstructions,
-          }),
+          body:    JSON.stringify(payload),
         });
         if (!res.ok) {
           const data = await res.json().catch(() => null);
@@ -91,9 +106,7 @@ export function StateSync() {
         // configured, and a durable copy holding only presets — or only
         // lorebooks — would otherwise be treated as empty and overwritten by
         // local state.
-        const serverHasData = ([
-          "characters", "chats", "personas", "lorebooks", "scenarios", "presets",
-        ] as const).some((key) => (data[key]?.length ?? 0) > 0);
+        const serverHasData = SYNCED_COLLECTIONS.some((key) => (data[key]?.length ?? 0) > 0);
 
         if (serverHasData) {
           // Checked, not asserted: the durable copy is JSON on disk that a
@@ -105,11 +118,12 @@ export function StateSync() {
 
           useFableStore.getState().hydrateFromServer({
             characters: withIds(data.characters),
-            chats:      withIds(data.chats).filter((c) => Array.isArray(c.messages)),
             personas:   withIds(data.personas),
             lorebooks:  withIds(data.lorebooks),
             scenarios:  withIds(data.scenarios),
             presets:    withIds(data.presets),
+            // Chats carry nested messages, so they get the extra check.
+            chats:      withIds(data.chats).filter((c) => Array.isArray(c.messages)),
             defaultPresetId:    typeof data.defaultPresetId === "string" ? data.defaultPresetId : null,
             globalInstructions: data.globalInstructions ?? {},
           });
@@ -128,18 +142,10 @@ export function StateSync() {
 
       // Subscribe only after hydration so the initial replace doesn't echo back
       unsubscribe = useFableStore.subscribe((state, prev) => {
-        if (
-          state.characters !== prev.characters ||
-          state.chats !== prev.chats ||
-          state.personas !== prev.personas ||
-          state.lorebooks !== prev.lorebooks ||
-          state.scenarios !== prev.scenarios ||
-          state.presets !== prev.presets ||
-          state.defaultPresetId !== prev.defaultPresetId ||
-          state.globalInstructions !== prev.globalInstructions
-        ) {
-          schedule();
-        }
+        const changed =
+          SYNCED_COLLECTIONS.some((key) => state[key] !== prev[key]) ||
+          SYNCED_SINGLETONS.some((key) => state[key] !== prev[key]);
+        if (changed) schedule();
       });
     })();
 
