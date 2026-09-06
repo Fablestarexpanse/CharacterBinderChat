@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
+import type { FableStore } from "@/lib/db/store";
 import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
 import { embedTexts, vecToBuffer } from "@/lib/llm/embeddings";
 import { syncStatsToCore, syncCommitmentsToCore } from "@/lib/server/coreMemoryStore";
@@ -231,6 +232,232 @@ class EntityResolver {
   }
 }
 
+// ─── Write stages ─────────────────────────────────────────────────────────────
+// One function per thing the extractor writes. They ran inline in the route
+// handler, which made POST a 366-line body where the boundary between "parse
+// the model's output" and "write to the graph" was a comment.
+
+/** The extractor writes entities before facts so facts can reference them. */
+function writeEntities(
+  store: FableStore, chatId: string, extracted: RawExtraction, resolver: EntityResolver
+): string[] {
+  // ── Write extracted entities ──────────────────────────────────────────
+  // An entity whose name matches one already in the graph is not created;
+  // its id is aliased instead, so the graph never gains a twin.
+
+  const writtenEntities: string[] = [];
+  for (const e of extracted.entities ?? []) {
+    if (!e.id || !e.name) continue;
+    if (resolver.learn(e.id, e.name)) continue; // aliased to an existing entity
+    const validTypes = ["character", "place", "object", "faction", "concept"];
+    const type = validTypes.includes(e.type) ? (e.type as EntityType) : "character";
+    store.ensureEntity(chatId, e.id, type, e.name, e.description ?? "");
+    writtenEntities.push(e.id);
+  }
+  return writtenEntities;
+}
+
+function writeFacts(
+  store: FableStore, chatId: string, extracted: RawExtraction,
+  resolver: EntityResolver, witnessIds: string[]
+): number[] {
+  // ── Write extracted facts ─────────────────────────────────────────────
+  // Dedup and supersession are store.assertFact's job — the invariant
+  // belongs with the table, not with each caller. What is left here is what
+  // only extraction knows: routing ids onto canonical entities, deciding
+  // literal vs entity object, clamping the model's numbers, and the witness
+  // stamp.
+
+  const writtenFacts: number[] = [];
+  for (const raw of extracted.facts ?? []) {
+    if (!raw.subject || !raw.predicate || !raw.object) continue;
+
+    // Route the fact onto canonical entities before anything is written
+    const f = {
+      ...raw,
+      subject: resolver.resolve(raw.subject),
+      object:  resolver.resolve(raw.object),
+    };
+
+    if (!store.getEntity(chatId, f.subject)) {
+      store.ensureEntity(chatId, f.subject, "character", f.subject);
+    }
+
+    const objectEntity = store.getEntity(chatId, f.object);
+
+    const { factId, duplicate } = store.assertFact(chatId, {
+      subjectId:     f.subject,
+      predicate:     f.predicate,
+      objectId:      objectEntity ? f.object : null,
+      objectLiteral: objectEntity ? null : f.object,
+      confidence:    clamp01(f.confidence, 0.85),
+      importance:    clamp01(f.importance, 0.5),
+      // Witness stamp: group facts belong to whoever was in the scene
+      knownTo:       witnessIds,
+    });
+    if (!duplicate) writtenFacts.push(factId);
+  }
+  return writtenFacts;
+}
+
+function writeStatChanges(
+  store: FableStore, chatId: string, extracted: RawExtraction, resolver: EntityResolver
+): string[] {
+  // ── Write stat changes ────────────────────────────────────────────────
+
+  // Relationship stats only — mood lives in Drawer 1 (VAD), and letting the
+  // model write a "mood" stat row produced a stray -11 in the Tilly soak.
+  const writtenStats: string[] = [];
+  const validStats = ["affection", "trust", "desire", "connection"];
+  for (const rawSc of extracted.stat_changes ?? []) {
+    if (!rawSc.observer || !rawSc.target || !validStats.includes(rawSc.stat)) continue;
+    if (typeof rawSc.delta !== "number" || !Number.isFinite(rawSc.delta)) continue;
+    // The prompt asks for ±3-20; a model emitting 10000 must not rail a
+    // stat past every carefully tuned dynamic in one write.
+    rawSc.delta = Math.max(-30, Math.min(30, rawSc.delta));
+
+    const sc = {
+      ...rawSc,
+      observer: resolver.resolve(rawSc.observer),
+      target:   resolver.resolve(rawSc.target),
+    };
+
+    store.ensureEntity(chatId, sc.observer, "character", sc.observer);
+    store.ensureEntity(chatId, sc.target,   "character", sc.target);
+    store.deltaStat(chatId, sc.observer, sc.target, sc.stat as StatName, sc.delta);
+    writtenStats.push(`${sc.observer}->${sc.target}:${sc.stat}(${sc.delta > 0 ? "+" : ""}${sc.delta})`);
+  }
+  return writtenStats;
+}
+
+/** Returns the ids of older facts folded into a new one as restatements. */
+async function embedNewFacts(
+  store: FableStore, chatId: string, writtenFacts: number[]
+): Promise<number[]> {
+  // ── Embed the new facts for semantic retrieval ────────────────────────
+  // Best-effort: null when local embeddings are unavailable, and retrieval
+  // falls back to lexical ranking for un-embedded facts.
+  const foldedFacts: number[] = [];
+  if (writtenFacts.length > 0) {
+    const byId = new Map(store.queryAllLiveFacts(chatId).map((f) => [f.id, f]));
+    const factTexts = writtenFacts.map((id) => {
+      const f = byId.get(id);
+      return f ? `${f.subjectId} ${f.predicate} ${f.objectId ?? f.objectLiteral ?? ""}` : "";
+    });
+    const vecs = await embedTexts(factTexts);
+    if (vecs) {
+      const newIds = new Set(writtenFacts);
+      writtenFacts.forEach((id, i) => {
+        const vec = vecs[i];
+        if (!vec) return;
+        store.setFactEmbedding(id, vecToBuffer(vec));
+        // Semantic dedupe: a restatement of an existing fact ("trusts Kael
+        // deeply" next to "has deep trust in Kael") passes the exact-key
+        // check above but adds no information — it only steals a prompt
+        // slot. The NEW fact survives and the old one is superseded by it:
+        // if the "restatement" was actually a reversal that cleared the
+        // similarity bar, newest-wins is the correct outcome, and the
+        // timeline reads forward either way.
+        const f = byId.get(id);
+        if (f) {
+          const dup = store.findSimilarLiveFact(chatId, f.subjectId, f.predicate, vec, newIds);
+          if (dup !== null) {
+            store.supersedeFact(dup.id, id);
+            store.raiseFactImportance(id, dup.importance);
+            foldedFacts.push(dup.id);
+          }
+        }
+      });
+    }
+  }
+  return foldedFacts;
+}
+
+/**
+ * Two promises are the same promise when their distinctive words mostly
+ * overlap. Exact-string matching let paraphrases pile up — soak #3 accumulated
+ * ~200 active rows holding five variants of the same shirt promise.
+ */
+function isRestatement(incoming: string, existing: string): boolean {
+  const contentWords = (text: string) =>
+    new Set(
+      text.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/)
+        .filter((w) => w.length > 3)
+    );
+  const a = contentWords(incoming);
+  const b = contentWords(existing);
+  if (a.size === 0 || b.size === 0) return false;
+  let overlap = 0;
+  for (const w of a) if (b.has(w)) overlap++;
+  return overlap / (a.size + b.size - overlap) >= 0.5;
+}
+
+function writeCommitments(
+  store: FableStore, chatId: string, extracted: RawExtraction, resolver: EntityResolver
+): string[] {
+  // ── Write commitments ─────────────────────────────────────────────────
+  // Promises are what players most expect a character to hold onto; the
+  // commitments table sat empty until the longitudinal soak proved a planted
+  // deadline was never captured anywhere.
+
+  const writtenCommitments: string[] = [];
+  for (const rawC of extracted.commitments ?? []) {
+    if (!rawC.promisor || !rawC.description?.trim()) continue;
+    const promisor = resolver.resolve(rawC.promisor);
+    const promisee = rawC.promisee ? resolver.resolve(rawC.promisee) : undefined;
+    store.ensureEntity(chatId, promisor, "character", promisor);
+    if (promisee) store.ensureEntity(chatId, promisee, "character", promisee);
+
+    // Dedup among the promisor's active commitments
+    const dup = store.allCommitments(chatId, "active")
+      .some((c) => c.promisorId === promisor && isRestatement(rawC.description, c.description));
+    if (dup) continue;
+
+    store.insertCommitment(chatId, promisor, rawC.description.trim(), promisee);
+    writtenCommitments.push(rawC.description.trim());
+  }
+  return writtenCommitments;
+}
+
+/** Close out commitments the scene fulfilled or broke. */
+function resolveCommitments(
+  store: FableStore, chatId: string, extracted: RawExtraction
+): void {
+  for (const res of extracted.resolved_commitments ?? []) {
+    if (!res.match?.trim() || !["fulfilled", "broken"].includes(res.status)) continue;
+    const words = res.match.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+    if (words.length === 0) continue;
+    // Best overlap match among active commitments
+    const active = store.allCommitments(chatId, "active");
+    let best: { id: number; score: number } | null = null;
+    for (const c of active) {
+      const desc = c.description.toLowerCase();
+      const score = words.filter((w) => desc.includes(w)).length / words.length;
+      if (score >= 0.5 && (!best || score > best.score)) best = { id: c.id, score };
+    }
+    if (best) {
+      store.updateCommitmentStatus(chatId, best.id, res.status as "fulfilled" | "broken");
+    }
+  }
+}
+
+function writeBondCards(
+  store: FableStore, chatId: string, extracted: RawExtraction
+): string[] {
+  // ── Shared language (bond cards) ──────────────────────────────────────
+  // Running gags / nicknames / rituals. upsert: a re-mention reinforces the
+  // existing card instead of duplicating it.
+  const writtenBits: string[] = [];
+  const validKinds = ["nickname", "joke", "ritual", "phrase"];
+  for (const bit of extracted.shared_language ?? []) {
+    if (!bit.text?.trim()) continue;
+    const kind = validKinds.includes(bit.kind) ? bit.kind : "phrase";
+    const { reinforced } = store.upsertBondCard(chatId, kind, bit.text.trim());
+    writtenBits.push(`${kind}:${bit.text.trim().slice(0, 40)}${reinforced ? " (reinforced)" : ""}`);
+  }
+  return writtenBits;
+}
+
 // ─── Route Handler ────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
@@ -318,186 +545,13 @@ export async function POST(req: NextRequest) {
       { id: "player",    name: personaName },
     ]);
 
-    // ── Write extracted entities ──────────────────────────────────────────
-    // An entity whose name matches one already in the graph is not created;
-    // its id is aliased instead, so the graph never gains a twin.
-
-    const writtenEntities: string[] = [];
-    for (const e of extracted.entities ?? []) {
-      if (!e.id || !e.name) continue;
-      if (resolver.learn(e.id, e.name)) continue; // aliased to an existing entity
-      const validTypes = ["character", "place", "object", "faction", "concept"];
-      const type = validTypes.includes(e.type) ? (e.type as EntityType) : "character";
-      store.ensureEntity(chatId, e.id, type, e.name, e.description ?? "");
-      writtenEntities.push(e.id);
-    }
-
-    // ── Write extracted facts ─────────────────────────────────────────────
-    // Dedup and supersession are store.assertFact's job — the invariant
-    // belongs with the table, not with each caller. What is left here is what
-    // only extraction knows: routing ids onto canonical entities, deciding
-    // literal vs entity object, clamping the model's numbers, and the witness
-    // stamp.
-
-    const writtenFacts: number[] = [];
-    for (const raw of extracted.facts ?? []) {
-      if (!raw.subject || !raw.predicate || !raw.object) continue;
-
-      // Route the fact onto canonical entities before anything is written
-      const f = {
-        ...raw,
-        subject: resolver.resolve(raw.subject),
-        object:  resolver.resolve(raw.object),
-      };
-
-      if (!store.getEntity(chatId, f.subject)) {
-        store.ensureEntity(chatId, f.subject, "character", f.subject);
-      }
-
-      const objectEntity = store.getEntity(chatId, f.object);
-
-      const { factId, duplicate } = store.assertFact(chatId, {
-        subjectId:     f.subject,
-        predicate:     f.predicate,
-        objectId:      objectEntity ? f.object : null,
-        objectLiteral: objectEntity ? null : f.object,
-        confidence:    clamp01(f.confidence, 0.85),
-        importance:    clamp01(f.importance, 0.5),
-        // Witness stamp: group facts belong to whoever was in the scene
-        knownTo:       witnessIds,
-      });
-      if (!duplicate) writtenFacts.push(factId);
-    }
-
-    // ── Write stat changes ────────────────────────────────────────────────
-
-    // Relationship stats only — mood lives in Drawer 1 (VAD), and letting the
-    // model write a "mood" stat row produced a stray -11 in the Tilly soak.
-    const writtenStats: string[] = [];
-    const validStats = ["affection", "trust", "desire", "connection"];
-    for (const rawSc of extracted.stat_changes ?? []) {
-      if (!rawSc.observer || !rawSc.target || !validStats.includes(rawSc.stat)) continue;
-      if (typeof rawSc.delta !== "number" || !Number.isFinite(rawSc.delta)) continue;
-      // The prompt asks for ±3-20; a model emitting 10000 must not rail a
-      // stat past every carefully tuned dynamic in one write.
-      rawSc.delta = Math.max(-30, Math.min(30, rawSc.delta));
-
-      const sc = {
-        ...rawSc,
-        observer: resolver.resolve(rawSc.observer),
-        target:   resolver.resolve(rawSc.target),
-      };
-
-      store.ensureEntity(chatId, sc.observer, "character", sc.observer);
-      store.ensureEntity(chatId, sc.target,   "character", sc.target);
-      store.deltaStat(chatId, sc.observer, sc.target, sc.stat as StatName, sc.delta);
-      writtenStats.push(`${sc.observer}->${sc.target}:${sc.stat}(${sc.delta > 0 ? "+" : ""}${sc.delta})`);
-    }
-
-    // ── Embed the new facts for semantic retrieval ────────────────────────
-    // Best-effort: null when local embeddings are unavailable, and retrieval
-    // falls back to lexical ranking for un-embedded facts.
-    const foldedFacts: number[] = [];
-    if (writtenFacts.length > 0) {
-      const byId = new Map(store.queryAllLiveFacts(chatId).map((f) => [f.id, f]));
-      const factTexts = writtenFacts.map((id) => {
-        const f = byId.get(id);
-        return f ? `${f.subjectId} ${f.predicate} ${f.objectId ?? f.objectLiteral ?? ""}` : "";
-      });
-      const vecs = await embedTexts(factTexts);
-      if (vecs) {
-        const newIds = new Set(writtenFacts);
-        writtenFacts.forEach((id, i) => {
-          const vec = vecs[i];
-          if (!vec) return;
-          store.setFactEmbedding(id, vecToBuffer(vec));
-          // Semantic dedupe: a restatement of an existing fact ("trusts Kael
-          // deeply" next to "has deep trust in Kael") passes the exact-key
-          // check above but adds no information — it only steals a prompt
-          // slot. The NEW fact survives and the old one is superseded by it:
-          // if the "restatement" was actually a reversal that cleared the
-          // similarity bar, newest-wins is the correct outcome, and the
-          // timeline reads forward either way.
-          const f = byId.get(id);
-          if (f) {
-            const dup = store.findSimilarLiveFact(chatId, f.subjectId, f.predicate, vec, newIds);
-            if (dup !== null) {
-              store.supersedeFact(dup.id, id);
-              store.raiseFactImportance(id, dup.importance);
-              foldedFacts.push(dup.id);
-            }
-          }
-        });
-      }
-    }
-
-    // ── Write commitments ─────────────────────────────────────────────────
-    // Promises are what players most expect a character to hold onto; the
-    // commitments table sat empty until the longitudinal soak proved a planted
-    // deadline was never captured anywhere.
-
-    const writtenCommitments: string[] = [];
-    for (const rawC of extracted.commitments ?? []) {
-      if (!rawC.promisor || !rawC.description?.trim()) continue;
-      const promisor = resolver.resolve(rawC.promisor);
-      const promisee = rawC.promisee ? resolver.resolve(rawC.promisee) : undefined;
-      store.ensureEntity(chatId, promisor, "character", promisor);
-      if (promisee) store.ensureEntity(chatId, promisee, "character", promisee);
-
-      // Dedup among the promisor's active commitments. Exact-string matching
-      // let paraphrases pile up — soak #3 accumulated ~200 active rows with
-      // five variants of the same shirt promise — so compare content-word
-      // overlap (Jaccard) instead: rephrasings of one promise share most of
-      // their distinctive words.
-      const contentWords = (s: string) =>
-        new Set(
-          s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/)
-            .filter((w) => w.length > 3)
-        );
-      const incoming = contentWords(rawC.description);
-      const isDupCommitment = (existing: string): boolean => {
-        const ex = contentWords(existing);
-        if (incoming.size === 0 || ex.size === 0) return false;
-        let overlap = 0;
-        for (const w of incoming) if (ex.has(w)) overlap++;
-        return overlap / (incoming.size + ex.size - overlap) >= 0.5;
-      };
-      const dup = store.allCommitments(chatId, "active")
-        .some((c) => c.promisorId === promisor && isDupCommitment(c.description));
-      if (dup) continue;
-
-      store.insertCommitment(chatId, promisor, rawC.description.trim(), promisee);
-      writtenCommitments.push(rawC.description.trim());
-    }
-
-    for (const res of extracted.resolved_commitments ?? []) {
-      if (!res.match?.trim() || !["fulfilled", "broken"].includes(res.status)) continue;
-      const words = res.match.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
-      if (words.length === 0) continue;
-      // Best overlap match among active commitments
-      const active = store.allCommitments(chatId, "active");
-      let best: { id: number; score: number } | null = null;
-      for (const c of active) {
-        const desc = c.description.toLowerCase();
-        const score = words.filter((w) => desc.includes(w)).length / words.length;
-        if (score >= 0.5 && (!best || score > best.score)) best = { id: c.id, score };
-      }
-      if (best) {
-        store.updateCommitmentStatus(chatId, best.id, res.status as "fulfilled" | "broken");
-      }
-    }
-
-    // ── Shared language (bond cards) ──────────────────────────────────────
-    // Running gags / nicknames / rituals. upsert: a re-mention reinforces the
-    // existing card instead of duplicating it.
-    const writtenBits: string[] = [];
-    const validKinds = ["nickname", "joke", "ritual", "phrase"];
-    for (const bit of extracted.shared_language ?? []) {
-      if (!bit.text?.trim()) continue;
-      const kind = validKinds.includes(bit.kind) ? bit.kind : "phrase";
-      const { reinforced } = store.upsertBondCard(chatId, kind, bit.text.trim());
-      writtenBits.push(`${kind}:${bit.text.trim().slice(0, 40)}${reinforced ? " (reinforced)" : ""}`);
-    }
+    const writtenEntities    = writeEntities(store, chatId, extracted, resolver);
+    const writtenFacts       = writeFacts(store, chatId, extracted, resolver, witnessIds);
+    const writtenStats       = writeStatChanges(store, chatId, extracted, resolver);
+    const foldedFacts        = await embedNewFacts(store, chatId, writtenFacts);
+    const writtenCommitments = writeCommitments(store, chatId, extracted, resolver);
+    resolveCommitments(store, chatId, extracted);
+    const writtenBits        = writeBondCards(store, chatId, extracted);
 
     // ── Story clock ───────────────────────────────────────────────────────
     // The in-fiction "now" — lets the prompt surface commitments whose moment
