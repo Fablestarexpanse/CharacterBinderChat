@@ -19,6 +19,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { useUiStore } from "@/lib/store/ui";
+import { sendJson } from "@/lib/api/client";
 
 export function ChatInput() {
   const { activeChatId, chats, characters, personas, activePersonaId, setActivePersona, addMessage, isGenerating } = useFableStore();
@@ -49,8 +50,11 @@ export function ChatInput() {
     if (!lastStr) return; // first ever session — nothing to decay yet
     if (now - Number(lastStr) < 15 * 60 * 1000) return; // same sitting, skip
 
-    fetch("/api/drawer/stats/decay", { method: "POST" })
-      .catch((e) => console.warn("[decay]", e));
+    // Fire-and-forget by design — nothing waits on decay — but through
+    // sendJson so a rejected request is a warning rather than a success: the
+    // bare fetch only caught network errors, so a 500 looked like it worked.
+    sendJson("POST", "/api/drawer/stats/decay")
+      .catch((e: Error) => console.warn("[decay]", e.message));
   }, []);
 
   // ── Send handler ──────────────────────────────────────────────────────────

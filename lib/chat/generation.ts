@@ -5,6 +5,7 @@
 // the AbortController stays module-local (not serialisable).
 
 import { useFableStore } from "@/lib/store";
+import { sendJson } from "@/lib/api/client";
 import { createChatProvider, resolveRouteCredentials } from "@/lib/providers/factory";
 import { buildSystemPrompt, estimateTokens } from "./promptBuilder";
 import { matchLoreEntries, booksForChat } from "./lorebook";
@@ -457,24 +458,20 @@ function runExtraction(chatId: string, speakerId?: string): void {
 
   // POST and return a readable error string (or null on success) so a
   // model that can't emit JSON is visibly different from a quiet turn.
-  const post = (url: string, label: string): Promise<string | null> =>
-    fetch(url, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(extractionBody),
-    })
-      .then(async (res) => {
-        const data = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;
-        if (!res.ok || data?.ok === false) {
-          const msg = `${label}: ${data?.error ?? `HTTP ${res.status}`}`;
-          console.warn(`[${label}]`, msg);
-          return msg;
-        }
-        return null;
-      })
-      .catch((e) => {
-        console.warn(`[${label}]`, e);
-        return `${label}: ${e instanceof Error ? e.message : String(e)}`;
+  /**
+   * Fire one memory task and reduce it to an error string or null.
+   *
+   * `extra` carries the one field that differs between calls — the reflection
+   * pass is the same body with mode:"reflect" — which is what an inline copy
+   * of this was there for, with its own divergent message and no warning.
+   */
+  const post = (url: string, label: string, extra?: Partial<MemoryTaskRequest>): Promise<string | null> =>
+    sendJson("POST", url, { ...extractionBody, ...extra })
+      .then(() => null)
+      .catch((e: Error) => {
+        const msg = `${label}: ${e.message}`;
+        console.warn(`[${label}]`, msg);
+        return msg;
       });
 
   // Episodic cadence: a scene card every ~8 exchanges, a reflection every ~24.
@@ -488,18 +485,7 @@ function runExtraction(chatId: string, speakerId?: string): void {
     calls.push(post("/api/drawer/episode", "episode"));
   }
   if (exchanges > 0 && exchanges % 24 === 0) {
-    calls.push(
-      fetch("/api/drawer/episode", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ ...extractionBody, mode: "reflect" }),
-      })
-        .then(async (res) => {
-          const data = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;
-          return !res.ok || data?.ok === false ? `reflection: ${data?.error ?? res.status}` : null;
-        })
-        .catch((e) => `reflection: ${e instanceof Error ? e.message : String(e)}`)
-    );
+    calls.push(post("/api/drawer/episode", "reflection", { mode: "reflect" }));
   }
 
   Promise.all(calls)

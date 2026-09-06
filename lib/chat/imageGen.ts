@@ -9,6 +9,7 @@
 
 import { useFableStore, DEFAULT_UTILITY_MODEL } from "@/lib/store";
 import { startImageJob } from "@/lib/providers/comfyui";
+import { sendJson } from "@/lib/api/client";
 
 export interface SceneImageOptions {
   /** Generate for the story as it stood at this message; the image card is
@@ -53,30 +54,28 @@ export async function generateSceneImage(
   if (sceneMessages.length > 0) {
     onPhase?.("directing");
     try {
-      const res = await fetch("/api/image/scene-prompt", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages:      sceneMessages,
-          focus:         focus || undefined,
-          appearance:    character
-            ? [character.name + ":", character.description, character.personality].filter(Boolean).join("\n")
-            : undefined,
-          ollamaBaseUrl: store.providerSettings.ollama.baseUrl,
-          modelId:       store.providerSettings.ollama.utilityModel ?? DEFAULT_UTILITY_MODEL,
-        }),
+      const data = await sendJson<{ prompt?: string }>("POST", "/api/image/scene-prompt", {
+        messages:      sceneMessages,
+        focus:         focus || undefined,
+        appearance:    character
+          ? [character.name + ":", character.description, character.personality].filter(Boolean).join("\n")
+          : undefined,
+        ollamaBaseUrl: store.providerSettings.ollama.baseUrl,
+        modelId:       store.providerSettings.ollama.utilityModel ?? DEFAULT_UTILITY_MODEL,
       });
-      const data = await res.json().catch(() => null) as { prompt?: string; error?: string } | null;
-      if (res.ok && data?.prompt) {
+      if (data.prompt) {
         prompt = data.prompt;
       } else if (!focus) {
         onPhase?.("failed");
-        return { ok: false, error: data?.error ?? "scene director failed" };
+        return { ok: false, error: "scene director failed" };
       }
     } catch (e) {
+      // With a focus the user typed, their words are the prompt and the
+      // director is only an enhancement — without one there is nothing to
+      // render, so the failure has to surface.
       if (!focus) {
         onPhase?.("failed");
-        return { ok: false, error: String(e) };
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }
     }
   }

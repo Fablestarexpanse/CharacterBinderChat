@@ -9,7 +9,7 @@ import { Section } from "./Section";
 import type { CoreMemory } from "@/lib/db/models";
 import type { CoreMemoryGetResponse } from "@/app/api/chat/core-memory/route";
 import { resolveRouteCredentials } from "@/lib/providers/factory";
-import { sendJson } from "@/lib/api/client";
+import { getJson, sendJson } from "@/lib/api/client";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -93,21 +93,21 @@ export function CoreMemoryTab() {
     const key = `${chatId}:${characterId}:${extractionVersion}:${refreshTick}`;
     (async () => {
       try {
-        const res  = await fetch(
+        const data = await getJson<CoreMemoryGetResponse>(
           `/api/chat/core-memory?chatId=${encodeURIComponent(chatId)}&characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}`
         );
-        const data = await res.json() as CoreMemoryGetResponse & { error?: string };
         if (cancelled) return;
-        if (res.ok) {
-          const relAge = data.updatedAt
-            ? Math.round((Date.now() / 1000 - data.updatedAt) / 60) + "m ago"
-            : null;
-          setResult({ key, cm: data.coreMemory, version: data.version, relAge, error: null });
-        } else {
-          setResult({ key, cm: null, version: null, relAge: null, error: data.error ?? "Failed to load core memory" });
-        }
+        const relAge = data.updatedAt
+          ? Math.round((Date.now() / 1000 - data.updatedAt) / 60) + "m ago"
+          : null;
+        setResult({ key, cm: data.coreMemory, version: data.version, relAge, error: null });
       } catch (e) {
-        if (!cancelled) setResult({ key, cm: null, version: null, relAge: null, error: String(e) });
+        if (!cancelled) {
+          setResult({
+            key, cm: null, version: null, relAge: null,
+            error: e instanceof Error ? e.message : "Failed to load core memory",
+          });
+        }
       }
     })();
     return () => { cancelled = true; };
