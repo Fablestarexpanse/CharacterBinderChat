@@ -21,7 +21,7 @@ const send = (method, path, body) =>
   fetch(`${BASE}${path}`, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
     .then(async (r) => ({ status: r.status, body: await r.json() }));
 
-test("every drawer read requires its chat scope", { skip }, async (t) => {
+test("every drawer read requires its chat scope", { skip }, async () => {
   for (const path of ["/api/drawer/entities", "/api/drawer/facts", "/api/drawer/stats", "/api/drawer/graph"]) {
     const { status, body } = await get(path);
     assert.equal(status, 400, `${path} should refuse an unscoped read`);
