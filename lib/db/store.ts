@@ -321,7 +321,7 @@ export class FableStore {
   }
 
   /** Raw embedding blob for a memory card (null when never embedded) */
-  cardEmbedding(cardId: number): Float32Array | null {
+  getCardEmbedding(cardId: number): Float32Array | null {
     const row = this.db.prepare("SELECT embedding FROM memory_cards WHERE id = ?").get(cardId) as
       { embedding: Buffer | null } | undefined;
     return bufferToVec(row?.embedding ?? null);
@@ -332,7 +332,7 @@ export class FableStore {
    * so the per-row accessors above meant one SQLite round trip per fact —
    * from inside a sort comparator, so the count was O(n log n), not O(n).
    */
-  embeddings(table: "facts" | "memory_cards", ids: number[]): Map<number, Float32Array> {
+  getEmbeddings(table: "facts" | "memory_cards", ids: number[]): Map<number, Float32Array> {
     const map = new Map<number, Float32Array>();
     if (ids.length === 0) return map;
     const placeholders = ids.map(() => "?").join(",");
@@ -363,7 +363,7 @@ export class FableStore {
   }
 
   /** Raw embedding blob for a fact (null when never embedded) */
-  factEmbedding(factId: number): Float32Array | null {
+  getFactEmbedding(factId: number): Float32Array | null {
     const row = this.db.prepare("SELECT embedding FROM facts WHERE id = ?").get(factId) as
       { embedding: Buffer | null } | undefined;
     return bufferToVec(row?.embedding ?? null);
@@ -387,7 +387,7 @@ export class FableStore {
     const family = predicateFamily(predicate);
     for (const f of this.queryFacts(chatId, subjectId)) {
       if (excludeIds.has(f.id)) continue;
-      const other = this.factEmbedding(f.id);
+      const other = this.getFactEmbedding(f.id);
       if (!other) continue;
       const sim = cosine(vec, other);
       const bar = predicateFamily(f.predicate) === family ? threshold : 0.97;

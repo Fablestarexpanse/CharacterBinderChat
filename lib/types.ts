@@ -207,17 +207,23 @@ export interface ProviderStatus {
   modelLabel?: string;
 }
 
-// ─── Extraction request ───────────────────────────────────────────────────────
-// One body shape POSTed by triggerExtraction() to /api/drawer/extract,
-// /api/drawer/episode and /api/chat/core-memory/refresh. Each route reads a
-// subset and types its own cast with Pick<> — declaring the union here is what
-// keeps the field names from drifting apart across the three.
+// ─── Memory-task request ──────────────────────────────────────────────────────
+// One body shape POSTed by runExtraction() in lib/chat/generation.ts to
+// /api/drawer/extract, /api/drawer/episode and /api/chat/core-memory/refresh.
+// Declaring it once is what keeps the field names from drifting apart across
+// the three.
 //
 // Deliberately carries NO generation params and no preset/global prompt text:
 // these routes run format:"json" on backend defaults, and a roleplay
 // temperature or instruction would break structured output.
 
-export interface ExtractionRequest {
+/**
+ * What the client sends to the three memory-task routes (extract, episode and
+ * core-memory/refresh). One builder in lib/chat/generation.ts produces it and
+ * parseMemoryTaskRequest in lib/api/server.ts is the only thing that validates
+ * it.
+ */
+export interface MemoryTaskRequest {
   chatId:          string;
   characterId:     string;
   /** Falls back to characterId in every route that reads it. */
@@ -239,17 +245,6 @@ export interface ExtractionRequest {
   /** /api/drawer/episode only */
   mode?:           "episode" | "reflect";
 }
-
-/**
- * What the client sends to the three memory-task routes (extract, episode and
- * core-memory/refresh). All three take the same envelope from the same builder
- * in lib/chat/generation.ts; `parseMemoryTaskRequest` in lib/api.ts is the one
- * place it is validated.
- */
-export type MemoryTaskRequest = Pick<ExtractionRequest,
-  "chatId" | "characterId" | "characterName" | "personaName" | "characterAnchor" |
-  "messages" | "participants" | "providerType" | "providerBaseUrl" | "modelId" |
-  "apiKey" | "mode">;
 
 // ─── Generation Parameters ───────────────────────────────────────────────────
 // Provider-neutral sampler knobs. Every backend spells these differently (see

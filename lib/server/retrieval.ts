@@ -73,7 +73,7 @@ export function retrieveFactsForPrompt(
   // this, and it opened a SQLite query per call — a per-row read run
   // O(n log n) times.
   const contextWords = contentWords(context);
-  const vectors = queryEmbedding ? store.embeddings("facts", all.map((f) => f.id)) : null;
+  const vectors = queryEmbedding ? store.getEmbeddings("facts", all.map((f) => f.id)) : null;
   const relevance = new Map<number, number>(all.map((f) => [
     f.id,
     queryEmbedding
@@ -163,7 +163,7 @@ export function retrieveEpisodesForPrompt(
   const cards = store.listMemoryCards(chatId).filter((c) => !c.tags.includes("bond"));
   if (cards.length === 0) return [];
   const contextWords = contentWords(context);
-  const vectors = queryEmbedding ? store.embeddings("memory_cards", cards.map((c) => c.id)) : null;
+  const vectors = queryEmbedding ? store.getEmbeddings("memory_cards", cards.map((c) => c.id)) : null;
   // Scored once, then sorted — same reason as the facts path above.
   const scored = cards.map((card) => ({
     card,

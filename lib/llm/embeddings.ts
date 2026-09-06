@@ -7,13 +7,13 @@
 // Availability is cached briefly so a downed Ollama doesn't add latency to
 // every exchange.
 //
-// Vectors are L2-normalised at creation, so cosine similarity is a dot product.
+// Vectors are L2-normalized at creation, so cosine similarity is a dot product.
 
 
 let unavailableUntil = 0;
 const RETRY_AFTER_MS = 60_000;
 
-function normalise(v: number[]): Float32Array {
+function normalize(v: number[]): Float32Array {
   let sum = 0;
   for (const x of v) sum += x * x;
   const inv = sum > 0 ? 1 / Math.sqrt(sum) : 0;
@@ -49,7 +49,7 @@ export async function embedTexts(texts: string[]): Promise<Float32Array[] | null
     if (!Array.isArray(data.embeddings) || data.embeddings.length !== texts.length) {
       throw new Error("embed response shape mismatch");
     }
-    return data.embeddings.map(normalise);
+    return data.embeddings.map(normalize);
   } catch {
     unavailableUntil = Date.now() + RETRY_AFTER_MS;
     return null;

@@ -10,7 +10,7 @@ import { buildSystemPrompt, estimateTokens } from "./promptBuilder";
 import { matchLoreEntries, booksForChat } from "./lorebook";
 import { resolveGeneration } from "./settings";
 import { fitHistoryToBudget } from "./tokenBudget";
-import type { Chat, Character, MessageRole, ExtractionRequest } from "@/lib/types";
+import type { Chat, Character, MessageRole, MemoryTaskRequest } from "@/lib/types";
 import type { CoreMemory } from "@/lib/db/models";
 import type { CoreMemoryGetResponse } from "@/app/api/chat/core-memory/route";
 
@@ -437,7 +437,7 @@ function runExtraction(chatId: string, speakerId?: string): void {
         : {}),
     }));
 
-  const extractionBody: ExtractionRequest = {
+  const extractionBody: MemoryTaskRequest = {
     messages:        recentMessages,
     chatId,
     characterId:     character.id,

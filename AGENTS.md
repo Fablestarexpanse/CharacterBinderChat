@@ -53,7 +53,7 @@ Two memory layers, both per-character:
 
 **Effects must not call setState synchronously.** React Compiler lint rules are on and `react-hooks/set-state-in-effect` is an error. The pattern used throughout the inspector: hold one result object keyed by what was fetched, derive `loading` from `result.key !== fetchKey`, and only setState inside async continuations behind a `cancelled` guard.
 
-**One success envelope per route kind.** Reads return the bare payload (`{ facts }`, `{ entities }`); mutations return `{ ok: true, ... }`; every non-2xx body is `{ ok: false, error }`, which `routeError` in `lib/api.ts` guarantees for the 500 path. Clients branch on `res.ok` for reads and on `body.ok` for mutations — three different success checks across the inspector was the bug this replaced.
+**One success envelope per route kind.** Reads return the bare payload (`{ facts }`, `{ entities }`); mutations return `{ ok: true, ... }`; every non-2xx body is `{ ok: false, error }`, which `routeError` in `lib/api/server.ts` guarantees for the 500 path. Clients branch on `res.ok` for reads and on `body.ok` for mutations — three different success checks across the inspector was the bug this replaced.
 
 **LLM output is untrusted.** `parseLLMJson` returns a fallback on unparseable input, so callers must distinguish "parse failed" from "nothing found" and report it rather than returning `ok: true` with empty arrays. Route bodies are validated explicitly; `PATCH /api/chat/core-memory` whitelists keys because the patch is spread into the stored document.
 

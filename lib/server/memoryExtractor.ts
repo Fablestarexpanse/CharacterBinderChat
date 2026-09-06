@@ -447,19 +447,19 @@ function resolveCommitments(
   }
 }
 
-function writeBondCards(
+function writeSharedLanguage(
   store: FableStore, chatId: string, extracted: RawExtraction
 ): string[] {
-  // ── Shared language (bond cards) ──────────────────────────────────────
+  // ── Shared language ───────────────────────────────────────────────────
   // Running gags / nicknames / rituals. upsert: a re-mention reinforces the
   // existing card instead of duplicating it.
   const writtenSharedLanguage: string[] = [];
   const validKinds = ["nickname", "joke", "ritual", "phrase"];
-  for (const bit of extracted.shared_language ?? []) {
-    if (!bit.text?.trim()) continue;
-    const kind = validKinds.includes(bit.kind) ? bit.kind : "phrase";
-    const { reinforced } = store.upsertSharedLanguageCard(chatId, kind, bit.text.trim());
-    writtenSharedLanguage.push(`${kind}:${bit.text.trim().slice(0, 40)}${reinforced ? " (reinforced)" : ""}`);
+  for (const entry of extracted.shared_language ?? []) {
+    if (!entry.text?.trim()) continue;
+    const kind = validKinds.includes(entry.kind) ? entry.kind : "phrase";
+    const { reinforced } = store.upsertSharedLanguageCard(chatId, kind, entry.text.trim());
+    writtenSharedLanguage.push(`${kind}:${entry.text.trim().slice(0, 40)}${reinforced ? " (reinforced)" : ""}`);
   }
   return writtenSharedLanguage;
 }
@@ -570,7 +570,7 @@ export async function extractMemory(
   const foldedFacts        = await embedNewFacts(store, chatId, writtenFacts);
   const writtenCommitments = writeCommitments(store, chatId, extracted, resolver);
   resolveCommitments(store, chatId, extracted);
-  const writtenSharedLanguage        = writeBondCards(store, chatId, extracted);
+  const writtenSharedLanguage        = writeSharedLanguage(store, chatId, extracted);
 
   // ── Story clock ───────────────────────────────────────────────────────
   // The in-fiction "now" — lets the prompt surface commitments whose moment

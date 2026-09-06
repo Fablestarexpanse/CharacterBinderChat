@@ -12,6 +12,11 @@
  * so the thrown message is the server's own words wherever it has them.
  */
 export async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
+  return requestJson<T>(url, init);
+}
+
+/** The shared core. `getJson` and `sendJson` are the two ways in. */
+async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res  = await fetch(url, { cache: "no-store", ...init });
   const data = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
   if (!res.ok || data === null) {
@@ -34,7 +39,7 @@ export async function sendJson<T>(
   url: string,
   body?: unknown,
 ): Promise<T> {
-  return getJson<T>(url, {
+  return requestJson<T>(url, {
     method,
     headers: { "Content-Type": "application/json" },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
