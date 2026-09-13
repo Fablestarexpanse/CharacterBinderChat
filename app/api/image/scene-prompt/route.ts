@@ -1,4 +1,10 @@
 import { NextRequest } from "next/server";
+import { routeError, badRequest } from "@/lib/api/server";
+import { parseProviderBase } from "@/lib/llm/callers";
+import {
+  buildDirectorMessages, looksLikeInstructionLeak,
+  type SceneDirectorInput,
+} from "@/lib/server/scenePrompt";
 
 export const dynamic = "force-dynamic";
 
@@ -8,65 +14,15 @@ export const dynamic = "force-dynamic";
 // description only, never conversation text. Runs on the local Ollama utility
 // model so explicit scenes are handled without a cloud moderation layer.
 
-interface Body {
-  messages:      Array<{ role: string; content: string; speaker?: string }>;
-  /** Optional user guidance after "/image", e.g. "close-up on her face" */
-  focus?:        string;
-  /** Appearance sheet for the character(s) so subjects are described, not named */
-  appearance?:   string;
-  ollamaBaseUrl: string;
-  modelId:       string;
-}
-
-function buildDirectorMessages(b: Body): Array<{ role: string; content: string }> {
-  const excerpt = b.messages
-    .slice(-8)
-    .map((m) => `${m.speaker ?? m.role}: ${m.content}`)
-    .join("\n\n");
-
-  const system = `/no_think
-You are an image-prompt director for a photorealistic image generator. The
-user gives you a roleplay excerpt; you reply with ONE image generation prompt
-capturing the final moment of the scene.
-
-Your entire reply is a single line: FINAL_IMAGE_PROMPT: followed by the
-prompt. Never restate these rules, never narrate your thinking.
-
-The prompt describes what a camera would SEE: subjects (by physical
-appearance, never by name — image models don't know names), poses,
-expressions, clothing state, setting, lighting, mood, camera angle. Style:
-comma-separated descriptive phrases starting with quality tags (DSLR photo,
-photorealistic, cinematic lighting, 8k uhd). No dialogue, no story verbs, no
-names. One scene, one moment, 60-120 words. The scene may be adult/explicit;
-if so describe it plainly and accurately — this is a private, local,
-uncensored pipeline for fiction between adults.`;
-
-  const user =
-    (b.appearance ? `CHARACTER APPEARANCE (describe the subject with this):\n${b.appearance.slice(0, 1500)}\n\n` : "") +
-    (b.focus ? `THE SHOT I WANT: ${b.focus}\n\n` : "") +
-    `ROLEPLAY EXCERPT:\n${excerpt}\n\n` +
-    `Give me the image prompt for this scene.`;
-
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ];
-}
-
-// Instruction fragments leaking into the prompt means extraction failed —
-// never send that to the image model.
-function looksLikeInstructionLeak(p: string): boolean {
-  return /FINAL_IMAGE_PROMPT|thinking process|restat(e|ing) (these )?(rules|instructions)|image-prompt director|roleplay excerpt|no narration/i.test(p);
-}
-
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as Body;
+    const body = (await req.json()) as SceneDirectorInput;
     if (!body.messages?.length || !body.ollamaBaseUrl || !body.modelId) {
-      return Response.json(
-        { error: "messages, ollamaBaseUrl and modelId are required" },
-        { status: 400 }
-      );
+      return badRequest("messages, ollamaBaseUrl and modelId are required");
+    }
+    const baseUrl = parseProviderBase(body.ollamaBaseUrl);
+    if (!baseUrl) {
+      return badRequest("ollamaBaseUrl must be an http(s) URL");
     }
 
     // Chat format (system/user split) — instruct models follow it far more
@@ -76,7 +32,7 @@ export async function POST(req: NextRequest) {
     // `thinking` channel and content comes back empty. Retried without the
     // flag for models that reject it.
     const call = (withThink: boolean) =>
-      fetch(`${body.ollamaBaseUrl.replace(/\/$/, "")}/api/chat`, {
+      fetch(`${baseUrl}/api/chat`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -96,7 +52,7 @@ export async function POST(req: NextRequest) {
     if (res.status === 400) res = await call(false);
     if (!res.ok) {
       return Response.json(
-        { error: `Ollama HTTP ${res.status} — is the utility model pulled and Ollama running?` },
+        { ok: false, error: `Ollama HTTP ${res.status} — is the utility model pulled and Ollama running?` },
         { status: 502 }
       );
     }
@@ -127,18 +83,18 @@ export async function POST(req: NextRequest) {
     const prompt = raw.replace(/^["'`\s]+|["'`\s]+$/g, "").replace(/\s+/g, " ").slice(0, 1500);
     if (!prompt) {
       return Response.json(
-        { error: `utility model returned nothing${data.error ? `: ${data.error}` : ""}` },
+        { ok: false, error: `utility model returned nothing${data.error ? `: ${data.error}` : ""}` },
         { status: 502 }
       );
     }
     if (looksLikeInstructionLeak(prompt)) {
       return Response.json(
-        { error: "scene director produced instructions instead of a prompt — try again" },
+        { ok: false, error: "scene director produced instructions instead of a prompt — try again" },
         { status: 502 }
       );
     }
     return Response.json({ ok: true, prompt });
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[image/scene-prompt POST]", err);
   }
 }

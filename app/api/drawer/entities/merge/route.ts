@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
+import { routeError, badRequest } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 
@@ -13,27 +14,26 @@ export async function POST(req: NextRequest) {
     const { chatId, fromId, toId } = body;
 
     if (!chatId || !fromId || !toId) {
-      return Response.json({ error: "chatId, fromId and toId are required" }, { status: 400 });
+      return badRequest("chatId, fromId and toId are required");
     }
     if (fromId === toId) {
-      return Response.json({ error: "fromId and toId must be different" }, { status: 400 });
+      return badRequest("fromId and toId must be different");
     }
 
     const store = getStore();
 
     // Verify both entities exist before merging
     if (!store.getEntity(chatId, fromId)) {
-      return Response.json({ error: `Entity not found: ${fromId}` }, { status: 404 });
+      return Response.json({ ok: false, error: `Entity not found: ${fromId}` }, { status: 404 });
     }
     if (!store.getEntity(chatId, toId)) {
-      return Response.json({ error: `Entity not found: ${toId}` }, { status: 404 });
+      return Response.json({ ok: false, error: `Entity not found: ${toId}` }, { status: 404 });
     }
 
     store.mergeEntity(chatId, fromId, toId);
 
     return Response.json({ ok: true, merged: { from: fromId, into: toId } });
   } catch (err) {
-    console.error("[entities/merge]", err);
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[entities/merge]", err);
   }
 }

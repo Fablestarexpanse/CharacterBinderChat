@@ -13,6 +13,18 @@
 //   refreshCore   also exercise the Drawer 1 rewrite after the last batch
 //   check(q)      returns [{ name, pass, detail }]
 
+// The real predicate vocabulary, imported rather than restated: a check that
+// hardcodes the location predicates goes quietly blind the day one is renamed
+// or another joins the family. predicates.ts has no runtime imports, so Node's
+// type stripping loads it directly.
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const { predicateFamily } = await import(
+  pathToFileURL(path.join(APP_ROOT, "lib/db/predicates.ts")).href
+);
+
 const u = (content) => ({ role: "user", content });
 const a = (content) => ({ role: "assistant", content });
 
@@ -20,7 +32,7 @@ const a = (content) => ({ role: "assistant", content });
 
 /** Live facts whose canonical predicate means "where the subject is" */
 const locationFacts = (facts) =>
-  facts.filter((f) => ["located_at", "lives_at", "current_location"].includes(f.predicate));
+  facts.filter((f) => predicateFamily(f.predicate) === "location");
 
 const objectText = (f) => (f.object_literal ?? f.object_id ?? "").toLowerCase();
 

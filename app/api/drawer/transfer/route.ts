@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
+import { routeError, badRequest } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 
@@ -12,13 +13,13 @@ export async function GET(req: NextRequest) {
   try {
     const characterId = req.nextUrl.searchParams.get("characterId");
     if (!characterId) {
-      return Response.json({ error: "characterId param required" }, { status: 400 });
+      return badRequest("characterId param required");
     }
     const store = getStore();
     const sources = store.listMemorySources(characterId);
     return Response.json({ sources });
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[drawer/transfer GET]", err);
   }
 }
 
@@ -33,17 +34,16 @@ export async function POST(req: NextRequest) {
     const { fromChatId, toChatId } = body;
 
     if (!fromChatId || !toChatId) {
-      return Response.json({ error: "fromChatId and toChatId are required" }, { status: 400 });
+      return badRequest("fromChatId and toChatId are required");
     }
     if (fromChatId === toChatId) {
-      return Response.json({ error: "fromChatId and toChatId must be different" }, { status: 400 });
+      return badRequest("fromChatId and toChatId must be different");
     }
 
     const store  = getStore();
     const copied = store.transferMemory(fromChatId, toChatId);
     return Response.json({ ok: true, copied });
   } catch (err) {
-    console.error("[drawer/transfer]", err);
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[drawer/transfer POST]", err);
   }
 }

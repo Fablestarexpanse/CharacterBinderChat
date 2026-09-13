@@ -7,7 +7,8 @@
 import { OllamaProvider } from "./ollama";
 import { LMStudioProvider } from "./lmstudio";
 import { OpenRouterProvider } from "./openrouter";
-import type { ChatProvider, ProviderSettings } from "@/lib/types";
+import type { ChatProvider, ProviderId, ProviderSettings } from "@/lib/types";
+import type { ProviderType } from "@/lib/llm/callers";
 
 /**
  * Build the chat provider for a provider id.
@@ -15,7 +16,7 @@ import type { ChatProvider, ProviderSettings } from "@/lib/types";
  * OpenRouter without an API key, which callers surface as a user-facing error.
  */
 export function createChatProvider(
-  providerId: string | undefined,
+  providerId: ProviderId | undefined,
   settings: ProviderSettings
 ): ChatProvider | null {
   switch (providerId) {
@@ -37,4 +38,31 @@ export function allChatProviders(settings: ProviderSettings): ChatProvider[] {
     new LMStudioProvider(settings.lmstudio.baseUrl),
     ...(settings.openrouter.apiKey ? [new OpenRouterProvider(settings.openrouter.apiKey)] : []),
   ];
+}
+
+/**
+ * The same mapping, for the routes: what a server-side memory task needs to
+ * reach the provider a chat is using.
+ *
+ * Extraction, episodes and the core-memory rewrite all run on the server, so
+ * they take the provider as data rather than as a ChatProvider instance. Both
+ * callers had their own copy of this ladder, which is the drift this file
+ * exists to prevent.
+ */
+export function resolveRouteCredentials(
+  providerId: ProviderId | undefined,
+  settings: ProviderSettings
+): { providerType: ProviderType; providerBaseUrl: string; apiKey?: string } {
+  switch (providerId) {
+    case "lmstudio":
+      return { providerType: "lmstudio", providerBaseUrl: settings.lmstudio.baseUrl };
+    case "openrouter":
+      return {
+        providerType:    "openrouter",
+        providerBaseUrl: "https://openrouter.ai/api",
+        apiKey:          settings.openrouter.apiKey,
+      };
+    default:
+      return { providerType: "ollama", providerBaseUrl: settings.ollama.baseUrl };
+  }
 }

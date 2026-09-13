@@ -1,15 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { Loader2, Heart, Shield, Flame, Link2, CloudSun } from "lucide-react";
-import { formatRelativeTime } from "./utils";
-
-interface StatRow {
-  name:        string;
-  value:       number | null;
-  decayRate:   number | null;
-  lastUpdated: number | null;
-}
+import { formatAgeFromUnixSeconds } from "./utils";
+import { useDrawerRead } from "@/lib/hooks/useDrawerRead";
+import type { DrawerStat } from "@/lib/api/dto";
 
 const STAT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   affection:  Heart,
@@ -34,31 +28,12 @@ interface Props {
 }
 
 export function RelationshipsView({ chatId, characterId, extractionVersion }: Props) {
-  // Single result object keyed by what was fetched; `loading` is derived so
-  // the effect never calls setState synchronously (react-hooks/set-state-in-effect).
-  const [result, setResult] = useState<{ key: string; stats: StatRow[]; error: string | null } | null>(null);
-
-  const fetchKey = `${chatId}:${characterId}:${extractionVersion}`;
-
-  useEffect(() => {
-    let cancelled = false;
-    const key = `${chatId}:${characterId}:${extractionVersion}`;
-    // character → player: how this character feels about the user
-    fetch(`/api/drawer/stats?chat=${encodeURIComponent(chatId)}&observer=${encodeURIComponent(characterId)}&target=player`)
-      .then((r) => r.json())
-      .then((data: { stats?: StatRow[]; error?: string }) => {
-        if (data.error) throw new Error(data.error);
-        if (!cancelled) setResult({ key, stats: data.stats ?? [], error: null });
-      })
-      .catch((e: Error) => {
-        if (!cancelled) setResult({ key, stats: [], error: e.message });
-      });
-    return () => { cancelled = true; };
-  }, [chatId, characterId, extractionVersion]);
-
-  const loading = result?.key !== fetchKey;
-  const stats   = result?.stats ?? [];
-  const error   = result?.error ?? null;
+  // character → player: how this character feels about the user
+  const { data, error, loading } = useDrawerRead<{ stats?: DrawerStat[] }>(
+    `${chatId}:${characterId}:${extractionVersion}`,
+    `/api/drawer/stats?chatId=${encodeURIComponent(chatId)}&observer=${encodeURIComponent(characterId)}&target=player`
+  );
+  const stats = data?.stats ?? [];
 
   if (loading) {
     return (
@@ -112,7 +87,7 @@ export function RelationshipsView({ chatId, characterId, extractionVersion }: Pr
                 )}
                 {s.lastUpdated !== null && (
                   <span className="text-[9px] text-[var(--muted-fg)]">
-                    {formatRelativeTime(s.lastUpdated)}
+                    {formatAgeFromUnixSeconds(s.lastUpdated)}
                   </span>
                 )}
               </div>

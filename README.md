@@ -89,7 +89,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-The SQLite database is created automatically at `data/fablestore.db` on first run. No migrations needed.
+The SQLite database is created automatically at `data/fablestore.db` on first run, and column upgrades apply when an older database is opened.
 
 ### Configuration
 
@@ -147,13 +147,25 @@ fablechat/
 │   ├── characters/               # CharacterEditorDialog, PersonaEditorDialog
 │   ├── chat/                     # ChatHeader, ChatInput, MessageItem
 │   ├── inspector/                # CharacterTab, CoreMemoryTab, MemoryTab…
+│   │   ├── graph/                # MemoryGraph — the story-web canvas
+│   │   └── memory/               # Facts, Relationships, Entities sub-views
+│   ├── sections/                 # One screen per sidebar entry
 │   ├── sidebar/                  # Sidebar, SystemStatus
+│   ├── ui/                       # Hand-rolled primitives (dialog is the one Radix wrapper)
 │   └── StateSync.tsx             # Hydrate from SQLite, mirror edits back
 ├── lib/
-│   ├── chat/                     # generation, promptBuilder, tokenBudget, memoryRewriter
-│   ├── db/                       # FableStore (better-sqlite3), schema, models, predicates
+│   ├── api/                      # server.ts (routeError, envelope validator) + client.ts (getJson)
+│   ├── chat/                     # generation, promptBuilder, tokenBudget — client-safe
+│   ├── server/                   # memoryExtractor, memoryRewriter, retrieval, coreMemory — SQLite-side
+│   ├── db/                       # FableStore (better-sqlite3), schema, models, rows, predicates
+│   ├── hooks/                    # useHydrated, useModelCatalog, useInspectedCharacter
+│   ├── import/                   # CharacterBinder / SillyTavern card parsing
+│   ├── llm/                      # Shared LLM transport, JSON parsing, embeddings
 │   ├── providers/                # Ollama, LMStudio, OpenRouter, ComfyUI adapters
-│   └── store/                    # Zustand client store
+│   ├── store/                    # Zustand client store (slices) + ui.ts (transient)
+│   ├── text/                     # Lexical overlap — the no-embeddings fallback
+│   ├── types.ts                  # Shared wire and domain types
+│   └── utils.ts                  # cn, downloads, time formatting, forbidden words
 └── data/
     └── fablestore.db             # auto-created SQLite database
 ```
@@ -201,9 +213,10 @@ Chats, characters, and personas are written to SQLite a moment after every chang
 
 Working end to end: chat + streaming, both memory drawers (with embeddings, episodic memory, shared language, story clock, and reply provenance), characters, personas, PNG/JSON card import, lorebooks with keyword injection, real ComfyUI image generation, per-chat generation settings, persistence, chat management, the model selector, the memory inspector, and the story-web mind map.
 
+Every sidebar section is a working screen: Characters, Chats, Groups, Lorebooks, Scenarios, Presets, Image Studio, Gallery, Workflows and Settings.
+
 Not yet built:
 
-- **Placeholder sections**: Presets, Gallery, Workflows, Extensions (and the full-screen Image Studio section — the inspector's Image Studio tab is the real one) are navigable but empty.
 - **Some image-studio controls are decorative**: the LoRA stack, ControlNet, refiner, aspect-ratio and character-reference controls don't reach the workflow yet — prompt, dimensions, steps, CFG, sampler, seed and batch do.
 - **The OpenRouter API key is stored in browser localStorage** and used directly from the client. Fine for a single-user local app; a server-side proxy would be better.
 
@@ -230,12 +243,33 @@ Not yet built:
 ## Development
 
 ```bash
-npm run dev     # Turbopack dev server
-npm run build   # production build
-npm run lint    # ESLint (currently clean)
+npm run dev        # Turbopack dev server
+npm run build      # production build
+npm run lint       # ESLint
+npm run typecheck  # tsc --noEmit
+npm test           # 60 unit tests (node --test, no server, no API key)
 ```
 
-The Python reference implementation of Drawer 2 — including a 77-test pytest suite that documents the intended bi-temporal semantics — lives in `../fable_drawer2/`.
+Those four run on every push, and so does the API suite — CI starts the dev
+server on a scratch database and points `FABLE_TEST_URL` at it
+(`.github/workflows/ci.yml`). To run that suite locally against your own server:
+
+```bash
+FABLE_TEST_URL=http://localhost:3001 npm run test:api   # route contracts + bi-temporal invariants
+```
+
+It writes only under per-run ids and cleans up after itself, but it does write,
+so point it at a scratch `FABLE_DB_PATH` if that matters to you.
+
+One suite stays manual — it calls a paid model and takes minutes:
+
+```bash
+npm run eval                                            # scripted scenarios through a real model
+```
+
+`npm test` loads the app's own `.ts` modules through Node's type stripping — no build step and no test-only bundle, so nothing can pass there while the app fails. A small resolve hook (`tests/unit/loader.mjs`) teaches Node the `@/` alias and extensionless imports, so the suite reaches FableStore and retrieval as well as the pure modules.
+
+The Python reference implementation of Drawer 2 — including a 77-test pytest suite that documents the intended bi-temporal semantics — lives in `../fable_drawer2/`. `tests/unit/schema.test.mjs` and `tests/api/bitemporal.test.mjs` assert the parts of that spec the TypeScript port must honour.
 
 ---
 

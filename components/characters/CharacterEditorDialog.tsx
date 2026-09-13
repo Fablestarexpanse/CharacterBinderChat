@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { AvatarPicker } from "@/components/ui/AvatarPicker";
 import { Trash2 } from "lucide-react";
+import { Field } from "@/components/ui/field";
+import { useUiStore } from "@/lib/store/ui";
 
 // ─── Form state ───────────────────────────────────────────────────────────────
 
@@ -35,26 +37,13 @@ function toFormState(source: Partial<Character> | null): FormState {
   };
 }
 
-// ─── Field wrapper ────────────────────────────────────────────────────────────
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <label className="text-xs font-medium text-[var(--foreground)]">
-        {label}
-        {hint && <span className="ml-1.5 font-normal text-[var(--muted-fg)]">{hint}</span>}
-      </label>
-      {children}
-    </div>
-  );
-}
-
 // ─── Inner form ───────────────────────────────────────────────────────────────
 // Mounted fresh per dialog open (keyed by target id), so useState initialisers
 // seed the form without any set-state-in-effect.
 
 function EditorForm({ editing, draft }: { editing: Character | null; draft: Partial<Character> | null }) {
-  const { addCharacter, updateCharacter, deleteCharacter, closeCharacterEditor } = useFableStore();
+  const { addCharacter, updateCharacter, deleteCharacter } = useFableStore();
+  const { closeCharacterEditor } = useUiStore();
 
   const [form, setForm]                   = useState<FormState>(() => toFormState(editing ?? draft));
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -163,10 +152,8 @@ function EditorForm({ editing, draft }: { editing: Character | null; draft: Part
 // ─── Dialog shell ─────────────────────────────────────────────────────────────
 
 export function CharacterEditorDialog() {
-  const {
-    characters, characterEditorOpen, characterEditorId, characterEditorDraft,
-    closeCharacterEditor,
-  } = useFableStore();
+  const { characters } = useFableStore();
+  const { characterEditorOpen, characterEditorId, characterEditorDraft, closeCharacterEditor } = useUiStore();
 
   const editing = characters.find((c) => c.id === characterEditorId) ?? null;
 

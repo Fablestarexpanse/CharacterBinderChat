@@ -42,7 +42,12 @@ import path from "node:path";
 const require = createRequire(import.meta.url);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(HERE, "../..");
-const Database = require(path.join(APP_ROOT, "node_modules/better-sqlite3"));
+
+// Node strips the types; promptBuilder.ts has no runtime imports of its own.
+const { buildSystemPrompt } = await import(
+  pathToFileURL(path.join(APP_ROOT, "lib/chat/promptBuilder.ts")).href
+);
+const Database = require("better-sqlite3");
 
 let PORT = 3159; // --live switches to the real app on :3000
 const EVAL_DB = path.join(HERE, ".eval-db", "long-chat.db");
@@ -229,79 +234,25 @@ async function fetchMemory(context = "") {
 }
 
 // ─── Prompt assembly ──────────────────────────────────────────────────────────
-// Mirrors lib/chat/promptBuilder.ts. Kept in step by hand; if that file changes
-// shape this must follow.
 
-function describeVAD(v, a, d) {
-  const mood = v > 0.5 ? "happy" : v > 0.1 ? "content" : v > -0.1 ? "neutral" : v > -0.5 ? "melancholy" : "distressed";
-  const energy = a > 0.7 ? "highly energised" : a > 0.4 ? "alert" : a > 0.2 ? "calm" : "very calm";
-  const control = d > 0.7 ? "assertive" : d > 0.4 ? "balanced" : "deferential";
-  return `${mood}, ${energy}, ${control}`;
-}
-const signedPct = (v) =>
-  v - 50 > 20 ? "high" : v - 50 > 5 ? "above avg" : v - 50 < -20 ? "low" : v - 50 < -5 ? "below avg" : "neutral";
-
-// Mirrors lib/chat/promptBuilder.buildSystemPrompt. The real builder also has
-// optional [Global Instructions] and [Preset Instructions] sections just below
-// the identity line, and appends a "Never use these words" line to the final
-// instructions block. All three come from user-configured presets, which the
-// harness deliberately leaves empty — with no preset the real builder emits a
-// byte-identical prompt, so soak results stay comparable across that change.
-// A non-empty global prompt puts a run off this measured baseline.
-function buildSystemPrompt(cm, knownFacts, { withMemory = true, episodes = [], insights = [], bits = [] } = {}) {
-  const s = [
-    `You are ${CHARACTER_NAME}. Stay in character throughout the entire conversation.`,
-    CHARACTER.description,
-    `Personality: ${CHARACTER.personality}`,
-    `[User Persona]\nThe user is roleplaying as ${PERSONA_NAME}.\nAbout ${PERSONA_NAME}: ${PERSONA.description}\nAddress and refer to the user as ${PERSONA_NAME}, not "user".`,
-  ];
-  if (withMemory && cm) {
-    // Same default-detection as the real builder: exact match on the full
-    // default string, after trimming (startsWith dropped legitimately
-    // rewritten personas that happened to open with the phrase)
-    const personaTrim = (cm.persona ?? "").trim();
-    if (personaTrim && personaTrim !== `${CHARACTER_NAME} is a character in this story. Their personality and backstory will emerge through conversation.`) {
-      s.push(`[Core Persona]\n${cm.persona}`);
-    }
-    // Section order mirrors promptBuilder.formatCoreMemoryBlock exactly:
-    // Mood → Relationship → Between You → Story Time → Commitments →
-    // Internal Thoughts → Emotional Events → Story So Far
-    const block = [`[Current Mood] ${describeVAD(cm.mood.valence, cm.mood.arousal, cm.mood.dominance)}`];
-    const rel = cm.relationship_with_user ?? {};
-    const parts = ["affection", "trust", "connection", "desire"]
-      .filter((k) => rel[k] !== undefined && rel[k] !== 50)
-      .map((k) => `${k} ${signedPct(rel[k])}`);
-    if (parts.length) block.push(`[Relationship with User] ${parts.join(", ")}`);
-    // The rupture note — the soak measures rupture inertia, and its mirror
-    // omitting this section meant the character never saw its own wound
-    if (cm.relationship_note) block.push(`[Between You] ${cm.relationship_note}`);
-    if (cm.story_time) block.push(`[Story Time] It is currently: ${cm.story_time}`);
-    if (cm.active_commitments?.length) {
-      block.push(`[Active Commitments]\n${cm.active_commitments.slice(0, 5).map((c) => `  - ${c}`).join("\n")}` +
-        (cm.story_time ? `\n  If any commitment's moment is at hand or approaching, bring it up yourself, naturally.` : ""));
-    }
-    if (cm.internal_thoughts?.length) {
-      block.push(`[Internal Thoughts]\n${cm.internal_thoughts.slice(0, 3).map((t) => `  - ${t}`).join("\n")}`);
-    }
-    if (cm.recent_emotional_events?.length) {
-      block.push(`[Recent Emotional Events]\n${cm.recent_emotional_events.slice(0, 4)
-        .map((e) => `  ${e.impact === "positive" ? "+" : e.impact === "negative" ? "-" : "~"} ${e.description}`).join("\n")}`);
-    }
-    if (cm.narrative_summary && cm.narrative_summary !== "The story is just beginning.") {
-      block.push(`[Story So Far] ${cm.narrative_summary}`);
-    }
-    s.push(block.join("\n"));
-    if (knownFacts?.length) s.push(`[Known Facts]\n${knownFacts.map((f) => `  - ${f}`).join("\n")}`);
-    if (episodes.length) s.push(`[Memorable Scenes]\n${episodes.map((e) => `  - ${e}`).join("\n")}`);
-    if (insights.length) s.push(`[What You Have Come To Understand]\n${insights.map((i) => `  - ${i}`).join("\n")}`);
-    if (bits.length) {
-      s.push(`[Shared Language]\nNicknames, running jokes and little rituals between you two — use them the way old friends do, without explaining them:\n` +
-        bits.map((b) => `  - ${b}`).join("\n"));
-    }
-  }
-  s.push("Write in first person. Be immersive and emotionally consistent with your current mood and relationship state. Do not break character or refer to yourself as an AI.\n" +
-    "Your memory above is what you actually know. If asked about something not in your memory or this conversation, say you don't know or don't remember — do not invent specifics such as names, events, or promises.");
-  return s.join("\n\n");
+// The real builder, imported rather than mirrored: the suite exists to
+// validate the prompt the app sends, and a copy validates the copy. It has no
+// runtime imports beyond types, so Node's type stripping loads the .ts
+// directly.
+//
+// The harness passes no preset, so [Global Instructions], [Preset
+// Instructions] and the forbidden-words line stay absent — a non-empty global
+// prompt puts a run off this measured baseline.
+function systemPrompt(cm, knownFacts, { withMemory = true, episodes = [], insights = [], sharedLanguage = [] } = {}) {
+  return buildSystemPrompt({
+    character:  CHARACTER,
+    persona:    PERSONA,
+    coreMemory: withMemory ? cm : null,
+    knownFacts: withMemory ? knownFacts : [],
+    episodes:   withMemory ? episodes : [],
+    insights:   withMemory ? insights : [],
+    sharedLanguage:       withMemory ? sharedLanguage : [],
+  });
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -419,8 +370,8 @@ async function main() {
       const mem = await fetchMemory(recent);
       const cm = mem.coreMemory ?? null;
       const knownFacts = mem.knownFacts ?? [];
-      const system = buildSystemPrompt(cm, knownFacts, {
-        episodes: mem.episodes ?? [], insights: mem.insights ?? [], bits: mem.bits ?? [],
+      const system = systemPrompt(cm, knownFacts, {
+        episodes: mem.episodes ?? [], insights: mem.insights ?? [], sharedLanguage: mem.sharedLanguage ?? [],
       });
 
       const reply = await chat([{ role: "system", content: system }, ...history], {
@@ -499,8 +450,8 @@ async function main() {
         // Memory-only means the WHOLE memory layer — episodes, insights and
         // shared language included; facts alone understated it.
         const memOnly = await chat([
-          { role: "system", content: buildSystemPrompt(cm, knownFacts, {
-            episodes: mem.episodes ?? [], insights: mem.insights ?? [], bits: mem.bits ?? [],
+          { role: "system", content: systemPrompt(cm, knownFacts, {
+            episodes: mem.episodes ?? [], insights: mem.insights ?? [], sharedLanguage: mem.sharedLanguage ?? [],
           }) },
           { role: "user", content: PROBE_QUESTION },
         ], { temperature: 0.3, maxTokens: 320 });

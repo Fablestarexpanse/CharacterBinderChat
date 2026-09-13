@@ -5,15 +5,21 @@
 // the AbortController stays module-local (not serialisable).
 
 import { useFableStore } from "@/lib/store";
-import { createChatProvider } from "@/lib/providers/factory";
+import { getJson, sendJson } from "@/lib/api/client";
+import { createChatProvider, resolveRouteCredentials } from "@/lib/providers/factory";
 import { buildSystemPrompt, estimateTokens } from "./promptBuilder";
 import { matchLoreEntries, booksForChat } from "./lorebook";
 import { resolveGeneration } from "./settings";
 import { fitHistoryToBudget } from "./tokenBudget";
-import type { Chat, Character, MessageRole } from "@/lib/types";
-import type { CoreMemory } from "@/lib/db/models";
+import type { Chat, Character, MessageRole, MemoryTaskRequest } from "@/lib/types";
+import type { CoreMemoryGetResponse } from "@/lib/api/dto";
 
 let abortController: AbortController | null = null;
+
+// How many extractions are in flight. A turn can start one while the previous
+// is still running (long histories, a slow local model), and a plain boolean
+// meant the first to finish cleared the spinner for both.
+let extractionsInFlight = 0;
 
 export function stopGeneration(): void {
   abortController?.abort();
@@ -21,43 +27,50 @@ export function stopGeneration(): void {
 
 // ─── Core Memory fetcher ──────────────────────────────────────────────────────
 
-interface CoreMemoryResponse {
-  coreMemory: CoreMemory | null;
-  knownFacts: string[];
-  episodes:   string[];
-  insights:   string[];
-  bits:       string[];
-}
+/** What the route returns when there is nothing to return. */
+const NO_MEMORY: CoreMemoryGetResponse = {
+  coreMemory: null, version: 0, updatedAt: 0,
+  knownFacts: [], episodes: [], insights: [], sharedLanguage: [],
+};
 
 async function fetchCoreMemory(
   chatId:        string,
   characterId:   string,
   characterName: string,
   context = ""
-): Promise<CoreMemoryResponse> {
+): Promise<CoreMemoryGetResponse> {
   try {
     // Context lets retrieval rank facts by relevance to what's being discussed.
     // Capped so the query string stays a sane length.
     const ctxParam = context ? `&context=${encodeURIComponent(context.slice(0, 600))}` : "";
-    const res = await fetch(
-      `/api/chat/core-memory?chatId=${encodeURIComponent(chatId)}&characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}${ctxParam}`,
-      { cache: "no-store" }
+    const data = await getJson<CoreMemoryGetResponse>(
+      `/api/chat/core-memory?chatId=${encodeURIComponent(chatId)}&characterId=${encodeURIComponent(characterId)}&name=${encodeURIComponent(characterName)}${ctxParam}`
     );
-    if (!res.ok) return { coreMemory: null, knownFacts: [], episodes: [], insights: [], bits: [] };
-    const data = (await res.json()) as {
-      ok: boolean; coreMemory: CoreMemory; knownFacts?: string[]; episodes?: string[];
-      insights?: string[]; bits?: string[];
-    };
+    // The ?? [] guards stay: this is JSON off the wire that nothing validates.
     return {
-      coreMemory: data.ok ? data.coreMemory : null,
+      ...data,
       knownFacts: data.knownFacts ?? [],
       episodes:   data.episodes ?? [],
       insights:   data.insights ?? [],
-      bits:       data.bits ?? [],
+      sharedLanguage: data.sharedLanguage ?? [],
     };
-  } catch {
-    return { coreMemory: null, knownFacts: [], episodes: [], insights: [], bits: [] };
+  } catch (e) {
+    return degraded(e instanceof Error ? e.message : String(e));
   }
+}
+
+/**
+ * Generate without memory rather than not at all — but say so.
+ *
+ * Silently returning empties made a broken memory API look exactly like a
+ * brand-new character: the reply comes back fluent, remembering nothing, and
+ * nothing anywhere says why. The inspector already surfaces
+ * `lastExtractionError`, so the failure lands where a user would look.
+ */
+function degraded(reason: string): CoreMemoryGetResponse {
+  console.warn("[core-memory] fetch failed, generating without memory:", reason);
+  useFableStore.getState().setLastExtractionError(`memory could not be loaded — ${reason}`);
+  return NO_MEMORY;
 }
 
 // ─── Group helpers ────────────────────────────────────────────────────────────
@@ -142,9 +155,9 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
     // ── Fetch Core Memory (Drawer 1) + Drawer 2 known facts ────────────────
     // The last few turns act as the relevance signal for fact retrieval
     const recentText = chat.messages.slice(-3).map((m) => m.content).join(" ");
-    const { coreMemory, knownFacts, episodes, insights, bits } = character
+    const { coreMemory, knownFacts, episodes, insights, sharedLanguage } = character
       ? await fetchCoreMemory(chatId, character.id, character.name, recentText)
-      : { coreMemory: null, knownFacts: [], episodes: [], insights: [], bits: [] };
+      : NO_MEMORY;
 
     // ── Build message history within the model's token budget ──────────────
     const persona = store.personas.find((p) => p.id === store.activePersonaId) ?? null;
@@ -162,14 +175,14 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
     const promptCharacter = character && chat.scenarioText
       ? { ...character, scenario: chat.scenarioText }
       : character;
-    let systemPrompt = buildSystemPrompt(
-      promptCharacter, coreMemory, knownFacts, persona, episodes, insights, lore, bits,
-      {
-        globalPrompt:   resolved.globalPrompt,
-        customPrompt:   resolved.customPrompt,
-        forbiddenWords: resolved.forbiddenWords,
-      }
-    );
+    let systemPrompt = buildSystemPrompt({
+      character: promptCharacter,
+      coreMemory, persona,
+      knownFacts, episodes, insights, lore, sharedLanguage,
+      globalPrompt:   resolved.globalPrompt,
+      customPrompt:   resolved.customPrompt,
+      forbiddenWords: resolved.forbiddenWords,
+    });
 
     // ── Group scene block ───────────────────────────────────────────────────
     // The speaker needs to know who else is in the room, and that other
@@ -238,7 +251,7 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
     // Provenance: record exactly which memory was injected into this reply's
     // prompt, so the message can answer "why did you say that?"
     store.setMessageMemoryTrace(chatId, assistantMsgId, {
-      facts: knownFacts, episodes, insights, bits, lore,
+      facts: knownFacts, episodes, insights, sharedLanguage, lore,
       storyTime: coreMemory?.story_time ?? null,
     });
 
@@ -358,7 +371,7 @@ export function flushPendingExtraction(): void {
  * reply is the one pending — so deleting an unrelated message can't silently
  * discard another turn's memory.
  */
-export function cancelPendingExtraction(messageId?: string): boolean {
+function cancelPendingExtraction(messageId?: string): boolean {
   if (!pending) return false;
   if (messageId && pending.messageId !== messageId) return false;
   clearTimeout(pending.timer);
@@ -396,17 +409,11 @@ function runExtraction(chatId: string, speakerId?: string): void {
       ]
     : undefined;
 
-  const providerType =
-    chat.providerId === "lmstudio"     ? "lmstudio"
-    : chat.providerId === "openrouter" ? "openrouter"
-    : "ollama";
-  const baseUrl =
-    providerType === "lmstudio"       ? providerSettings.lmstudio.baseUrl
-    : providerType === "openrouter"   ? "https://openrouter.ai/api"
-    : providerSettings.ollama.baseUrl;
+  const { providerType, providerBaseUrl, apiKey } =
+    resolveRouteCredentials(chat.providerId, providerSettings);
   const modelId = chat.modelId ?? "llama3.2:latest";
-  const apiKey  = providerType === "openrouter" ? providerSettings.openrouter.apiKey : undefined;
 
+  extractionsInFlight++;
   setIsExtracting(true);
 
   // In groups every message carries its speaker's name so the extractor
@@ -426,7 +433,7 @@ function runExtraction(chatId: string, speakerId?: string): void {
         : {}),
     }));
 
-  const extractionBody = {
+  const extractionBody: MemoryTaskRequest = {
     messages:        recentMessages,
     chatId,
     characterId:     character.id,
@@ -439,31 +446,27 @@ function runExtraction(chatId: string, speakerId?: string): void {
     characterAnchor: [character.description, character.personality].filter(Boolean).join(" "),
     participants,
     providerType,
-    providerBaseUrl: baseUrl,
+    providerBaseUrl,
     modelId,
     apiKey,
   };
 
   // POST and return a readable error string (or null on success) so a
   // model that can't emit JSON is visibly different from a quiet turn.
-  const post = (url: string, label: string): Promise<string | null> =>
-    fetch(url, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(extractionBody),
-    })
-      .then(async (res) => {
-        const data = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;
-        if (!res.ok || data?.ok === false) {
-          const msg = `${label}: ${data?.error ?? `HTTP ${res.status}`}`;
-          console.warn(`[${label}]`, msg);
-          return msg;
-        }
-        return null;
-      })
-      .catch((e) => {
-        console.warn(`[${label}]`, e);
-        return `${label}: ${e instanceof Error ? e.message : String(e)}`;
+  /**
+   * Fire one memory task and reduce it to an error string or null.
+   *
+   * `extra` carries the one field that differs between calls — the reflection
+   * pass is the same body with mode:"reflect" — which is what an inline copy
+   * of this was there for, with its own divergent message and no warning.
+   */
+  const post = (url: string, label: string, extra?: Partial<MemoryTaskRequest>): Promise<string | null> =>
+    sendJson("POST", url, { ...extractionBody, ...extra })
+      .then(() => null)
+      .catch((e: Error) => {
+        const msg = `${label}: ${e.message}`;
+        console.warn(`[${label}]`, msg);
+        return msg;
       });
 
   // Episodic cadence: a scene card every ~8 exchanges, a reflection every ~24.
@@ -477,18 +480,7 @@ function runExtraction(chatId: string, speakerId?: string): void {
     calls.push(post("/api/drawer/episode", "episode"));
   }
   if (exchanges > 0 && exchanges % 24 === 0) {
-    calls.push(
-      fetch("/api/drawer/episode", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ ...extractionBody, mode: "reflect" }),
-      })
-        .then(async (res) => {
-          const data = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;
-          return !res.ok || data?.ok === false ? `reflection: ${data?.error ?? res.status}` : null;
-        })
-        .catch((e) => `reflection: ${e instanceof Error ? e.message : String(e)}`)
-    );
+    calls.push(post("/api/drawer/episode", "reflection", { mode: "reflect" }));
   }
 
   Promise.all(calls)
@@ -496,5 +488,8 @@ function runExtraction(chatId: string, speakerId?: string): void {
       setLastExtractionError(errors.find((e) => e !== null) ?? null);
       bumpExtraction();
     })
-    .finally(() => setIsExtracting(false));
+    .finally(() => {
+      extractionsInFlight--;
+      if (extractionsInFlight === 0) setIsExtracting(false);
+    });
 }

@@ -7,6 +7,24 @@ export type CommitmentStatus = "active" | "fulfilled" | "broken" | "forgotten";
 
 export const STAT_NAMES: StatName[] = ["affection", "trust", "desire", "connection", "mood"];
 
+/**
+ * Relationship stats the extractor is allowed to write. "mood" is excluded on
+ * purpose: mood lives in Drawer 1 as VAD, and letting the model write a mood
+ * row produced a stray -11 in the Tilly soak.
+ */
+export const WRITABLE_STAT_NAMES: StatName[] = ["affection", "trust", "desire", "connection"];
+
+export function isWritableStatName(v: unknown): v is StatName {
+  return typeof v === "string" && (WRITABLE_STAT_NAMES as string[]).includes(v);
+}
+
+/** The runtime companion to EntityType — the schema CHECK constraint's list. */
+export const ENTITY_TYPES: EntityType[] = ["character", "place", "object", "faction", "concept"];
+
+export function isEntityType(v: unknown): v is EntityType {
+  return typeof v === "string" && (ENTITY_TYPES as string[]).includes(v);
+}
+
 export const DEFAULT_DECAY_RATES: Record<StatName, number> = {
   affection:  0.05,
   trust:      0.03,
@@ -51,6 +69,8 @@ export interface DbRelationshipStat {
   statName:    StatName;
   value:       number;
   decayRate:   number;
+  /** Steps left in the post-rupture window; 0 when the bond is not wounded. */
+  ruptureRecovery: number;
   lastUpdated: number;
 }
 
@@ -125,7 +145,15 @@ export interface EmotionalEvent {
   intensity:   number; // 0-1
 }
 
-/** The full Core Memory document stored as JSON in SQLite */
+/**
+ * The full Core Memory document stored as JSON in SQLite.
+ *
+ * The snake_case fields are not a style lapse: they are the literal JSON
+ * contract with the memory-rewriter prompt in lib/server/memoryRewriter.ts,
+ * which asks the model for these exact key names. Renaming one to camelCase
+ * silently breaks the rewrite — the model's output no longer matches and the
+ * field falls back to its prior value forever.
+ */
 export interface CoreMemory {
   characterId:             string;
   version:                 number;

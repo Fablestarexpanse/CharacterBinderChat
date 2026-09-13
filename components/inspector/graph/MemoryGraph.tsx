@@ -7,33 +7,10 @@
 // zoom, drag empty space to pan, hover for edge labels, click to highlight
 // a node's neighbourhood.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
-
-// ─── Data shapes (mirror /api/drawer/graph) ──────────────────────────────────
-
-interface GraphEntity {
-  id: string; name: string; type: string; kind: "entity";
-  isCharacter: boolean; isPlayer: boolean;
-}
-interface GraphCard {
-  id: string; name: string; content: string;
-  kind: "episode" | "insight"; importance: number; entityIds: string[];
-}
-interface GraphCommitment {
-  id: string; name: string; description: string; status: string;
-  promisorId: string; promiseeId: string | null; kind: "commitment";
-}
-interface GraphPayload {
-  entities: GraphEntity[];
-  literals: Array<{ id: string; name: string }>;
-  links: Array<{ source: string; target: string; predicate: string; importance: number }>;
-  cards: GraphCard[];
-  commitments: GraphCommitment[];
-  bond: Record<string, number | null>;
-  mood: { valence: number; arousal: number; dominance: number } | null;
-  error?: string;
-}
+import { useDrawerRead } from "@/lib/hooks/useDrawerRead";
+import type { GraphPayload } from "@/lib/api/dto";
 
 // ─── Simulation types ─────────────────────────────────────────────────────────
 
@@ -179,29 +156,22 @@ interface Props {
 export function MemoryGraph({ chatId, characterId, extractionVersion, full = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef   = useRef<HTMLDivElement>(null);
-  const [payload, setPayload] = useState<{ key: string; data: GraphPayload | null } | null>(null);
-
-  const fetchKey = `${chatId}:${characterId}:${extractionVersion}`;
-
-  useEffect(() => {
-    let cancelled = false;
-    const key = `${chatId}:${characterId}:${extractionVersion}`;
-    const url = `/api/drawer/graph?chat=${encodeURIComponent(chatId)}` +
-      (characterId ? `&character=${encodeURIComponent(characterId)}` : "");
-    fetch(url)
-      .then((r) => r.json())
-      .then((d: GraphPayload) => { if (!cancelled) setPayload({ key, data: d.error ? null : d }); })
-      .catch(() => { if (!cancelled) setPayload({ key, data: null }); });
-    return () => { cancelled = true; };
-  }, [chatId, characterId, extractionVersion]);
-
-  const loading = payload?.key !== fetchKey;
-  const data = payload?.data ?? null;
+  // A failed read used to render the same "nothing mapped yet" as an empty
+  // graph, so a broken endpoint read as a story with no memories.
+  const { data, error, loading } = useDrawerRead<GraphPayload>(
+    `${chatId}:${characterId}:${extractionVersion}`,
+    `/api/drawer/graph?chatId=${encodeURIComponent(chatId)}` +
+      (characterId ? `&characterId=${encodeURIComponent(characterId)}` : "")
+  );
 
   // ── Simulation + rendering ────────────────────────────────────────────────
   useEffect(() => {
     if (!data || !canvasRef.current || !wrapRef.current) return;
     const canvas = canvasRef.current;
+    // Bound here rather than read through the ref inside resize(): the guard
+    // above already proved it is there, and the ref is not reassigned while
+    // this effect is mounted.
+    const wrap = wrapRef.current;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
@@ -217,7 +187,7 @@ export function MemoryGraph({ chatId, characterId, extractionVersion, full = fal
 
     const dpr = window.devicePixelRatio || 1;
     const resize = () => {
-      const rect = wrapRef.current!.getBoundingClientRect();
+      const rect = wrap.getBoundingClientRect();
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
       canvas.style.width = `${rect.width}px`;
@@ -360,8 +330,6 @@ export function MemoryGraph({ chatId, characterId, extractionVersion, full = fal
       if (hover !== null && nodes[hover].sub) {
         const n = nodes[hover];
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        const rect = canvas.getBoundingClientRect();
-        void rect;
         const text = n.sub!;
         ctx.font = "11px system-ui";
         const lines: string[] = [];
@@ -449,6 +417,13 @@ export function MemoryGraph({ chatId, characterId, extractionVersion, full = fal
       <div className="flex h-full items-center justify-center gap-2 text-[var(--muted-fg)]">
         <Loader2 className="h-4 w-4 animate-spin" />
         <span className="text-xs">Mapping the story…</span>
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center p-6 text-center">
+        <p className="text-xs text-red-600">The memory graph could not be loaded — {error}</p>
       </div>
     );
   }

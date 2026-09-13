@@ -112,14 +112,15 @@ export function decodePngPayload(bytes: Uint8Array): { key: string; json: unknow
 type Obj = Record<string, unknown>;
 const str = (o: Obj, k: string) => (typeof o[k] === "string" ? (o[k] as string) : undefined);
 
+/** A v2 card nests everything under `data`; a malformed one falls back to the flat object. */
+const cardData = (o: Obj): Obj =>
+  o.spec === "chara_card_v2" && o.data && typeof o.data === "object" ? (o.data as Obj) : o;
+
 /** SillyTavern v1/v2 card (or CharacterBinder character) → Character draft. */
 function parseCharacterCard(json: unknown): Partial<Character> | null {
   if (!json || typeof json !== "object") return null;
   const obj = json as Obj;
-  const data =
-    obj.spec === "chara_card_v2" && obj.data && typeof obj.data === "object"
-      ? (obj.data as Obj)
-      : obj;
+  const data = cardData(obj);
 
   const name = str(data, "name");
   if (!name?.trim()) return null;
@@ -265,47 +266,11 @@ export function convertPayload(json: unknown, key: string | null): ImportedCard 
   // Character (chara_card_v2, v1 flat, or FableChat's own JSON)
   const draft = parseCharacterCard(json);
   if (draft) {
-    const data = obj.spec === "chara_card_v2" ? (obj.data as Obj) : obj;
+    const data = cardData(obj);
     const embeddedBook =
       data.character_book ? parseLorebook(data.character_book, `${draft.name} Lore`) ?? undefined : undefined;
     return { kind: "character", draft, embeddedBook };
   }
 
   return { kind: "unsupported", reason: "Couldn't recognise this card — no character, lorebook, persona or scenario found." };
-}
-
-// ─── Avatar helper ────────────────────────────────────────────────────────────
-
-/**
- * Downscale card art to a compact data URL for use as an avatar. Full-size
- * card PNGs run to megabytes; the store (and its SQLite mirror) shouldn't
- * carry that per character.
- */
-export function downscaleImage(file: Blob, maxDim = 512): Promise<string | null> {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      try {
-        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.max(1, Math.round(img.width * scale));
-        canvas.height = Math.max(1, Math.round(img.height * scale));
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return resolve(null);
-        ctx.fillStyle = "#ffffff"; // JPEG has no alpha — flatten on white
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", 0.87));
-      } catch {
-        resolve(null);
-      }
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve(null);
-    };
-    img.src = url;
-  });
 }

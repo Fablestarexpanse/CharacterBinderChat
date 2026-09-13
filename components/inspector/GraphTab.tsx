@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useFableStore } from "@/lib/store";
 import { useInspectedCharacter } from "@/lib/hooks/useInspectedCharacter";
-import { MemoryGraph } from "@/components/graph/MemoryGraph";
+import { MemoryGraph } from "@/components/inspector/graph/MemoryGraph";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Maximize2, Network } from "lucide-react";

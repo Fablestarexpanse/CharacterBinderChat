@@ -1,22 +1,31 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
+// Validated against the runtime list, not trusted from the caller: an invalid
+// value hits the schema CHECK as an opaque SQL 500 on write, or silently
+// queries for a type that cannot exist on read.
+import { ENTITY_TYPES, isEntityType } from "@/lib/db/models";
 import type { EntityType } from "@/lib/db/models";
+import { routeError, badRequest } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/drawer/entities?chat=<chatId>&type=character
+
+// GET /api/drawer/entities?chatId=<chatId>&type=character
 export async function GET(req: NextRequest) {
   try {
     const store  = getStore();
-    const chatId = req.nextUrl.searchParams.get("chat");
+    const chatId = req.nextUrl.searchParams.get("chatId");
     if (!chatId) {
-      return Response.json({ error: "chat param required" }, { status: 400 });
+      return badRequest("chatId param required");
     }
-    const type  = req.nextUrl.searchParams.get("type") as EntityType | null;
+    const type = req.nextUrl.searchParams.get("type");
+    if (type !== null && !isEntityType(type)) {
+      return badRequest(`type must be one of: ${ENTITY_TYPES.join(", ")}`);
+    }
     const entities = store.listEntities(chatId, type ?? undefined);
     return Response.json({ entities });
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[drawer/entities GET]", err);
   }
 }
 
@@ -29,18 +38,15 @@ export async function POST(req: NextRequest) {
       chatId: string; id: string; type: EntityType; name: string; description?: string;
     };
     if (!chatId || !id || !type || !name) {
-      return Response.json({ error: "chatId, id, type and name are required" }, { status: 400 });
+      return badRequest("chatId, id, type and name are required");
     }
-    // Whitelist type — an invalid value would hit the schema CHECK and
-    // surface as an opaque SQL 500
-    const validTypes = ["character", "place", "object", "faction", "concept"];
-    if (!validTypes.includes(type)) {
-      return Response.json({ error: `type must be one of: ${validTypes.join(", ")}` }, { status: 400 });
+    if (!isEntityType(type)) {
+      return badRequest(`type must be one of: ${ENTITY_TYPES.join(", ")}`);
     }
     const store = getStore();
     const entity = store.ensureEntity(chatId, id, type, name, description);
-    return Response.json({ entity });
+    return Response.json({ ok: true, entity });
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[drawer/entities POST]", err);
   }
 }

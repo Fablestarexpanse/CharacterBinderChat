@@ -7,26 +7,8 @@
 // to defaultPresetId), never snapshotted when the chat is created — so one
 // rule covers new chats, old chats, and chats made before presets existed.
 
-import { DEFAULT_GENERATION_PARAMS } from "@/lib/providers/params";
 import type { Chat, Preset, PromptInstructions, ResolvedGeneration } from "@/lib/types";
-
-/** Ban lists are capped and de-duped wherever they enter the store. */
-export const MAX_FORBIDDEN_WORDS = 10;
-
-export function normalizeForbiddenWords(words: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const raw of words) {
-    const word = raw.trim();
-    if (!word) continue;
-    const key = word.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(word);
-    if (out.length >= MAX_FORBIDDEN_WORDS) break;
-  }
-  return out;
-}
+import { normalizeForbiddenWords } from "@/lib/utils";
 
 interface ResolveInput {
   presets: Preset[];
@@ -68,12 +50,4 @@ export function resolveGeneration(
     ),
     presetId: preset?.id ?? null,
   };
-}
-
-/** The value a control should display: override, else preset, else default. */
-export function effectiveParam<K extends keyof typeof DEFAULT_GENERATION_PARAMS>(
-  key: K,
-  params: Partial<typeof DEFAULT_GENERATION_PARAMS>
-): number {
-  return params[key] ?? DEFAULT_GENERATION_PARAMS[key];
 }

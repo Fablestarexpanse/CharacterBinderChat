@@ -10,6 +10,8 @@ import { Card } from "@/components/ui/card";
 import { PersonaEditorDialog } from "@/components/characters/PersonaEditorDialog";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Plus, MessageSquare, UserCircle2, Check, Sparkles, History } from "lucide-react";
+import { useUiStore } from "@/lib/store/ui";
+import { getJson, sendJson } from "@/lib/api/client";
 
 // A chat that holds memories involving a character — offered as a source when
 // starting a new chat, because memory never carries over implicitly.
@@ -23,10 +25,8 @@ interface MemorySource {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CharactersView() {
-  const {
-    characters, createChat, setActiveChatId, setActiveSection, openCharacterEditor,
-    personas, activePersonaId, setActivePersona,
-  } = useFableStore();
+  const { characters, createChat, setActiveChatId, personas, activePersonaId, setActivePersona } = useFableStore();
+  const { setActiveSection, openCharacterEditor } = useUiStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState<string | null>(null);
@@ -47,13 +47,12 @@ export function CharactersView() {
     if (fromChatId) {
       // Copy the source chat's memories into the new one, then nudge the
       // inspector to re-fetch
-      fetch("/api/drawer/transfer", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ fromChatId, toChatId: chatId }),
-      })
+      sendJson("POST", "/api/drawer/transfer", { fromChatId, toChatId: chatId })
         .then(() => useFableStore.getState().bumpExtraction())
-        .catch((e) => console.warn("[memory transfer]", e));
+        // A failed transfer used to bump the "memory changed" signal anyway,
+        // so the inspector re-fetched, found nothing, and the user was told
+        // nothing — a silent loss of what they asked for.
+        .catch((e: Error) => setImportError(`Carrying memories forward failed — ${e.message}`));
     }
   };
 
@@ -61,8 +60,8 @@ export function CharactersView() {
     // Each chat is a fresh start by default. If earlier chats hold memories of
     // this character, let the user choose to carry one forward explicitly.
     try {
-      const res = await fetch(`/api/drawer/transfer?characterId=${encodeURIComponent(characterId)}`);
-      const data = (await res.json()) as { sources?: MemorySource[] };
+      const data = await getJson<{ sources?: MemorySource[] }>(
+        `/api/drawer/transfer?characterId=${encodeURIComponent(characterId)}`);
       const sources = (data.sources ?? []).filter((s) => s.facts > 0);
       if (sources.length > 0) {
         setMemoryChooser({ characterId, sources: sources.slice(0, 4) });

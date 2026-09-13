@@ -8,7 +8,65 @@
 // → image message placed at the right spot in the chat.
 
 import { useFableStore, DEFAULT_UTILITY_MODEL } from "@/lib/store";
-import { startImageJob } from "@/lib/providers/comfyui";
+import { ComfyUIProvider } from "@/lib/providers/comfyui";
+import { sendJson } from "@/lib/api/client";
+import type { ImageJob, ImageGenerationSettings } from "@/lib/types";
+
+/**
+ * The one way to start an image render. Creates the job, registers it with the
+ * store, and runs the ComfyUI pipeline in the background; progress lands
+ * through the store's updateImageJob. Returns immediately with status "queued".
+ *
+ * This lives here rather than in the ComfyUI adapter because the lifecycle is
+ * app-layer work — it touches the store and calls one of the app's own routes.
+ * The adapter underneath it is transport only.
+ */
+export function queueImage(settings: ImageGenerationSettings, chatId?: string): ImageJob {
+  const store = useFableStore.getState();
+  const comfyui = new ComfyUIProvider(store.providerSettings.comfyui.baseUrl);
+  const job: ImageJob = {
+    id: typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `job-${Math.random().toString(36).slice(2)}`,
+    chatId,
+    prompt: settings.prompt,
+    status: "queued",
+    settings,
+    outputUrls: [],
+    createdAt: new Date().toISOString(),
+  };
+  store.addImageJob(job);
+
+  void (async () => {
+    const onUpdate = useFableStore.getState().updateImageJob;
+    try {
+      // ComfyUI and Ollama share one GPU: evict Ollama's resident models
+      // first or the UNet load thrashes for minutes. Best-effort — Ollama
+      // reloads on demand after the render.
+      await fetch("/api/ollama/unload", { method: "POST" }).catch(() => {});
+      if (!(await comfyui.checkConnection())) {
+        throw new Error(
+          `ComfyUI is not reachable at ${comfyui.baseUrl}. Start ComfyUI (or fix the URL in Settings) and try again.`
+        );
+      }
+      const promptId = await comfyui.queuePrompt(await comfyui.prepareWorkflow(settings));
+      onUpdate(job.id, { status: "generating", promptId });
+      onUpdate(job.id, {
+        status: "complete",
+        outputUrls: await comfyui.waitForImages(promptId),
+        completedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      onUpdate(job.id, {
+        status: "failed",
+        error: err instanceof Error ? err.message : String(err),
+        completedAt: new Date().toISOString(),
+      });
+    }
+  })();
+
+  return job;
+}
 
 export interface SceneImageOptions {
   /** Generate for the story as it stood at this message; the image card is
@@ -53,30 +111,28 @@ export async function generateSceneImage(
   if (sceneMessages.length > 0) {
     onPhase?.("directing");
     try {
-      const res = await fetch("/api/image/scene-prompt", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages:      sceneMessages,
-          focus:         focus || undefined,
-          appearance:    character
-            ? [character.name + ":", character.description, character.personality].filter(Boolean).join("\n")
-            : undefined,
-          ollamaBaseUrl: store.providerSettings.ollama.baseUrl,
-          modelId:       store.providerSettings.ollama.utilityModel ?? DEFAULT_UTILITY_MODEL,
-        }),
+      const data = await sendJson<{ prompt?: string }>("POST", "/api/image/scene-prompt", {
+        messages:      sceneMessages,
+        focus:         focus || undefined,
+        appearance:    character
+          ? [character.name + ":", character.description, character.personality].filter(Boolean).join("\n")
+          : undefined,
+        ollamaBaseUrl: store.providerSettings.ollama.baseUrl,
+        modelId:       store.providerSettings.ollama.utilityModel ?? DEFAULT_UTILITY_MODEL,
       });
-      const data = await res.json().catch(() => null) as { prompt?: string; error?: string } | null;
-      if (res.ok && data?.prompt) {
+      if (data.prompt) {
         prompt = data.prompt;
       } else if (!focus) {
         onPhase?.("failed");
-        return { ok: false, error: data?.error ?? "scene director failed" };
+        return { ok: false, error: "scene director failed" };
       }
     } catch (e) {
+      // With a focus the user typed, their words are the prompt and the
+      // director is only an enhancement — without one there is nothing to
+      // render, so the failure has to surface.
       if (!focus) {
         onPhase?.("failed");
-        return { ok: false, error: String(e) };
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }
     }
   }
@@ -87,13 +143,7 @@ export async function generateSceneImage(
 
   // ── Queue to ComfyUI + place the card ───────────────────────────────────
   onPhase?.("queued");
-  const job = startImageJob(
-    store.providerSettings.comfyui.baseUrl,
-    { ...store.imageSettings, prompt },
-    chatId,
-    store.updateImageJob
-  );
-  store.addImageJob(job);
+  const job = queueImage({ ...store.imageSettings, prompt }, chatId);
 
   const imageMessage = {
     chatId,

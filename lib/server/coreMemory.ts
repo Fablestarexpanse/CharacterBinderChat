@@ -1,36 +1,13 @@
-// ─── Core Memory Store (Drawer 1) ─────────────────────────────────────────────
-// Server-side only. Thin wrappers around FableStore for Core Memory operations.
-// Import from API routes; do NOT import in client components.
+// ─── Core Memory sync (Drawer 2 → Drawer 1) ───────────────────────────────────
+// Server-side only — the directory says so; it reaches SQLite directly.
 // All operations are scoped by chatId — each chat is its own story.
+//
+// Plain reads and writes belong on FableStore directly (getStore().getCoreMemory
+// etc.). Only the two projections below live here, because each carries logic
+// the store has no business knowing: the −100..100 → 0..100 rescale, and the
+// commitment labelling.
 
 import { getStore } from "@/lib/db";
-import type { CoreMemory, DbCoreMemory } from "@/lib/db/models";
-
-// ─── Read ─────────────────────────────────────────────────────────────────────
-
-export function getCoreMemory(chatId: string, characterId: string): DbCoreMemory | null {
-  return getStore().getCoreMemory(chatId, characterId);
-}
-
-export function ensureCoreMemory(
-  chatId:        string,
-  characterId:   string,
-  characterName: string
-): DbCoreMemory {
-  return getStore().ensureCoreMemory(chatId, characterId, characterName);
-}
-
-// ─── Write ────────────────────────────────────────────────────────────────────
-
-export function patchCoreMemory(
-  chatId:      string,
-  characterId: string,
-  patch:       Partial<CoreMemory>
-): DbCoreMemory | null {
-  return getStore().patchCoreMemory(chatId, characterId, patch);
-}
-
-// ─── Convenience updaters ─────────────────────────────────────────────────────
 
 /** Merge new Drawer-2 stats into the core memory relationship block */
 export function syncStatsToCore(chatId: string, characterId: string): void {
@@ -40,7 +17,7 @@ export function syncStatsToCore(chatId: string, characterId: string): void {
 
   // Direction is character -> player: relationship_with_user means how *this
   // character* feels about the user, which is also what the system prompt
-  // injects and what characterSummary() reads.
+  // injects and what getCharacterSummary() reads.
   const stats = store.queryStats(chatId, characterId, "player");
   const rel   = { ...existing.data.relationship_with_user };
 
@@ -71,7 +48,7 @@ export function syncCommitmentsToCore(chatId: string, characterId: string, perso
   const existing = store.getCoreMemory(chatId, characterId);
   if (!existing) return;
 
-  const active = store.allCommitments(chatId, "active");
+  const active = store.listAllCommitments(chatId, "active");
   const mine   = active.filter((c) => c.promisorId === characterId);
   const theirs = active.filter((c) => c.promisorId !== characterId);
   // Third-party promisors render by display name, not raw entity id

@@ -1,22 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useFableStore } from "@/lib/store";
 import { Loader2, Trash2, Plus, X } from "lucide-react";
-import { formatRelativeTime, formatAbsTime } from "./utils";
-
-interface EnrichedFact {
-  id:            number;
-  predicate:     string;
-  objectDisplay: string;
-  confidence:    number;
-  tValidStart:   number;
-  tValidEnd:     number | null;
-  supersededBy:  number | null;
-}
+import { formatAgeFromUnixSeconds, formatDateFromUnixSeconds } from "./utils";
+import { sendJson } from "@/lib/api/client";
+import type { DrawerFact } from "@/lib/api/dto";
+import { useDrawerRead } from "@/lib/hooks/useDrawerRead";
 
 interface Props {
   chatId:         string;
@@ -34,31 +27,10 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ predicate: "", object: "" });
   const [writeError, setWriteError] = useState<string | null>(null);
-  // Result keyed by what was fetched; `loading` is derived so the effect
-  // never calls setState synchronously (react-hooks/set-state-in-effect).
-  const [result, setResult] = useState<{ key: string; facts: EnrichedFact[]; error: string | null } | null>(null);
-
-  const fetchKey = `${chatId}:${characterId}:${extractionVersion}:${showHistory ? 1 : 0}`;
-
-  useEffect(() => {
-    let cancelled = false;
-    const key = `${chatId}:${characterId}:${extractionVersion}:${showHistory ? 1 : 0}`;
-    const url = `/api/drawer/facts?chat=${encodeURIComponent(chatId)}&subject=${encodeURIComponent(characterId)}${showHistory ? "&includeSuperseded=1" : ""}`;
-    fetch(url)
-      .then((r) => r.json())
-      .then((data: { facts?: EnrichedFact[]; error?: string }) => {
-        if (data.error) throw new Error(data.error);
-        if (!cancelled) setResult({ key, facts: data.facts ?? [], error: null });
-      })
-      .catch((e: Error) => {
-        if (!cancelled) setResult({ key, facts: [], error: e.message });
-      });
-    return () => { cancelled = true; };
-  }, [chatId, characterId, extractionVersion, showHistory]);
-
-  const loading = result?.key !== fetchKey;
-  const facts   = result?.facts ?? [];
-  const error   = result?.error ?? null;
+  const url = `/api/drawer/facts?chatId=${encodeURIComponent(chatId)}&subject=${encodeURIComponent(characterId)}${showHistory ? "&includeSuperseded=1" : ""}`;
+  const { data, error, loading } = useDrawerRead<{ facts?: DrawerFact[] }>(
+    `${chatId}:${characterId}:${extractionVersion}:${showHistory ? 1 : 0}`, url);
+  const facts = data?.facts ?? [];
 
   // bumpExtraction is the app-wide "memory changed" signal — every inspector
   // view keys its fetch off it, so one bump refreshes the graph and stats too.
@@ -66,13 +38,9 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
     setBusyId(factId);
     setWriteError(null);
     try {
-      const res = await fetch(
-        `/api/drawer/facts?chat=${encodeURIComponent(chatId)}&id=${factId}`,
-        { method: "DELETE" }
-      );
-      const data = await res.json().catch(() => null) as { error?: string } | null;
-      if (!res.ok) setWriteError(data?.error ?? `delete failed (HTTP ${res.status})`);
-      else bumpExtraction();
+      await sendJson("DELETE",
+        `/api/drawer/facts?chatId=${encodeURIComponent(chatId)}&factId=${factId}`);
+      bumpExtraction();
     } catch (e) {
       setWriteError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -87,21 +55,12 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
     if (!predicate || !object) return;
     setWriteError(null);
     try {
-      const res = await fetch("/api/drawer/facts", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chatId,
-          subjectId:     characterId,
-          predicate,
-          objectLiteral: object,
-        }),
+      await sendJson("POST", "/api/drawer/facts", {
+        chatId,
+        subjectId:     characterId,
+        predicate,
+        objectLiteral: object,
       });
-      const data = await res.json().catch(() => null) as { error?: string } | null;
-      if (!res.ok) {
-        setWriteError(data?.error ?? `couldn't add fact (HTTP ${res.status})`);
-        return;
-      }
       setDraft({ predicate: "", object: "" });
       setAdding(false);
       bumpExtraction();
@@ -115,7 +74,7 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
   const supersededFacts = facts.filter((f) => f.tValidEnd !== null);
 
   // Build a map: supersededBy fact ID → the fact(s) it replaced
-  const predecessors = new Map<number, EnrichedFact[]>();
+  const predecessors = new Map<number, DrawerFact[]>();
   for (const f of supersededFacts) {
     if (f.supersededBy !== null) {
       if (!predecessors.has(f.supersededBy)) predecessors.set(f.supersededBy, []);
@@ -251,7 +210,7 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
                   <Badge variant="default">{Math.round(f.confidence * 100)}%</Badge>
                 )}
                 <span className="text-[10px] text-[var(--muted-fg)]">
-                  {formatRelativeTime(f.tValidStart)}
+                  {formatAgeFromUnixSeconds(f.tValidStart)}
                 </span>
               </div>
 
@@ -268,7 +227,7 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
                       <div className="flex items-center gap-2 mt-0.5">
                         <Badge variant="default" className="text-[9px] opacity-70">superseded</Badge>
                         <span className="text-[9px] text-[var(--muted-fg)]">
-                          {formatAbsTime(old.tValidStart)} → {old.tValidEnd ? formatAbsTime(old.tValidEnd) : "?"}
+                          {formatDateFromUnixSeconds(old.tValidStart)} → {old.tValidEnd ? formatDateFromUnixSeconds(old.tValidEnd) : "?"}
                         </span>
                       </div>
                     </div>
@@ -298,7 +257,7 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
                       <span className="font-medium">{f.predicate}</span> {f.objectDisplay}
                     </p>
                     <span className="text-[9px] text-[var(--muted-fg)]">
-                      {formatAbsTime(f.tValidStart)} → {f.tValidEnd ? formatAbsTime(f.tValidEnd) : "?"}
+                      {formatDateFromUnixSeconds(f.tValidStart)} → {f.tValidEnd ? formatDateFromUnixSeconds(f.tValidEnd) : "?"}
                     </span>
                   </div>
                 ))}

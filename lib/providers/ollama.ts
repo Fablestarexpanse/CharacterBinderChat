@@ -5,6 +5,7 @@
 
 import type { ChatProvider, GenerationParams, MessageRole, ModelInfo } from "@/lib/types";
 import { buildRequestParams } from "./params";
+import { streamStartError } from "./streamError";
 
 export class OllamaProvider implements ChatProvider {
   id = "ollama" as const;
@@ -61,7 +62,7 @@ export class OllamaProvider implements ChatProvider {
     });
 
     if (!res.ok || !res.body) {
-      throw new Error(`Ollama error: ${res.status}`);
+      throw await streamStartError("Ollama", res);
     }
 
     // Ollama streams NDJSON. Network chunks can split a JSON line (or even a

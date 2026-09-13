@@ -7,15 +7,13 @@
 // Availability is cached briefly so a downed Ollama doesn't add latency to
 // every exchange.
 //
-// Vectors are L2-normalised at creation, so cosine similarity is a dot product.
+// Vectors are L2-normalized at creation, so cosine similarity is a dot product.
 
-const EMBED_URL   = process.env.OLLAMA_EMBED_URL ?? "http://127.0.0.1:11434";
-const EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL ?? "nomic-embed-text";
 
 let unavailableUntil = 0;
 const RETRY_AFTER_MS = 60_000;
 
-function normalise(v: number[]): Float32Array {
+function normalize(v: number[]): Float32Array {
   let sum = 0;
   for (const x of v) sum += x * x;
   const inv = sum > 0 ? 1 / Math.sqrt(sum) : 0;
@@ -32,11 +30,18 @@ export async function embedTexts(texts: string[]): Promise<Float32Array[] | null
   if (texts.length === 0) return [];
   if (Date.now() < unavailableUntil) return null;
 
+  // Read per call, not at import: a module constant snapshots whatever the
+  // environment was when the module first loaded, which in dev is whenever a
+  // hot reload happened to pull it in. getStore() reads FABLE_DB_PATH the same
+  // way.
+  const embedUrl   = process.env.OLLAMA_EMBED_URL ?? "http://127.0.0.1:11434";
+  const embedModel = process.env.OLLAMA_EMBED_MODEL ?? "nomic-embed-text";
+
   try {
-    const res = await fetch(`${EMBED_URL}/api/embed`, {
+    const res = await fetch(`${embedUrl}/api/embed`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ model: EMBED_MODEL, input: texts }),
+      body:    JSON.stringify({ model: embedModel, input: texts }),
       signal:  AbortSignal.timeout(4000),
     });
     if (!res.ok) throw new Error(`embed HTTP ${res.status}`);
@@ -44,7 +49,7 @@ export async function embedTexts(texts: string[]): Promise<Float32Array[] | null
     if (!Array.isArray(data.embeddings) || data.embeddings.length !== texts.length) {
       throw new Error("embed response shape mismatch");
     }
-    return data.embeddings.map(normalise);
+    return data.embeddings.map(normalize);
   } catch {
     unavailableUntil = Date.now() + RETRY_AFTER_MS;
     return null;
@@ -76,4 +81,14 @@ export function bufferToVec(buf: Buffer | Uint8Array | null): Float32Array | nul
 
 export function vecToBuffer(v: Float32Array): Buffer {
   return Buffer.from(v.buffer, v.byteOffset, v.byteLength);
+}
+
+/**
+ * Cosine similarity rescaled onto roughly the 0..1 band lexical overlap
+ * produces, so a corpus with some embedded rows and some not ranks sanely.
+ * Real cosines here sit around 0.3..0.9.
+ */
+export function embeddingRelevance(query: Float32Array, row: Float32Array | undefined): number {
+  if (!row) return 0;
+  return Math.max(0, (cosine(query, row) - 0.3) / 0.6);
 }

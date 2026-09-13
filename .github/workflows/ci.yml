@@ -1,0 +1,62 @@
+# Everything free and deterministic: lint, typecheck, the unit tests, and the
+# route contracts against a real server on a throwaway database.
+#
+# The eval harnesses are deliberately absent — they call a paid model and take
+# minutes, so they stay manual (`npm run eval`).
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 24.x: the unit tests import the app's .ts modules directly, which
+      # relies on Node's type stripping.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+
+  # The route contracts need a server, so they get one. FABLE_DB_PATH points at
+  # a scratch file, so the suite writes nothing a developer would miss — and
+  # unlike a local run, it starts from an empty database, which is the case the
+  # wipe guard is hardest to assert against.
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+      - run: npm ci
+
+      - name: Start the dev server on a scratch database
+        run: npm run dev -- --port 3100 &
+        env:
+          FABLE_DB_PATH: ${{ runner.temp }}/ci-fablestore.db
+
+      - name: Wait for it to answer
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3100/api/state > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "server did not start within 60s"; exit 1
+
+      # FABLE_TEST_URL is what un-skips the suite: without it these tests pass
+      # by not running, which is the failure mode this job exists to close.
+      - run: npm run test:api
+        env:
+          FABLE_TEST_URL: http://localhost:3100

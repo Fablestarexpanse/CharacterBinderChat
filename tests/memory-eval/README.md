@@ -57,7 +57,7 @@ node tests/memory-eval/run.mjs --provider lmstudio --base http://127.0.0.1:1234 
 The harness starts its own Next server on port **3157** with
 `FABLE_DB_PATH` pointed at `tests/memory-eval/.eval-db/eval.db`, so your real
 `data/fablestore.db` is never touched. The DB is recreated per run and wiped
-between scenarios. Exit code is non-zero if any check fails, so it works in CI.
+between scenarios. Exit code is non-zero if any check fails. It is NOT part of CI — it calls a paid model and takes minutes; CI runs lint, typecheck and `npm test`.
 
 Each run writes a JSON snapshot to `results/` for tracking trends across prompt
 or model changes. Results and the eval DB are gitignored.

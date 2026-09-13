@@ -7,11 +7,12 @@
 
 import { useState } from "react";
 import { useFableStore } from "@/lib/store";
-import { ImageStudioTab } from "@/components/inspector/ImageStudioTab";
+import { ImageStudioTab } from "@/components/image/ImageStudioTab";
 import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ImageIcon, Download, X } from "lucide-react";
+import { downloadFromUrl } from "@/lib/utils";
 
 export function ImageStudioView() {
   const { imageJobs } = useFableStore();
@@ -22,18 +23,8 @@ export function ImageStudioView() {
   );
   const pending = imageJobs.filter((j) => j.status === "queued" || j.status === "generating");
 
-  const download = async (url: string, id: string) => {
-    try {
-      const blob = await fetch(url).then((r) => r.blob());
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `fablechat-${id.slice(0, 8)}.png`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    } catch {
-      window.open(url, "_blank");
-    }
-  };
+  const download = (url: string, id: string) =>
+    downloadFromUrl(url, `fablechat-${id.slice(0, 8)}.png`);
 
   return (
     <div className="flex-1 flex min-w-0 overflow-hidden bg-white">

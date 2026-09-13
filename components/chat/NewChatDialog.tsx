@@ -11,9 +11,10 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { Check, Globe, Clapperboard, MessageSquare, Sparkles } from "lucide-react";
+import { useUiStore } from "@/lib/store/ui";
 
 export function NewChatDialog() {
-  const { chatBuilderOpen, setChatBuilderOpen } = useFableStore();
+  const { chatBuilderOpen, setChatBuilderOpen } = useUiStore();
   return (
     <Dialog open={chatBuilderOpen} onOpenChange={(o) => !o && setChatBuilderOpen(false)}>
       {/* Mounted fresh on every open, so initial useState values ARE the reset */}
@@ -23,11 +24,8 @@ export function NewChatDialog() {
 }
 
 function BuilderForm() {
-  const {
-    setChatBuilderOpen,
-    characters, personas, activePersonaId, lorebooks, scenarios,
-    createChatFromBuilder, setActiveSection,
-  } = useFableStore();
+  const { characters, personas, activePersonaId, lorebooks, scenarios, createChatFromBuilder } = useFableStore();
+  const { setChatBuilderOpen, setActiveSection } = useUiStore();
 
   const [characterId, setCharacterId] = useState<string | null>(null);
   const [personaId, setPersonaId] = useState<string | null>(activePersonaId);

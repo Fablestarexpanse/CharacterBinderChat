@@ -8,11 +8,11 @@
  * inspection for anything unmapped) → POST /prompt → poll /history/<id> →
  * render /view?… image URLs. All ComfyUI traffic goes through the app's
  * /api/comfyui/* proxy — ComfyUI doesn't send CORS headers by default, so the
- * browser can't call it directly. Use startImageJob() for the full
- * queue-poll-update lifecycle.
+ * browser can't call it directly. This module is transport only; queueImage()
+ * in lib/chat/imageGen.ts owns the queue-poll-update lifecycle.
  */
 
-import type { ImageJob, ImageGenerationSettings, AspectRatio } from "@/lib/types";
+import type { ImageGenerationSettings, AspectRatio } from "@/lib/types";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:8188";
 const POLL_INTERVAL_MS = 1500;
@@ -71,7 +71,7 @@ type WorkflowNode = { inputs?: Record<string, unknown>; class_type?: string };
 type Workflow = Record<string, unknown>;
 
 export class ComfyUIProvider {
-  private baseUrl: string;
+  readonly baseUrl: string;
   private clientId = "";
 
   constructor(baseUrl = DEFAULT_BASE_URL) {
@@ -130,6 +130,14 @@ export class ComfyUIProvider {
   }
 
   /**
+   * Load the named template and inject `settings` into it. The injection rules
+   * stay private to this module; callers get a ready-to-queue workflow.
+   */
+  async prepareWorkflow(settings: ImageGenerationSettings): Promise<Workflow> {
+    return applySettingsToWorkflow(await this.loadWorkflowTemplate(settings.workflow), settings);
+  }
+
+  /**
    * Queue a workflow. The top-level _meta key (FableChat's own metadata) is
    * stripped first — ComfyUI treats every top-level key as a node.
    * @returns The ComfyUI prompt ID
@@ -152,8 +160,13 @@ export class ComfyUIProvider {
       const nodes = data?.node_errors ? ` (nodes: ${Object.keys(data.node_errors).join(", ")})` : "";
       throw new Error(`ComfyUI rejected the workflow: ${detail}${nodes}`);
     }
-    const data = await res.json();
-    return data.prompt_id as string;
+    // A 200 with no prompt_id would otherwise poll history/undefined until the timeout.
+    const data = (await res.json().catch(() => null)) as { prompt_id?: unknown } | null;
+    const promptId = data?.prompt_id;
+    if (typeof promptId !== "string" || !promptId) {
+      throw new Error("ComfyUI accepted the workflow but returned no prompt_id.");
+    }
+    return promptId;
   }
 
   /** Poll /history until the prompt completes; returns direct image URLs. */
@@ -226,7 +239,7 @@ export class ComfyUIProvider {
  * class_type sweep for the knobs the mapping doesn't cover (sampler name,
  * scheduler, batch size). Returns a modified copy.
  */
-export function applySettingsToWorkflow(
+function applySettingsToWorkflow(
   workflow: Workflow,
   settings: ImageGenerationSettings
 ): Workflow {
@@ -287,64 +300,6 @@ export function applySettingsToWorkflow(
   return result;
 }
 
-// ─── Job lifecycle ────────────────────────────────────────────────────────────
-
-/**
- * Create an ImageJob and run the full ComfyUI pipeline for it in the
- * background. Returns the job immediately (status "queued"); progress lands
- * via onUpdate — callers pass the store's updateImageJob.
- */
-export function startImageJob(
-  baseUrl: string,
-  settings: ImageGenerationSettings,
-  chatId: string | undefined,
-  onUpdate: (id: string, updates: Partial<ImageJob>) => void
-): ImageJob {
-  const job: ImageJob = {
-    id: typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `job-${Math.random().toString(36).slice(2)}`,
-    chatId,
-    prompt: settings.prompt,
-    status: "queued",
-    settings,
-    outputUrls: [],
-    createdAt: new Date().toISOString(),
-  };
-
-  void (async () => {
-    const comfyui = new ComfyUIProvider(baseUrl);
-    try {
-      // ComfyUI and Ollama share one GPU: evict Ollama's resident models
-      // first or the UNet load thrashes for minutes. Best-effort — Ollama
-      // reloads on demand after the render.
-      await fetch("/api/ollama/unload", { method: "POST" }).catch(() => {});
-      if (!(await comfyui.checkConnection())) {
-        throw new Error(
-          `ComfyUI is not reachable at ${baseUrl || DEFAULT_BASE_URL}. Start ComfyUI (or fix the URL in Settings) and try again.`
-        );
-      }
-      const template = await comfyui.loadWorkflowTemplate(settings.workflow);
-      const workflow = applySettingsToWorkflow(template, settings);
-      const promptId = await comfyui.queuePrompt(workflow);
-      onUpdate(job.id, { status: "generating", promptId });
-      const urls = await comfyui.waitForImages(promptId);
-      onUpdate(job.id, {
-        status: "complete",
-        outputUrls: urls,
-        completedAt: new Date().toISOString(),
-      });
-    } catch (err) {
-      onUpdate(job.id, {
-        status: "failed",
-        error: err instanceof Error ? err.message : String(err),
-        completedAt: new Date().toISOString(),
-      });
-    }
-  })();
-
-  return job;
-}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

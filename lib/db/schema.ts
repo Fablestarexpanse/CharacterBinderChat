@@ -35,6 +35,9 @@ CREATE TABLE IF NOT EXISTS facts (
   confidence     REAL    NOT NULL DEFAULT 1.0 CHECK(confidence >= 0.0 AND confidence <= 1.0),
   importance     REAL    NOT NULL DEFAULT 0.5,
   known_to       TEXT    NOT NULL DEFAULT '[]',
+  -- L2-normalised float32 vector, nullable. Embeddings are optional and
+  -- retrieval falls back to lexical ranking without them
+  embedding      BLOB,
   superseded_by  INTEGER REFERENCES facts(id),
   FOREIGN KEY (chat_id, subject_id) REFERENCES entities(chat_id, id),
   FOREIGN KEY (chat_id, object_id)  REFERENCES entities(chat_id, id)
@@ -48,6 +51,9 @@ CREATE TABLE IF NOT EXISTS relationship_stats (
   stat_name    TEXT    NOT NULL CHECK(stat_name IN ('affection','trust','desire','connection','mood')),
   value        REAL    NOT NULL DEFAULT 0.0,
   decay_rate   REAL    NOT NULL,
+  -- Countdown set by a large negative hit. While positive, positive deltas on
+  -- this stat are dampened so a betrayal is not undone in a few exchanges
+  rupture_recovery INTEGER NOT NULL DEFAULT 0,
   last_updated INTEGER NOT NULL,
   UNIQUE(chat_id, observer_id, target_id, stat_name)
 );
@@ -60,6 +66,7 @@ CREATE TABLE IF NOT EXISTS memory_cards (
   tags       TEXT    NOT NULL DEFAULT '[]',
   entity_ids TEXT    NOT NULL DEFAULT '[]',
   importance REAL    NOT NULL DEFAULT 0.5,
+  embedding  BLOB,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );

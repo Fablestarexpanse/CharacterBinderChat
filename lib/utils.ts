@@ -22,7 +22,7 @@ export function formatAge(msAgo: number): string {
   return `${Math.floor(msAgo / 86_400_000)}d ago`;
 }
 
-export function formatRelative(isoString: string): string {
+export function formatAgeFromIso(isoString: string): string {
   return formatAge(Date.now() - new Date(isoString).getTime());
 }
 
@@ -37,4 +37,53 @@ export function getInitials(name: string): string {
     .slice(0, 2)
     .join("")
     .toUpperCase();
+}
+
+// ─── Downloads ────────────────────────────────────────────────────────────────
+// Browser-only. Saving through a blob makes the browser download rather than
+// navigate — the app's image URLs are same-origin proxies, so a plain link
+// would open them in place and lose the chat.
+
+/** Save an in-memory blob under a filename. */
+export function saveBlob(blob: Blob, filename: string): void {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/**
+ * Fetch a URL and save it. Falls back to opening the URL when the fetch or
+ * the blob save fails, so the user still reaches the file.
+ */
+export async function downloadFromUrl(url: string, filename: string): Promise<void> {
+  try {
+    saveBlob(await fetch(url).then((r) => r.blob()), filename);
+  } catch {
+    window.open(url, "_blank");
+  }
+}
+
+// ─── Forbidden words ──────────────────────────────────────────────────────────
+// Lives here rather than in lib/chat/settings.ts, which owns the rest of the
+// preset rules: the store needs it too, and importing lib/chat from lib/store
+// made those two directories depend on each other over this one helper.
+
+/** Ban lists are capped and de-duped wherever they enter the store. */
+export const MAX_FORBIDDEN_WORDS = 10;
+
+export function normalizeForbiddenWords(words: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of words) {
+    const word = raw.trim();
+    if (!word) continue;
+    const key = word.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(word);
+    if (out.length >= MAX_FORBIDDEN_WORDS) break;
+  }
+  return out;
 }

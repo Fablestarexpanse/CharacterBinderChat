@@ -1,5 +1,7 @@
 // ─── Core Data Models ────────────────────────────────────────────────────────
 
+import type { ProviderType } from "@/lib/llm/callers";
+
 export type MessageRole = "user" | "assistant" | "system";
 
 export interface Character {
@@ -66,12 +68,14 @@ export interface Message {
  *  that?" inspector. Recorded at generation time from the exact injected
  *  prompt sections. */
 export interface MemoryTrace {
-  facts:      string[];
-  episodes:   string[];
-  insights:   string[];
-  bits:       string[];
-  lore:       string[];
-  storyTime?: string | null;
+  facts:          string[];
+  episodes:       string[];
+  insights:       string[];
+  sharedLanguage: string[];
+  lore:           string[];
+  storyTime?:     string | null;
+  /** Traces written before the field was renamed from `bits`. Read-only. */
+  bits?:          string[];
 }
 
 export interface Chat {
@@ -85,7 +89,7 @@ export interface Chat {
    *  speak and don't witness facts extracted while they're away. */
   absentIds?: string[];
   modelId?: string;
-  providerId?: string;
+  providerId?: ProviderId;
   messages: Message[];
   createdAt: string;
   updatedAt: string;
@@ -127,7 +131,7 @@ export interface Lorebook {
 
 // ─── Image Generation ─────────────────────────────────────────────────────────
 
-export type ImageJobStatus = "pending" | "queued" | "generating" | "complete" | "failed";
+export type ImageJobStatus = "queued" | "generating" | "complete" | "failed";
 
 export type AspectRatio = "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "2:1" | "custom";
 
@@ -137,7 +141,7 @@ export interface LoraEntry {
 }
 
 export interface ImageGenerationSettings {
-  provider: "comfyui" | "a1111";
+  provider: "comfyui";
   workflow: string;
   prompt: string;
   negativePrompt: string;
@@ -147,7 +151,8 @@ export interface ImageGenerationSettings {
   steps: number;
   cfg: number;
   sampler: string;
-  seed: number | -1;
+  /** -1 means "randomise at queue time" — see lib/providers/comfyui.ts */
+  seed: number;
   batchCount: number;
   /** Injected as `<lora:name:weight>` into the workflow's loraSyntaxNode */
   loras: LoraEntry[];
@@ -171,7 +176,9 @@ export interface ImageJob {
 
 // ─── Provider Types ───────────────────────────────────────────────────────────
 
-export type ProviderId = "ollama" | "lmstudio" | "openrouter" | "comfyui";
+/** Every backend the app talks to. ComfyUI is an image backend and stays
+ *  outside ProviderType, which is the union callLLM branches on. */
+export type ProviderId = ProviderType | "comfyui";
 
 export interface ModelInfo {
   id: string;
@@ -204,9 +211,48 @@ export interface ProviderStatus {
   modelLabel?: string;
 }
 
+// ─── Memory-task request ──────────────────────────────────────────────────────
+// One body shape POSTed by runExtraction() in lib/chat/generation.ts to
+// /api/drawer/extract, /api/drawer/episode and /api/chat/core-memory/refresh.
+// Declaring it once is what keeps the field names from drifting apart across
+// the three.
+//
+// Deliberately carries NO generation params and no preset/global prompt text:
+// these routes run format:"json" on backend defaults, and a roleplay
+// temperature or instruction would break structured output.
+
+/**
+ * What the client sends to the three memory-task routes (extract, episode and
+ * core-memory/refresh). One builder in lib/chat/generation.ts produces it and
+ * parseMemoryTaskRequest in lib/api/server.ts is the only thing that validates
+ * it.
+ */
+export interface MemoryTaskRequest {
+  chatId:          string;
+  characterId:     string;
+  /** Falls back to characterId in every route that reads it. */
+  characterName?:  string;
+  personaName?:    string;
+  /** Recent turns. In groups each carries its speaker's display name, so the
+   *  extractor never attributes one character's line to another. */
+  messages:        Array<{ role: MessageRole; content: string; speaker?: string }>;
+  /** Drift anchor for the persona rewrite — character sheet text only */
+  characterAnchor?: string;
+  /** Group chats: everyone present in the scene (characters + player).
+   *  Extracted facts are stamped known_to with these ids, so absent members
+   *  never "remember" what happened without them. */
+  participants?:   Array<{ id: string; name: string }>;
+  providerType:    ProviderType;
+  providerBaseUrl: string;
+  modelId:         string;
+  apiKey?:         string;
+  /** /api/drawer/episode only */
+  mode?:           "episode" | "reflect";
+}
+
 // ─── Generation Parameters ───────────────────────────────────────────────────
 // Provider-neutral sampler knobs. Every backend spells these differently (see
-// PARAM_MAP in lib/providers/factory.ts) and supports a different subset, so
+// PARAM_MAP in lib/providers/params.ts) and supports a different subset, so
 // nothing here is sent verbatim — the mapping layer translates and drops.
 
 export interface GenerationParams {
@@ -272,4 +318,28 @@ export interface ChatProvider {
     params?: Partial<GenerationParams>,
     signal?: AbortSignal
   ): AsyncIterable<string>;
+}
+
+// ─── Durable app state ───────────────────────────────────────────────────────
+
+/**
+ * The whole durable app state: what `GET /api/state` returns, what
+ * `PUT /api/state` accepts, what the store persists and hydrates, and what
+ * FableStore reads and replaces.
+ *
+ * It was enumerated by hand in five modules, so adding a collection meant
+ * finding all five — and the SQLite end typed its rows `unknown[]`, which
+ * removed the last place a miss would have shown up. One declaration makes a
+ * forgotten collection a type error instead.
+ */
+export interface PersistedAppState {
+  characters:         Character[];
+  chats:              Chat[];
+  personas:           Persona[];
+  lorebooks:          Lorebook[];
+  scenarios:          Scenario[];
+  presets:            Preset[];
+  /** null clears the selection; the collections above are always present. */
+  defaultPresetId:    string | null;
+  globalInstructions: PromptInstructions;
 }

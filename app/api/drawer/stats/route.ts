@@ -1,23 +1,25 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { STAT_NAMES } from "@/lib/db/models";
+import { routeError, badRequest } from "@/lib/api/server";
+import type { DrawerStat } from "@/lib/api/dto";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/drawer/stats?observer=<id>&target=<id>
+// GET /api/drawer/stats?chatId=<id>&observer=<id>&target=<id>
 export async function GET(req: NextRequest) {
   try {
     const params   = req.nextUrl.searchParams;
-    const chatId   = params.get("chat");
+    const chatId   = params.get("chatId");
     const observer = params.get("observer");
     const target   = params.get("target");
     if (!chatId || !observer || !target) {
-      return Response.json({ error: "chat, observer and target params required" }, { status: 400 });
+      return badRequest("chatId, observer and target params required");
     }
     const store = getStore();
     const statsMap = store.queryStats(chatId, observer, target);
 
-    // Return all five axes (null value for axes not yet set)
+    // null value for axes not yet set
     const stats = STAT_NAMES.map((name) => ({
       name,
       ...(statsMap[name]
@@ -29,9 +31,9 @@ export async function GET(req: NextRequest) {
         : { value: null, decayRate: null, lastUpdated: null }),
     }));
 
-    return Response.json({ stats });
+    return Response.json({ stats } satisfies { stats: DrawerStat[] });
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[drawer/stats GET]", err);
   }
 }
 

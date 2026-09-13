@@ -1,4 +1,6 @@
 import { NextRequest } from "next/server";
+import { routeError, badRequest } from "@/lib/api/server";
+import { parseProviderBase } from "@/lib/llm/callers";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +13,10 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => null)) as { baseUrl?: string } | null;
-    const base = (body?.baseUrl ?? "http://localhost:11434").replace(/\/$/, "");
+    const base = parseProviderBase(body?.baseUrl ?? "http://localhost:11434");
+    if (!base) {
+      return badRequest("baseUrl must be an http(s) URL");
+    }
 
     const ps = await fetch(`${base}/api/ps`, {
       cache: "no-store",
@@ -38,7 +43,10 @@ export async function POST(req: NextRequest) {
     }
     return Response.json({ ok: true, unloaded });
   } catch (err) {
-    // Best-effort: a failed unload should never block image generation
-    return Response.json({ ok: false, error: String(err) });
+    // Best-effort: a failed unload must never block image generation, and the
+    // caller treats it that way — but it is still a failed request, so it
+    // reports one. Answering ok:false at HTTP 200 was the app's only route
+    // that contradicted its own envelope.
+    return routeError("[ollama/unload]", err);
   }
 }

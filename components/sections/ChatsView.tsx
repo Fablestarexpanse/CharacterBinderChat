@@ -14,13 +14,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useHydrated } from "@/lib/hooks/useHydrated";
-import { formatRelative, truncate } from "@/lib/utils";
+import { formatAgeFromIso, truncate } from "@/lib/utils";
 import { MessageSquare, Search, Plus, Users, ImageIcon } from "lucide-react";
+import { useUiStore } from "@/lib/store/ui";
 
 export function ChatsView() {
-  const {
-    chats, characters, setActiveChatId, setChatBuilderOpen,
-  } = useFableStore();
+  const { chats, characters, setActiveChatId } = useFableStore();
+  const { setChatBuilderOpen } = useUiStore();
   const [query, setQuery] = useState("");
   // Relative times depend on the clock, so they can't render during SSR
   const hydrated = useHydrated();
@@ -127,7 +127,7 @@ export function ChatsView() {
 
                 <div className="flex-shrink-0 text-right">
                   <div className="text-[10px] text-[var(--muted-fg)]">
-                    {hydrated ? formatRelative(chat.updatedAt) : ""}
+                    {hydrated ? formatAgeFromIso(chat.updatedAt) : ""}
                   </div>
                   <div className="text-[10px] text-[var(--muted-fg)] mt-0.5">
                     {chat.messages.length} message{chat.messages.length === 1 ? "" : "s"}

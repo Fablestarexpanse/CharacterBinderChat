@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useFableStore } from "@/lib/store";
 import { useInspectedCharacter } from "@/lib/hooks/useInspectedCharacter";
 import { Avatar } from "@/components/ui/avatar";
@@ -8,20 +8,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Section } from "./Section";
 import { ExternalLink, Edit2, Heart, Shield, Flame, Link2, CloudSun, UserRound, ChevronDown, Check } from "lucide-react";
+import { useUiStore } from "@/lib/store/ui";
+import { useDrawerRead } from "@/lib/hooks/useDrawerRead";
+import type { DrawerStat } from "@/lib/api/dto";
+import type { StatName } from "@/lib/db/models";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface StatRow {
-  name:        string;
-  value:       number | null;
-  decayRate:   number | null;
-  lastUpdated: number | null;
-}
 
 interface RelationshipGroup {
   targetId:   string;
   targetName: string;
-  stats:      Array<{ name: string; value: number; decayRate: number }>;
+  stats:      Array<{ name: StatName; value: number; decayRate: number }>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -42,7 +39,7 @@ const STAT_COLORS: Record<string, string> = {
   mood:       "#22d3ee",
 };
 
-function StatBar({ name, value }: { name: string; value: number }) {
+function StatBar({ name, value }: { name: StatName; value: number }) {
   const Icon    = STAT_ICONS[name] ?? Heart;
   const color   = STAT_COLORS[name] ?? "#7c5cbf";
   const pct     = Math.min(100, Math.max(0, ((value + 100) / 200) * 100));
@@ -70,42 +67,30 @@ function StatBar({ name, value }: { name: string; value: number }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CharacterTab() {
-  const { activeChatId, extractionVersion, openCharacterEditor, setActiveSection, personas, activePersonaId, setActivePersona } =
-    useFableStore();
+  const { activeChatId, extractionVersion, personas, activePersonaId, setActivePersona } = useFableStore();
+  const { openCharacterEditor, setActiveSection } = useUiStore();
   const { character } = useInspectedCharacter();
   const persona = personas.find((p) => p.id === activePersonaId);
   const [personaPickerOpen, setPersonaPickerOpen] = useState(false);
 
-  const [relationships, setRelationships] = useState<RelationshipGroup[]>([]);
-  const [stats, setStats]                 = useState<StatRow[]>([]);
-
   const characterId = character?.id;
 
-  useEffect(() => {
-    if (!characterId || !activeChatId) return;
-    const chatParam = `chat=${encodeURIComponent(activeChatId)}`;
-    // Cancelled guard: without it, rapid chat switching let the older chat's
-    // slower response resolve last and display the wrong chat's stats.
-    let cancelled = false;
+  const key       = `${activeChatId}:${characterId}:${extractionVersion}`;
+  const chatParam = `chatId=${encodeURIComponent(activeChatId ?? "")}`;
+  const ready     = !!characterId && !!activeChatId;
 
-    // Fetch summary (which includes relationships + stats)
-    fetch(`/api/drawer/summary/${encodeURIComponent(characterId)}?${chatParam}`)
-      .then((r) => r.json())
-      .then((data: { relationships?: RelationshipGroup[] }) => {
-        if (!cancelled) setRelationships(data.relationships ?? []);
-      })
-      .catch(() => {/* silently ignore */});
+  // Two reads, one key: the summary carries the relationships, the stats call
+  // is how this character feels about the player specifically. Keyed together
+  // so a switch can't leave the previous character's stats on screen, and a
+  // late success from one can't clear the other's error.
+  const summary = useDrawerRead<{ relationships?: RelationshipGroup[] }>(
+    key, ready ? `/api/drawer/summary/${encodeURIComponent(characterId!)}?${chatParam}` : null);
+  const playerStatsRead = useDrawerRead<{ stats?: DrawerStat[] }>(
+    key, ready ? `/api/drawer/stats?${chatParam}&observer=${encodeURIComponent(characterId!)}&target=player` : null);
 
-    // character -> player: how this character feels about the user
-    fetch(`/api/drawer/stats?${chatParam}&observer=${encodeURIComponent(characterId)}&target=player`)
-      .then((r) => r.json())
-      .then((data: { stats?: StatRow[] }) => {
-        if (!cancelled) setStats(data.stats ?? []);
-      })
-      .catch(() => {/* silently ignore */});
-
-    return () => { cancelled = true; };
-  }, [characterId, activeChatId, extractionVersion]);
+  const relationships = summary.data?.relationships ?? [];
+  const stats         = playerStatsRead.data?.stats ?? [];
+  const drawerError   = summary.error ?? playerStatsRead.error;
 
   if (!character) {
     return (
@@ -116,7 +101,7 @@ export function CharacterTab() {
   }
 
   // Find the "player → character" stat row for display
-  const playerStats = stats.filter((s) => s.value !== null) as Array<StatRow & { value: number }>;
+  const playerStats = stats.filter((s) => s.value !== null) as Array<DrawerStat & { value: number }>;
 
   return (
     <div className="p-3 space-y-3">
@@ -191,6 +176,12 @@ export function CharacterTab() {
           </div>
         )}
       </div>
+
+      {drawerError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-600">
+          Memory could not be loaded — {drawerError}
+        </div>
+      )}
 
       {/* What the memory system is tracking — the reason this tab exists */}
       {playerStats.length > 0 && (

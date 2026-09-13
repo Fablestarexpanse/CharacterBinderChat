@@ -8,11 +8,12 @@ import { useFableStore } from "@/lib/store";
 import {
   decodePngPayload,
   convertPayload,
-  downscaleImage,
   isPng,
   type ImportedCard,
   type ImportedLorebook,
 } from "./cardFile";
+import { downscaleImage } from "@/lib/image/downscale";
+import { useUiStore } from "@/lib/store/ui";
 
 export interface ImportResult {
   file: string;
@@ -73,6 +74,7 @@ async function applyCard(
   characterAlreadyOpened: boolean
 ): Promise<ImportResult> {
   const store = useFableStore.getState();
+  const ui    = useUiStore.getState();
 
   switch (card.kind) {
     case "character": {
@@ -96,8 +98,8 @@ async function applyCard(
         const n = importBook(card.embeddedBook);
         extra = ` Embedded lorebook "${card.embeddedBook.name}" imported (${n} entries).`;
       }
-      store.openCharacterEditor(null, draft);
-      store.setActiveSection("characters");
+      ui.openCharacterEditor(null, draft);
+      ui.setActiveSection("characters");
       return {
         file: file.name,
         ok: true,
@@ -107,14 +109,14 @@ async function applyCard(
 
     case "lorebook": {
       const n = importBook(card.book);
-      store.setActiveSection("lorebooks");
+      ui.setActiveSection("lorebooks");
       return { file: file.name, ok: true, message: `lorebook "${card.book.name}" imported (${n} entries).` };
     }
 
     case "persona": {
       const id = store.addPersona({ name: card.name, description: card.description });
       store.setActivePersona(id);
-      store.setActiveSection("characters");
+      ui.setActiveSection("characters");
       return { file: file.name, ok: true, message: `persona "${card.name}" imported and set active.` };
     }
 
@@ -128,7 +130,7 @@ async function applyCard(
         scenario: text,
         firstMessage: card.firstMessage,
       });
-      store.setActiveSection("scenarios");
+      ui.setActiveSection("scenarios");
       return {
         file: file.name,
         ok: true,

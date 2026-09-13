@@ -20,7 +20,7 @@ import { SCENARIOS } from "./scenarios.mjs";
 const require = createRequire(import.meta.url);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(HERE, "../..");
-const Database = require(path.join(APP_ROOT, "node_modules/better-sqlite3"));
+const Database = require("better-sqlite3");
 
 const PORT = 3157;                                   // dedicated, avoids the dev server
 const EVAL_DB = path.join(HERE, ".eval-db", "eval.db");
@@ -218,7 +218,7 @@ async function runScenario(scenario, model, cfg, db) {
         body: JSON.stringify({
           chatId: `chat-${scenario.characterId}`,
           characterId: scenario.characterId, characterName: scenario.characterName,
-          personaName: scenario.personaName, recentMessages: last,
+          personaName: scenario.personaName, messages: last,
           providerType: cfg.providerType, providerBaseUrl: cfg.baseUrl,
           modelId: model, apiKey: cfg.apiKey,
         }),

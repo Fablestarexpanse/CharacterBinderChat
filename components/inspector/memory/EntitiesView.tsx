@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Loader2, AlertTriangle, GitMerge } from "lucide-react";
+import { sendJson } from "@/lib/api/client";
+import { useDrawerRead } from "@/lib/hooks/useDrawerRead";
 
 interface EntityOverview {
   id:          string;
@@ -31,11 +33,8 @@ interface Props {
 }
 
 export function EntitiesView({ chatId, extractionVersion }: Props) {
-  // Result keyed by what was fetched; `loading` is derived so the effect
-  // never calls setState synchronously (react-hooks/set-state-in-effect).
-  // `refreshTick` triggers a refetch after a merge.
+  // Part of the fetch key, so a merge refetches the overview.
   const [refreshTick, setRefreshTick] = useState(0);
-  const [result, setResult] = useState<{ key: string; data: OverviewResponse | null; error: string | null } | null>(null);
 
   // Merge UI state: { clusterId → { confirmingMerge: boolean, fromId, toId } }
   const [mergeState, setMergeState] = useState<
@@ -43,26 +42,11 @@ export function EntitiesView({ chatId, extractionVersion }: Props) {
   >({});
   const [mergeError, setMergeError] = useState<string | null>(null);
 
-  const fetchKey = `${chatId}:${extractionVersion}:${refreshTick}`;
-
-  useEffect(() => {
-    let cancelled = false;
-    const key = `${chatId}:${extractionVersion}:${refreshTick}`;
-    fetch(`/api/drawer/entities/overview?chat=${encodeURIComponent(chatId)}`)
-      .then((r) => r.json())
-      .then((d: OverviewResponse) => {
-        if (d.error) throw new Error(d.error);
-        if (!cancelled) setResult({ key, data: d, error: null });
-      })
-      .catch((e: Error) => {
-        if (!cancelled) setResult({ key, data: null, error: e.message });
-      });
-    return () => { cancelled = true; };
-  }, [chatId, extractionVersion, refreshTick]);
-
-  const loading = result?.key !== fetchKey;
-  const data    = result?.data ?? null;
-  const error   = mergeError ?? result?.error ?? null;
+  const { data, error: readError, loading } = useDrawerRead<OverviewResponse>(
+    `${chatId}:${extractionVersion}:${refreshTick}`,
+    `/api/drawer/entities/overview?chatId=${encodeURIComponent(chatId)}`
+  );
+  const error = mergeError ?? readError;
 
   const handleMergeClick = (clusterId: string, cluster: string[]) => {
     // Default: merge smaller-id into larger-id (first alpha → second)
@@ -78,13 +62,10 @@ export function EntitiesView({ chatId, extractionVersion }: Props) {
     if (!ms) return;
     setMergeState((prev) => ({ ...prev, [clusterId]: { ...ms, merging: true } }));
     try {
-      const res = await fetch("/api/drawer/entities/merge", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ chatId, fromId: ms.fromId, toId: ms.toId }),
-      });
-      const result = await res.json() as { ok?: boolean; error?: string };
-      if (!result.ok) throw new Error(result.error ?? "Merge failed");
+      // sendJson throws on a non-2xx or an error envelope; the unguarded
+      // res.json() here turned an HTML error page into "SyntaxError:
+      // Unexpected token <".
+      await sendJson("POST", "/api/drawer/entities/merge", { chatId, fromId: ms.fromId, toId: ms.toId });
       setMergeState((prev) => ({ ...prev, [clusterId]: { ...ms, merging: false, done: true, confirming: false } }));
       // Refresh to reflect the merge
       setRefreshTick((t) => t + 1);

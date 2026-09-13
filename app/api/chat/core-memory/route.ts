@@ -1,12 +1,15 @@
 import { NextRequest } from "next/server";
-import { ensureCoreMemory, getCoreMemory, patchCoreMemory } from "@/lib/chat/coreMemoryStore";
 import { getStore } from "@/lib/db";
 import { embedText } from "@/lib/llm/embeddings";
 import type { CoreMemory } from "@/lib/db/models";
+import { routeError, badRequest } from "@/lib/api/server";
+import type { CoreMemoryGetResponse } from "@/lib/api/dto";
+import { retrieveEpisodesForPrompt, retrieveFactsForPrompt } from "@/lib/server/retrieval";
 
 export const dynamic = "force-dynamic";
 
-// ─── GET /api/chat/core-memory?characterId=X&name=Y ──────────────────────────
+// ─── GET /api/chat/core-memory ───────────────────────────────────────────────
+// ?chatId=X&characterId=Y&name=Z&context=<recent text, optional>
 // Returns the Core Memory Block for a character, creating defaults if needed.
 
 export async function GET(req: NextRequest) {
@@ -19,32 +22,32 @@ export async function GET(req: NextRequest) {
   const context       = searchParams.get("context") ?? "";
 
   if (!chatId || !characterId) {
-    return Response.json({ error: "chatId and characterId are required" }, { status: 400 });
+    return badRequest("chatId and characterId are required");
   }
 
   try {
-    const cm    = ensureCoreMemory(chatId, characterId, characterName);
     const store = getStore();
+    const cm    = store.ensureCoreMemory(chatId, characterId, characterName);
     // Semantic query vector for retrieval — null when Ollama embeddings are
     // unavailable, in which case ranking falls back to keyword overlap
     const queryVec   = context ? await embedText(context) : null;
-    const knownFacts = store.retrieveFactsForPrompt(chatId, characterId, 20, context, "player", queryVec);
+    const knownFacts = retrieveFactsForPrompt(store, chatId, characterId, { limit: 20, context, queryEmbedding: queryVec });
     // Episodic layer: scenes remembered as events, and reflective insights.
     // Kept separate from facts because they read differently in the prompt.
-    const cards    = store.retrieveEpisodesForPrompt(chatId, 5, context, queryVec);
+    const cards    = retrieveEpisodesForPrompt(store, chatId, { limit: 5, context, queryEmbedding: queryVec });
     const episodes = cards.filter((c) => c.tags.includes("episode"))
       .slice(0, 3).map((c) => `${c.title} — ${c.content}`);
     const insights = cards.filter((c) => c.tags.includes("reflection"))
       .slice(0, 2).map((c) => c.content);
     // Shared language: nicknames / running jokes / rituals, strongest first
-    const bits = store.listBondCards(chatId, 6).map((c) => c.content);
-    return Response.json({
-      ok: true, coreMemory: cm.data, version: cm.version, updatedAt: cm.updatedAt,
-      knownFacts, episodes, insights, bits,
-    });
+    const sharedLanguage = store.listSharedLanguageCards(chatId, 6).map((c) => c.content);
+    const body: CoreMemoryGetResponse = {
+      coreMemory: cm.data, version: cm.version, updatedAt: cm.updatedAt,
+      knownFacts, episodes, insights, sharedLanguage,
+    };
+    return Response.json(body);
   } catch (err) {
-    console.error("[core-memory GET]", err);
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[core-memory GET]", err);
   }
 }
 
@@ -143,7 +146,7 @@ function sanitizePatch(raw: Record<string, unknown>): Partial<CoreMemory> | stri
 }
 
 // ─── PATCH /api/chat/core-memory ──────────────────────────────────────────────
-// Partial update. Body: { characterId, ...fields to merge }
+// Partial update. Body: { chatId, characterId, ...fields to merge }
 
 export async function PATCH(req: NextRequest) {
   try {
@@ -151,24 +154,24 @@ export async function PATCH(req: NextRequest) {
     const { chatId, characterId, ...rawPatch } = body;
 
     if (!chatId || typeof chatId !== "string" || !characterId || typeof characterId !== "string") {
-      return Response.json({ error: "chatId and characterId are required" }, { status: 400 });
+      return badRequest("chatId and characterId are required");
     }
 
     // Ensure the record exists before patching
-    const existing = getCoreMemory(chatId, characterId);
+    const store    = getStore();
+    const existing = store.getCoreMemory(chatId, characterId);
     if (!existing) {
-      return Response.json({ error: "Core memory not found — call GET first to initialise" }, { status: 404 });
+      return Response.json({ ok: false, error: "Core memory not found — call GET first to initialise" }, { status: 404 });
     }
 
     const patch = sanitizePatch(rawPatch);
     if (typeof patch === "string") {
-      return Response.json({ error: patch }, { status: 400 });
+      return badRequest(patch);
     }
 
-    const updated = patchCoreMemory(chatId, characterId, patch);
+    const updated = store.patchCoreMemory(chatId, characterId, patch);
     return Response.json({ ok: true, coreMemory: updated?.data, version: updated?.version });
   } catch (err) {
-    console.error("[core-memory PATCH]", err);
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[core-memory PATCH]", err);
   }
 }

@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 import { estimateTokens } from "@/lib/chat/promptBuilder";
 import { entryTriggered, booksForChat, LORE_TOKEN_BUDGET } from "@/lib/chat/lorebook";
 import { BookOpen, Zap, Pencil, Globe, Check } from "lucide-react";
+import { useUiStore } from "@/lib/store/ui";
 
 export function LoreTab() {
-  const { lorebooks, chats, activeChatId, setActiveSection, setChatLorebooks } = useFableStore();
+  const { lorebooks, chats, activeChatId, setChatLorebooks } = useFableStore();
+  const { setActiveSection } = useUiStore();
 
   const chat = chats.find((c) => c.id === activeChatId);
   const recentText = (chat?.messages ?? []).slice(-6).map((m) => m.content).join("\n").toLowerCase();

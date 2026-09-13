@@ -1,10 +1,12 @@
 // ─── Memory Rewriter (Drawer 1 Sleep Consolidation) ──────────────────────────
 // Calls a local LLM to reflect on recent events and rewrite the Core Memory
 // Block — persona, mood, narrative summary, internal thoughts.
-// Intended to be called server-side after a batch of messages.
+// Server-side only — the directory says so; it reaches SQLite directly.
+// Called after a batch of messages.
 
 import { getStore } from "@/lib/db";
-import { callOllama, callOpenAICompat, parseLLMJson } from "@/lib/llm/callers";
+import { callLLM, parseLLMJson, type ProviderType } from "@/lib/llm/callers";
+import type { MessageRole } from "@/lib/types";
 import type { CoreMemory } from "@/lib/db/models";
 
 // ─── Rewrite prompt ───────────────────────────────────────────────────────────
@@ -12,7 +14,7 @@ import type { CoreMemory } from "@/lib/db/models";
 function buildRewritePrompt(
   characterName: string,
   currentMemory: CoreMemory,
-  recentMessages: Array<{ role: string; content: string }>,
+  recentMessages: Array<{ role: MessageRole; content: string }>,
   userLabel = "User",
   characterAnchor = ""
 ): string {
@@ -67,12 +69,14 @@ Rules:
 
 // ─── Result shape ─────────────────────────────────────────────────────────────
 
+// Optional throughout: this is parsed model output, and every consumer already
+// falls back to the current document when a field is missing.
 interface RewriteResult {
-  persona:          string;
-  mood:             { valence: number; arousal: number; dominance: number };
-  internal_thoughts:string[];
-  narrative_summary:string;
-  persona_changed:  boolean;
+  persona?:          string;
+  mood?:             { valence?: number; arousal?: number; dominance?: number };
+  internal_thoughts?:string[];
+  narrative_summary?:string;
+  persona_changed?:  boolean;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -84,8 +88,8 @@ export interface RewriteOptions {
   personaName?:    string;
   /** Authored character definition — the drift anchor for persona rewrites */
   characterAnchor?: string;
-  recentMessages:  Array<{ role: string; content: string }>;
-  providerType:    "ollama" | "lmstudio" | "openrouter";
+  recentMessages:  Array<{ role: MessageRole; content: string }>;
+  providerType:    ProviderType;
   providerBaseUrl: string;
   modelId:         string;
   apiKey?:         string;
@@ -112,11 +116,7 @@ export async function rewriteCoreMemory(opts: RewriteOptions): Promise<{
 
   let rawText: string;
   try {
-    if (opts.providerType === "ollama") {
-      rawText = await callOllama(opts.providerBaseUrl, opts.modelId, prompt);
-    } else {
-      rawText = await callOpenAICompat(opts.providerBaseUrl, opts.modelId, prompt, opts.apiKey);
-    }
+    rawText = await callLLM(opts, prompt);
   } catch (err) {
     return { ok: false, changed: false, error: String(err) };
   }

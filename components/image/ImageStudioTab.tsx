@@ -7,7 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
-import { startImageJob, dimensionsForRatio, ComfyUIProvider } from "@/lib/providers/comfyui";
+import { dimensionsForRatio, ComfyUIProvider } from "@/lib/providers/comfyui";
+import { queueImage } from "@/lib/chat/imageGen";
 import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { useEffect, useState } from "react";
 import {
@@ -19,12 +20,14 @@ import {
   Layers,
 } from "lucide-react";
 import type { AspectRatio } from "@/lib/types";
+import { getJson } from "@/lib/api/client";
+import type { WorkflowSummary } from "@/lib/api/dto";
 
 const SAMPLERS = ["euler", "euler_a", "dpmpp_2m", "dpmpp_2m_karras", "ddim", "lcm"];
 const ASPECT_RATIOS: AspectRatio[] = ["1:1", "16:9", "9:16", "4:3", "3:4", "2:1", "custom"];
 
 export function ImageStudioTab() {
-  const { imageSettings, setImageSettings, imageJobs, addImageJob, updateImageJob, providerSettings, activeChatId } =
+  const { imageSettings, setImageSettings, imageJobs, providerSettings, activeChatId } =
     useFableStore();
   const [newLora, setNewLora] = useState("");
   const [loraWeight, setLoraWeight] = useState("0.8");
@@ -45,28 +48,23 @@ export function ImageStudioTab() {
 
   // Templates actually present in workflows/ — a hardcoded list here meant a
   // template you added never appeared and a deleted one stayed selectable.
-  const [workflows, setWorkflows] = useState<Array<{ slug: string; title: string }>>([]);
+  const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/workflows", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d: { workflows?: Array<{ slug: string; title: string; error?: string }> }) => {
-        if (!cancelled) setWorkflows((d.workflows ?? []).filter((w) => !w.error));
-      })
-      .catch(() => {/* picker falls back to the saved slug below */});
+    getJson<{ workflows?: WorkflowSummary[] }>("/api/workflows")
+      // A template that failed to parse is listed with an `error` and has no
+      // usable controls, so it is not offered as a choice.
+      .then((d) => { if (!cancelled) setWorkflows((d.workflows ?? []).filter((w) => !w.error)); })
+      // The picker falls back to the saved slug, so this stays non-fatal —
+      // but a silent catch made a broken endpoint look like "no workflows".
+      .catch((e: Error) => console.warn("[/api/workflows] list failed:", e.message));
     return () => { cancelled = true; };
   }, []);
 
   const handleGenerate = () => {
-    // startImageJob returns immediately; connection check, queueing and
-    // polling all happen in the background and land via updateImageJob.
-    const job = startImageJob(
-      providerSettings.comfyui.baseUrl,
-      imageSettings,
-      activeChatId ?? undefined,
-      updateImageJob
-    );
-    addImageJob(job);
+    // queueImage returns immediately; connection check, queueing and polling
+    // all happen in the background and land through the store.
+    queueImage(imageSettings, activeChatId ?? undefined);
   };
 
   // Choosing a ratio resolves to real pixels; typing a dimension by hand flips
@@ -90,7 +88,13 @@ export function ImageStudioTab() {
     setImageSettings({ loras: imageSettings.loras.filter((l) => l.name !== name) });
   };
 
-  const workflowSupportsLoras = imageSettings.workflow === "krea2-lora-pipeline";
+  // Asked of the template rather than hardcoded: /api/workflows publishes each
+  // one's controls, and applySettingsToWorkflow keys LoRA injection off the
+  // same loraSyntaxNode. A hardcoded slug meant a new LoRA-capable template
+  // silently offered no LoRA panel.
+  const workflowSupportsLoras = workflows
+    .find((w) => w.slug === imageSettings.workflow)
+    ?.controls.includes("loraSyntax") ?? false;
 
   const recentJobs = imageJobs.slice(0, 4);
   const runningCount = imageJobs.filter((j) => j.status === "queued" || j.status === "generating").length;

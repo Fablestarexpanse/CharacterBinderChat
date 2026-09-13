@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import { useFableStore } from "@/lib/store";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -18,16 +18,11 @@ import {
   Square,
   Wand2,
 } from "lucide-react";
+import { useUiStore } from "@/lib/store/ui";
 
 export function ChatInput() {
-  const {
-    activeChatId, chats, characters,
-    personas, activePersonaId, setActivePersona,
-    inputValue, setInputValue,
-    addMessage,
-    isGenerating,
-    setActiveSection,
-  } = useFableStore();
+  const { activeChatId, chats, characters, personas, activePersonaId, setActivePersona, addMessage, isGenerating } = useFableStore();
+  const { inputValue, setInputValue, setActiveSection } = useUiStore();
 
   const activePersona = personas.find((p) => p.id === activePersonaId);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -40,23 +35,6 @@ export function ChatInput() {
 
   // /image: the scene director is reading the chat and writing a visual prompt
   const [directing, setDirecting] = useState(false);
-
-  // ── Lazy stat decay ────────────────────────────────────────────────────────
-  // On the first render of this component (i.e. first session), apply
-  // Ebbinghaus decay once. The server computes decay per-row from each stat's
-  // own last_updated timestamp; this just decides whether a new session began.
-  useEffect(() => {
-    const LAST_SESSION_KEY = "fablechat:lastSessionAt";
-    const now = Date.now();
-    const lastStr = localStorage.getItem(LAST_SESSION_KEY);
-    localStorage.setItem(LAST_SESSION_KEY, String(now));
-
-    if (!lastStr) return; // first ever session — nothing to decay yet
-    if (now - Number(lastStr) < 15 * 60 * 1000) return; // same sitting, skip
-
-    fetch("/api/drawer/stats/decay", { method: "POST" })
-      .catch((e) => console.warn("[decay]", e));
-  }, []);
 
   // ── Send handler ──────────────────────────────────────────────────────────
 

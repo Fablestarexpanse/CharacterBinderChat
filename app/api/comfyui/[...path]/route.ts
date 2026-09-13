@@ -1,4 +1,6 @@
 import { NextRequest } from "next/server";
+import { parseProviderBase } from "@/lib/llm/callers";
+import { badRequest } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 
@@ -11,22 +13,20 @@ async function proxy(
   params: Promise<{ path: string[] }>
 ): Promise<Response> {
   const { path } = await params;
-  const base = req.nextUrl.searchParams.get("base") ?? "http://127.0.0.1:8188";
 
-  let baseUrl: URL;
-  try {
-    baseUrl = new URL(base);
-  } catch {
-    return Response.json({ error: `invalid base URL: ${base}` }, { status: 400 });
-  }
-  if (baseUrl.protocol !== "http:" && baseUrl.protocol !== "https:") {
-    return Response.json({ error: "base must be http(s)" }, { status: 400 });
+  // Through the same guard the LLM routes use, rather than a second hand-rolled
+  // copy of it — and using its parsed result, so the string that reaches fetch
+  // is the one that was checked.
+  const base = parseProviderBase(
+    req.nextUrl.searchParams.get("base") ?? "http://127.0.0.1:8188");
+  if (!base) {
+    return badRequest("base must be an http(s) URL");
   }
 
   const search = new URLSearchParams(req.nextUrl.searchParams);
   search.delete("base");
   const query = search.size > 0 ? `?${search}` : "";
-  const target = `${base.replace(/\/$/, "")}/${path.map(encodeURIComponent).join("/")}${query}`;
+  const target = `${base}/${path.map(encodeURIComponent).join("/")}${query}`;
 
   try {
     const hasBody = req.method !== "GET" && req.method !== "HEAD";
@@ -51,8 +51,11 @@ async function proxy(
       },
     });
   } catch (err) {
+    // Every other route logs its failure through routeError; this one returns
+    // the right status but wrote nothing to the server log.
+    console.error("[comfyui-proxy]", req.method, base, err);
     return Response.json(
-      { error: `ComfyUI unreachable at ${base}: ${err instanceof Error ? err.message : String(err)}` },
+      { ok: false, error: `ComfyUI unreachable at ${base}: ${err instanceof Error ? err.message : String(err)}` },
       { status: 502 }
     );
   }

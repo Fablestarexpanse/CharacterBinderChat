@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useFableStore } from "@/lib/store";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { ChatArea } from "@/components/chat/ChatArea";
@@ -19,9 +20,12 @@ import { NewChatDialog } from "@/components/chat/NewChatDialog";
 import { StateSync } from "@/components/StateSync";
 import { DropImport } from "@/components/DropImport";
 import { useHydrated } from "@/lib/hooks/useHydrated";
+import { useUiStore } from "@/lib/store/ui";
+import { sendJson } from "@/lib/api/client";
 
 export default function Home() {
-  const { activeSection, activeChatId } = useFableStore();
+  const { activeChatId, syncReady, lastSyncError } = useFableStore();
+  const { activeSection } = useUiStore();
   // The persisted store rehydrates from localStorage before React's first
   // client render, so any returning user's state differs from the SSR HTML
   // (which only knows the seeds) — a guaranteed hydration mismatch. This is
@@ -31,10 +35,47 @@ export default function Home() {
   // No open chat means we're browsing the list, which has nothing to inspect
   const showInspector = activeSection === "chats" && !!activeChatId;
 
-  if (!hydrated) return null;
+  // StateSync stays mounted at ONE position across the gate: it is what sets
+  // syncReady, and returning it as a bare early return meant the root element
+  // type changed the moment the flag flipped, remounting it and re-running the
+  // whole hydrate-or-seed effect — a second GET /api/state and, on an empty
+  // server, a second seed PUT.
+  const ready = hydrated && syncReady;
+
+  // ── Lazy stat decay ────────────────────────────────────────────────────────
+  // Once per session, apply Ebbinghaus decay. The server computes decay per-row
+  // from each stat's own last_updated timestamp; this just decides whether a new
+  // session began. It lives here rather than in ChatInput because Home is the
+  // only mount point that is always alive — hosted in the composer, decay never
+  // ran for a session that opened Settings or the Gallery and no chat.
+  useEffect(() => {
+    const LAST_SESSION_KEY = "fablechat:lastSessionAt";
+    const now = Date.now();
+    const lastStr = localStorage.getItem(LAST_SESSION_KEY);
+    localStorage.setItem(LAST_SESSION_KEY, String(now));
+
+    if (!lastStr) return; // first ever session — nothing to decay yet
+    if (now - Number(lastStr) < 15 * 60 * 1000) return; // same sitting, skip
+
+    // Fire-and-forget by design — nothing waits on decay — but through
+    // sendJson so a rejected request is a warning rather than a success: the
+    // bare fetch only caught network errors, so a 500 looked like it worked.
+    sendJson("POST", "/api/drawer/stats/decay")
+      .catch((e: Error) => console.warn("[decay]", e.message));
+  }, []);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">
+      {/* Hydrates from SQLite on load, then mirrors edits back (debounced) */}
+      <StateSync />
+      {/* Fixed rather than in-flow: the root here is a flex row, so a block
+          banner would become a flex child and squeeze the sidebar. */}
+      {lastSyncError && (
+        <div className="fixed top-2 left-1/2 -translate-x-1/2 z-50 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-600">
+          Changes are not being saved — {lastSyncError}
+        </div>
+      )}
+      {!ready ? null : <>
       <Sidebar />
 
       <main className="flex flex-1 min-w-0 overflow-hidden">
@@ -58,11 +99,9 @@ export default function Home() {
       {/* New-chat builder — opened by the sidebar's New Chat button */}
       <NewChatDialog />
 
-      {/* Hydrates from SQLite on load, then mirrors edits back (debounced) */}
-      <StateSync />
-
       {/* Window-wide drag-and-drop for CharacterBinder PNG / JSON cards */}
       <DropImport />
+      </>}
     </div>
   );
 }

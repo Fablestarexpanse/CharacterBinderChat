@@ -6,8 +6,15 @@ import Database, { type Database as DB } from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 import { CREATE_TABLES_SQL } from "./schema";
-import { isDurableFact, isIdentityCoreFact, predicateFamily } from "./predicates";
+import {
+  rowToEntity, rowToFact, rowToStat, rowToMemoryCard, rowToCommitment,
+} from "./rows";
+import { isSingleValued, normPredicate, predicateFamily } from "./predicates";
 import { bufferToVec, cosine } from "@/lib/llm/embeddings";
+import { contentWords, jaccard, normalizeText } from "@/lib/text/overlap";
+import type { PersistedAppState } from "@/lib/types";
+import { getAppState, replaceAppState } from "./appState";
+import { listMemorySources, transferMemory } from "./transfer";
 import type {
   DbEntity,
   DbFact,
@@ -22,80 +29,10 @@ import type {
   CharacterSummaryData,
 } from "./models";
 import { DEFAULT_DECAY_RATES } from "./models";
+import { migrateToChatScoped } from "./migrate";
 
 function now(): number {
   return Math.floor(Date.now() / 1000);
-}
-
-// ─── Row → Model mappers ──────────────────────────────────────────────────────
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rowToEntity(r: any): DbEntity {
-  return {
-    id:          r.id,
-    type:        r.type as EntityType,
-    name:        r.name,
-    description: r.description ?? "",
-    createdAt:   r.created_at,
-  };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rowToFact(r: any): DbFact {
-  return {
-    id:            r.id,
-    subjectId:     r.subject_id,
-    predicate:     r.predicate,
-    objectId:      r.object_id ?? null,
-    objectLiteral: r.object_literal ?? null,
-    tValidStart:   r.t_valid_start,
-    tValidEnd:     r.t_valid_end ?? null,
-    tIngested:     r.t_ingested,
-    confidence:    r.confidence,
-    importance:    r.importance ?? 0.5,
-    knownTo:       r.known_to ? (JSON.parse(r.known_to) as string[]) : [],
-    supersededBy:  r.superseded_by ?? null,
-  };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rowToStat(r: any): DbRelationshipStat {
-  return {
-    id:          r.id,
-    observerId:  r.observer_id,
-    targetId:    r.target_id,
-    statName:    r.stat_name as StatName,
-    value:       r.value,
-    decayRate:   r.decay_rate,
-    lastUpdated: r.last_updated,
-  };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rowToMemoryCard(r: any): DbMemoryCard {
-  return {
-    id:         r.id,
-    title:      r.title,
-    content:    r.content,
-    tags:       r.tags ? (JSON.parse(r.tags) as string[]) : [],
-    entityIds:  r.entity_ids ? (JSON.parse(r.entity_ids) as string[]) : [],
-    importance: r.importance ?? 0.5,
-    createdAt:  r.created_at,
-    updatedAt:  r.updated_at,
-  };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rowToCommitment(r: any): DbCommitment {
-  return {
-    id:          r.id,
-    promisorId:  r.promisor_id,
-    promiseeId:  r.promisee_id ?? null,
-    description: r.description,
-    status:      r.status as CommitmentStatus,
-    createdAt:   r.created_at,
-    resolvedAt:  r.resolved_at ?? null,
-  };
 }
 
 // ─── FableStore ───────────────────────────────────────────────────────────────
@@ -104,7 +41,6 @@ export class FableStore {
   private db: DB;
 
   constructor(dbPath: string) {
-    // Ensure parent directory exists
     const dir = path.dirname(dbPath);
     if (dir && dir !== "." && !fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -113,13 +49,20 @@ export class FableStore {
     this.db = new Database(dbPath);
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
-    this._migrateIfNeeded();
+    migrateToChatScoped(this.db, () => this._initSchema());
     this._initSchema();
     this._ensureColumns();
   }
 
-  // Additive column upgrades — safe on any schema version. CREATE TABLE IF NOT
-  // EXISTS never alters existing tables, so new columns must be added here.
+  /** Release the file handle. Used when a dev hot reload replaces this class. */
+  close(): void {
+    this.db.close();
+  }
+
+  // The upgrade path for databases created before a column existed. Every
+  // column here is also in CREATE_TABLES_SQL, which describes the real shape
+  // of a fresh table; CREATE TABLE IF NOT EXISTS never alters an existing one,
+  // so both are needed and they must agree.
   private _ensureColumns(): void {
     const addCol = (table: string, col: string, ddl: string) => {
       const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
@@ -141,74 +84,6 @@ export class FableStore {
     // Embeddings for semantic retrieval (Phase C) — nullable, lexical fallback
     addCol("facts",        "embedding", "embedding BLOB");
     addCol("memory_cards", "embedding", "embedding BLOB");
-  }
-
-  // ── Migration: character-global memory → chat-scoped memory ───────────────
-  // Schema v1 keyed memory by character only, so every chat with a character
-  // shared one pool of facts and one core memory. v2 scopes everything by
-  // chat_id: each chat is its own story. Legacy rows are assigned to the first
-  // existing chat that belongs to the character owning the legacy core memory
-  // (in practice: the demo chat they came from), else to 'legacy'.
-  private _migrateIfNeeded(): void {
-    const cols = this.db.prepare("PRAGMA table_info(entities)").all() as Array<{ name: string }>;
-    if (cols.length === 0) return;                    // fresh DB — nothing to migrate
-    if (cols.some((c) => c.name === "chat_id")) return; // already v2
-
-    let target = "legacy";
-    try {
-      const cm = this.db.prepare("SELECT character_id FROM core_memory LIMIT 1").get() as
-        { character_id: string } | undefined;
-      if (cm) {
-        const chats = this.db.prepare("SELECT id, data FROM app_chats ORDER BY seq").all() as
-          Array<{ id: string; data: string }>;
-        for (const c of chats) {
-          try {
-            if ((JSON.parse(c.data) as { characterId?: string }).characterId === cm.character_id) {
-              target = c.id;
-              break;
-            }
-          } catch { /* skip unparseable row */ }
-        }
-      }
-    } catch { /* no core_memory table or app_chats — keep 'legacy' */ }
-
-    console.log(`[FableStore] migrating memory schema v1 → v2 (chat-scoped); legacy rows → chat '${target}'`);
-
-    this.db.pragma("foreign_keys = OFF");
-    const migrate = this.db.transaction(() => {
-      const OLD = ["entities", "facts", "relationship_stats", "memory_cards", "commitments", "core_memory"];
-      for (const t of OLD) {
-        this.db.exec(`ALTER TABLE ${t} RENAME TO ${t}_v1`);
-      }
-      this._initSchema(); // creates the v2 tables
-
-      // Parameterized: this runs exactly once on irreplaceable legacy data,
-      // and a quote in the chat id must not break the migration mid-transaction.
-      this.db.prepare(`INSERT INTO entities (chat_id, id, type, name, description, created_at)
-        SELECT ?, id, type, name, description, created_at FROM entities_v1`).run(target);
-      // Fact ids preserved so superseded_by links stay valid
-      this.db.prepare(`INSERT INTO facts (id, chat_id, subject_id, predicate, object_id, object_literal,
-          t_valid_start, t_valid_end, t_ingested, confidence, known_to, superseded_by)
-        SELECT id, ?, subject_id, predicate, object_id, object_literal,
-          t_valid_start, t_valid_end, t_ingested, confidence, known_to, superseded_by FROM facts_v1`).run(target);
-      this.db.prepare(`INSERT INTO relationship_stats (chat_id, observer_id, target_id, stat_name, value, decay_rate, last_updated)
-        SELECT ?, observer_id, target_id, stat_name, value, decay_rate, last_updated FROM relationship_stats_v1`).run(target);
-      this.db.prepare(`INSERT INTO memory_cards (chat_id, title, content, tags, entity_ids, created_at, updated_at)
-        SELECT ?, title, content, tags, entity_ids, created_at, updated_at FROM memory_cards_v1`).run(target);
-      this.db.prepare(`INSERT INTO commitments (chat_id, promisor_id, promisee_id, description, status, created_at, resolved_at)
-        SELECT ?, promisor_id, promisee_id, description, status, created_at, resolved_at FROM commitments_v1`).run(target);
-      this.db.prepare(`INSERT INTO core_memory (chat_id, character_id, data, version, updated_at)
-        SELECT ?, character_id, data, version, updated_at FROM core_memory_v1`).run(target);
-
-      for (const t of OLD) {
-        this.db.exec(`DROP TABLE ${t}_v1`);
-      }
-    });
-    try {
-      migrate();
-    } finally {
-      this.db.pragma("foreign_keys = ON");
-    }
   }
 
   private _initSchema(): void {
@@ -243,6 +118,7 @@ export class FableStore {
   // ── Entities ──────────────────────────────────────────────────────────────
   // All memory operations are scoped by chatId: each chat is its own story.
 
+  /** INSERT OR REPLACE — overwrites the name and description of an existing row. */
   insertEntity(chatId: string, entity: Omit<DbEntity, "createdAt"> & { createdAt?: number }): void {
     const createdAt = entity.createdAt ?? now();
     this.db
@@ -253,7 +129,10 @@ export class FableStore {
       .run(chatId, entity.id, entity.type, entity.name, entity.description ?? "", createdAt);
   }
 
-  /** Upsert — safe to call even if entity already exists */
+  /**
+   * Get-or-create: returns the existing row untouched when the id is already
+   * present. Use insertEntity to overwrite an entity's name or description.
+   */
   ensureEntity(
     chatId: string,
     id: string,
@@ -359,18 +238,68 @@ export class FableStore {
     return rows.map(rowToFact);
   }
 
-  setFactEmbedding(factId: number, embedding: Buffer): void {
-    this.db.prepare("UPDATE facts SET embedding = ? WHERE id = ?").run(embedding, factId);
+  /**
+   * chatId is part of the WHERE clause on every id-keyed write below, not
+   * because a caller currently passes a foreign id — they all source ids from
+   * chat-scoped queries — but because "memory is scoped to a chat" should be
+   * enforced by the store rather than by caller discipline. The v1 to v2
+   * migration threaded chatId through the string-id methods and left these four
+   * keyed on the bare row id.
+   */
+  setFactEmbedding(chatId: string, factId: number, embedding: Buffer): void {
+    this.db.prepare("UPDATE facts SET embedding = ? WHERE id = ? AND chat_id = ?")
+      .run(embedding, factId, chatId);
   }
 
-  setCardEmbedding(cardId: number, embedding: Buffer): void {
-    this.db.prepare("UPDATE memory_cards SET embedding = ? WHERE id = ?").run(embedding, cardId);
+  /** Raw embedding blob for a memory card (null when never embedded) */
+  getCardEmbedding(chatId: string, cardId: number): Float32Array | null {
+    const row = this.db
+      .prepare("SELECT embedding FROM memory_cards WHERE id = ? AND chat_id = ?")
+      .get(cardId, chatId) as { embedding: Buffer | null } | undefined;
+    return bufferToVec(row?.embedding ?? null);
+  }
+
+  /**
+   * Embeddings for many rows in one query. Retrieval scores every candidate,
+   * so the per-row accessors above meant one SQLite round trip per fact —
+   * from inside a sort comparator, so the count was O(n log n), not O(n).
+   */
+  getEmbeddings(chatId: string, table: "facts" | "memory_cards", ids: number[]): Map<number, Float32Array> {
+    const map = new Map<number, Float32Array>();
+    if (ids.length === 0) return map;
+    const placeholders = ids.map(() => "?").join(",");
+    const rows = this.db
+      .prepare(`SELECT id, embedding FROM ${table} WHERE chat_id = ? AND id IN (${placeholders})`)
+      .all(chatId, ...ids) as Array<{ id: number; embedding: Buffer | null }>;
+    for (const row of rows) {
+      const vec = bufferToVec(row.embedding);
+      if (vec) map.set(row.id, vec);
+    }
+    return map;
+  }
+
+  /** Entities by id, in one query — retrieval renders many facts at once. */
+  getEntities(chatId: string, ids: string[]): Map<string, DbEntity> {
+    const map = new Map<string, DbEntity>();
+    if (ids.length === 0) return map;
+    const placeholders = ids.map(() => "?").join(",");
+    const rows = this.db
+      .prepare(`SELECT * FROM entities WHERE chat_id = ? AND id IN (${placeholders})`)
+      .all(chatId, ...ids) as Array<{ id: string }>;
+    for (const row of rows) map.set(row.id, rowToEntity(row));
+    return map;
+  }
+
+  setCardEmbedding(chatId: string, cardId: number, embedding: Buffer): void {
+    this.db.prepare("UPDATE memory_cards SET embedding = ? WHERE id = ? AND chat_id = ?")
+      .run(embedding, cardId, chatId);
   }
 
   /** Raw embedding blob for a fact (null when never embedded) */
-  private factEmbedding(factId: number): Float32Array | null {
-    const row = this.db.prepare("SELECT embedding FROM facts WHERE id = ?").get(factId) as
-      { embedding: Buffer | null } | undefined;
+  getFactEmbedding(chatId: string, factId: number): Float32Array | null {
+    const row = this.db
+      .prepare("SELECT embedding FROM facts WHERE id = ? AND chat_id = ?")
+      .get(factId, chatId) as { embedding: Buffer | null } | undefined;
     return bufferToVec(row?.embedding ?? null);
   }
 
@@ -392,7 +321,7 @@ export class FableStore {
     const family = predicateFamily(predicate);
     for (const f of this.queryFacts(chatId, subjectId)) {
       if (excludeIds.has(f.id)) continue;
-      const other = this.factEmbedding(f.id);
+      const other = this.getFactEmbedding(chatId, f.id);
       if (!other) continue;
       const sim = cosine(vec, other);
       const bar = predicateFamily(f.predicate) === family ? threshold : 0.97;
@@ -403,17 +332,63 @@ export class FableStore {
 
   /** Raise (never lower) a fact's importance — used when a restatement folds
    *  into it so the survivor keeps the highest score either version earned. */
-  raiseFactImportance(factId: number, importance: number): void {
+  raiseFactImportance(chatId: string, factId: number, importance: number): void {
     this.db
-      .prepare("UPDATE facts SET importance = MAX(importance, ?) WHERE id = ?")
-      .run(Math.max(0, Math.min(1, importance)), factId);
+      .prepare("UPDATE facts SET importance = MAX(importance, ?) WHERE id = ? AND chat_id = ?")
+      .run(Math.max(0, Math.min(1, importance)), factId, chatId);
   }
 
-  supersedeFact(oldId: number, newId: number, atTime?: number): void {
+  /**
+   * Write a fact while keeping the single-valued-predicate invariant: at most
+   * one live fact per (subject, predicate family) unless the family is
+   * multi-valued.
+   *
+   * Both write paths — the manual facts route and the extractor — need this,
+   * and they each had their own copy, which is exactly how one of them can
+   * start drifting from the table's own rule. Matching is by predicate FAMILY,
+   * so `lives_at` / `located_at` / `current_location` supersede one another
+   * instead of accumulating, and by object key as well, because family alone
+   * folded siblings of a multi-valued predicate together ("knows kael"
+   * superseding "knows elen").
+   *
+   * `duplicate` means an equivalent live fact already existed; nothing was
+   * written and `factId` is that existing fact.
+   */
+  assertFact(chatId: string, fact: {
+    subjectId:     string;
+    predicate:     string;
+    objectId?:     string | null;
+    objectLiteral?:string | null;
+    confidence?:   number;
+    importance?:   number;
+    knownTo?:      string[];
+  }): { factId: number; duplicate: boolean; superseded: number[] } {
+    const family      = predicateFamily(fact.predicate);
+    const objectKey   = fact.objectId ?? (fact.objectLiteral ?? "").toLowerCase().trim();
+    const sameFamily  = (p: string) => predicateFamily(p) === family;
+    const keyOf       = (f: DbFact) => f.objectId ?? (f.objectLiteral ?? "").toLowerCase().trim();
+
+    // One query serves both the duplicate check and the supersession scan
+    const existing = this.queryFacts(chatId, fact.subjectId);
+
+    const duplicate = existing.find((ex) => sameFamily(ex.predicate) && keyOf(ex) === objectKey);
+    if (duplicate) return { factId: duplicate.id, duplicate: true, superseded: [] };
+
+    const toSupersede = isSingleValued(fact.predicate)
+      ? existing.filter((ex) => sameFamily(ex.predicate) && keyOf(ex) !== objectKey)
+      : [];
+
+    const factId = this.insertFact(chatId, { ...fact, predicate: normPredicate(fact.predicate) });
+    for (const old of toSupersede) this.supersedeFact(chatId, old.id, factId);
+
+    return { factId, duplicate: false, superseded: toSupersede.map((f) => f.id) };
+  }
+
+  supersedeFact(chatId: string, oldId: number, newId: number, atTime?: number): void {
     const t = atTime ?? now();
     this.db
-      .prepare("UPDATE facts SET t_valid_end = ?, superseded_by = ? WHERE id = ?")
-      .run(t, newId, oldId);
+      .prepare("UPDATE facts SET t_valid_end = ?, superseded_by = ? WHERE id = ? AND chat_id = ?")
+      .run(t, newId, oldId, chatId);
   }
 
   /**
@@ -444,23 +419,36 @@ export class FableStore {
 
   // ── Relationship Stats ────────────────────────────────────────────────────
 
+  /**
+   * Write a stat's value, and optionally its rupture window, in one statement.
+   *
+   * `ruptureRecovery` is deliberately part of the same write: the two describe
+   * one row, and updating them separately meant a single stat change ran four
+   * statements — read, upsert, read back, update.
+   */
   setStat(
     chatId:     string,
     observerId: string,
     targetId:   string,
     statName:   StatName,
-    value:      number
+    value:      number,
+    ruptureRecovery?: number
   ): DbRelationshipStat {
     const decayRate = DEFAULT_DECAY_RATES[statName];
     const t = now();
     this.db
       .prepare(
-        `INSERT INTO relationship_stats (chat_id, observer_id, target_id, stat_name, value, decay_rate, last_updated)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO relationship_stats
+           (chat_id, observer_id, target_id, stat_name, value, decay_rate, rupture_recovery, last_updated)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(chat_id, observer_id, target_id, stat_name)
-         DO UPDATE SET value = excluded.value, last_updated = excluded.last_updated`
+         DO UPDATE SET
+           value            = excluded.value,
+           rupture_recovery = COALESCE(?, relationship_stats.rupture_recovery),
+           last_updated     = excluded.last_updated`
       )
-      .run(chatId, observerId, targetId, statName, value, decayRate, t);
+      .run(chatId, observerId, targetId, statName, value, decayRate,
+           ruptureRecovery ?? 0, t, ruptureRecovery ?? null);
 
     return this.getStat(chatId, observerId, targetId, statName)!;
   }
@@ -491,10 +479,8 @@ export class FableStore {
 
     // Rupture refractory: after a large drop, the next several positive deltas
     // land at reduced strength — trust rebuilds slowly after being broken.
-    const recovery = this.db
-      .prepare("SELECT rupture_recovery FROM relationship_stats WHERE chat_id = ? AND observer_id = ? AND target_id = ? AND stat_name = ?")
-      .get(chatId, observerId, targetId, statName) as { rupture_recovery: number } | undefined;
-    const inRecovery = (recovery?.rupture_recovery ?? 0) > 0;
+    const recovery   = existing?.ruptureRecovery ?? 0;
+    const inRecovery = recovery > 0;
 
     let effective = delta;
     if (delta < 0 && bondStat) {
@@ -508,36 +494,23 @@ export class FableStore {
       effective *= 1 - Math.abs(current) / 100;
     }
 
-    const updated = this.setStat(chatId, observerId, targetId, statName,
-      Math.max(-100, Math.min(100, current + effective)));
-
-    // Bookkeeping: a big hit opens a recovery window; positive movement
-    // consumes it one step at a time.
+    // A big hit opens a recovery window; positive movement consumes it one
+    // step at a time. Written with the value, not after it.
+    let nextRecovery: number | undefined;
     if (bondStat) {
-      if (effective <= -12) {
-        this.db.prepare(
-          "UPDATE relationship_stats SET rupture_recovery = 6 WHERE chat_id = ? AND observer_id = ? AND target_id = ? AND stat_name = ?"
-        ).run(chatId, observerId, targetId, statName);
-      } else if (delta > 0 && inRecovery) {
-        this.db.prepare(
-          "UPDATE relationship_stats SET rupture_recovery = rupture_recovery - 1 WHERE chat_id = ? AND observer_id = ? AND target_id = ? AND stat_name = ? AND rupture_recovery > 0"
-        ).run(chatId, observerId, targetId, statName);
-      }
+      if (effective <= -12) nextRecovery = 6;
+      else if (delta > 0 && inRecovery) nextRecovery = recovery - 1;
     }
 
-    return updated;
+    return this.setStat(chatId, observerId, targetId, statName,
+      Math.max(-100, Math.min(100, current + effective)), nextRecovery);
   }
 
   /** True while any bond stat of the pair is inside its post-rupture window */
   isRecentlyRuptured(chatId: string, observerId: string, targetId: string): boolean {
-    const row = this.db
-      .prepare(
-        `SELECT MAX(rupture_recovery) AS r FROM relationship_stats
-         WHERE chat_id = ? AND observer_id = ? AND target_id = ?
-           AND stat_name IN ('trust','affection','connection')`
-      )
-      .get(chatId, observerId, targetId) as { r: number | null } | undefined;
-    return (row?.r ?? 0) > 0;
+    const stats = this.queryStats(chatId, observerId, targetId);
+    return (["trust", "affection", "connection"] as const)
+      .some((name) => (stats[name]?.ruptureRecovery ?? 0) > 0);
   }
 
   getStat(
@@ -651,11 +624,9 @@ export class FableStore {
    * (content-word Jaccard ≥ 0.5). Reinforcement bumps importance so the bits
    * a pair actually keeps using rise to the top of the injected list.
    */
-  upsertBondCard(chatId: string, kind: string, text: string): { id: number; reinforced: boolean } {
-    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
-    const words = (s: string) => new Set(norm(s).split(" ").filter((w) => w.length > 3));
-    const incoming = words(text);
-    const incomingNorm = norm(text);
+  upsertSharedLanguageCard(chatId: string, kind: string, text: string): { id: number; reinforced: boolean } {
+    const incoming = contentWords(text);
+    const incomingNorm = normalizeText(text);
 
     // Lightweight query — no embedding BLOBs, bond cards only. Scanning
     // listMemoryCards here pulled every episode's ~3KB vector per bit.
@@ -665,19 +636,11 @@ export class FableStore {
 
     for (const card of existing) {
       if (card.title !== kind) continue; // a "joke" never folds into a "ritual"
-      let dup = false;
-      if (incoming.size === 0) {
+      const dup = incoming.size === 0
         // Short texts ("Pip") have no content words — compare whole strings,
         // else every re-mention of a short nickname inserts a fresh card
-        dup = norm(card.content) === incomingNorm;
-      } else {
-        const ex = words(card.content);
-        if (ex.size > 0) {
-          let overlap = 0;
-          for (const w of incoming) if (ex.has(w)) overlap++;
-          dup = overlap / (incoming.size + ex.size - overlap) >= 0.5;
-        }
-      }
+        ? normalizeText(card.content) === incomingNorm
+        : jaccard(incoming, contentWords(card.content)) >= 0.5;
       if (dup) {
         this.db
           .prepare("UPDATE memory_cards SET importance = MIN(1.0, importance + 0.1), updated_at = ? WHERE id = ?")
@@ -692,7 +655,7 @@ export class FableStore {
   }
 
   /** Bond cards, strongest (most-reinforced) first. */
-  listBondCards(chatId: string, limit = 6): DbMemoryCard[] {
+  listSharedLanguageCards(chatId: string, limit = 6): DbMemoryCard[] {
     return this.listMemoryCards(chatId)
       .filter((c) => c.tags.includes("bond"))
       .sort((a, b) => b.importance - a.importance || b.updatedAt - a.updatedAt)
@@ -706,46 +669,6 @@ export class FableStore {
       .map(rowToMemoryCard);
     if (!entityId) return rows;
     return rows.filter((c) => c.entityIds.includes(entityId));
-  }
-
-  /**
-   * Episodic memories to inject into the prompt: scene cards and reflections,
-   * ranked by importance with a recency tiebreak, optionally boosted by
-   * relevance to the current conversation.
-   */
-  retrieveEpisodesForPrompt(
-    chatId: string,
-    limit = 3,
-    context = "",
-    queryEmbedding: Float32Array | null = null
-  ): DbMemoryCard[] {
-    // Bond cards (shared language) have their own retrieval path
-    const cards = this.listMemoryCards(chatId).filter((c) => !c.tags.includes("bond"));
-    if (cards.length === 0) return [];
-    const contextWords = new Set(
-      context.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3)
-    );
-    const cardVec = (id: number): Float32Array | null => {
-      const row = this.db.prepare("SELECT embedding FROM memory_cards WHERE id = ?").get(id) as
-        { embedding: Buffer | null } | undefined;
-      return bufferToVec(row?.embedding ?? null);
-    };
-    const relevance = (c: DbMemoryCard): number => {
-      if (queryEmbedding) {
-        const v = cardVec(c.id);
-        if (v) return Math.max(0, (cosine(queryEmbedding, v) - 0.3) / 0.6);
-      }
-      if (contextWords.size === 0) return 0;
-      const words = `${c.title} ${c.content}`.toLowerCase()
-        .replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3);
-      if (words.length === 0) return 0;
-      return words.filter((w) => contextWords.has(w)).length / words.length;
-    };
-    return [...cards]
-      .sort((a, b) =>
-        (b.importance + relevance(b)) - (a.importance + relevance(a)) ||
-        b.createdAt - a.createdAt)
-      .slice(0, limit);
   }
 
   // ── Commitments ───────────────────────────────────────────────────────────
@@ -777,7 +700,7 @@ export class FableStore {
   }
 
   /** Every commitment in the chat, either direction, newest first */
-  allCommitments(chatId: string, status?: CommitmentStatus): DbCommitment[] {
+  listAllCommitments(chatId: string, status?: CommitmentStatus): DbCommitment[] {
     const rows = this.db
       .prepare("SELECT * FROM commitments WHERE chat_id = ? ORDER BY created_at DESC")
       .all(chatId)
@@ -793,7 +716,7 @@ export class FableStore {
 
   // ── Character Summary ─────────────────────────────────────────────────────
 
-  characterSummary(chatId: string, entityId: string): CharacterSummaryData {
+  getCharacterSummary(chatId: string, entityId: string): CharacterSummaryData {
     const entity = this.getEntity(chatId, entityId);
     const facts  = this.queryFacts(chatId, entityId);
 
@@ -832,21 +755,13 @@ export class FableStore {
     return {
       entity,
       relationships,
-      facts: facts.map((f) => {
-        const objectEntity = f.objectId ? this.getEntity(chatId, f.objectId) : null;
-        const objectDisplay = objectEntity
-          ? objectEntity.name + (f.objectLiteral ? ` / "${f.objectLiteral}"` : "")
-          : f.objectLiteral
-          ? `"${f.objectLiteral}"`
-          : f.objectId ?? "";
-        return {
-          id:            f.id,
-          predicate:     f.predicate,
-          objectDisplay,
-          confidence:    f.confidence,
-          tValidStart:   f.tValidStart,
-        };
-      }),
+      facts: facts.map((f) => ({
+        id:            f.id,
+        predicate:     f.predicate,
+        objectDisplay: this.formatFactObject(chatId, f),
+        confidence:    f.confidence,
+        tValidStart:   f.tValidStart,
+      })),
       commitments,
     };
   }
@@ -859,39 +774,44 @@ export class FableStore {
    * Any stat rows that would violate the UNIQUE constraint after the repoint
    * are dropped (toId's existing value wins).
    */
+  /**
+   * Delete the `fromId` relationship_stats rows that a merge into `toId` would
+   * duplicate. Only the two column names are interpolated and both come from a
+   * closed literal union, so nothing user-supplied reaches the SQL.
+   */
+  private purgeStatConflicts(
+    chatId:    string,
+    fromId:    string,
+    toId:      string,
+    mergedCol: "observer_id" | "target_id",
+    otherCol:  "observer_id" | "target_id",
+  ): void {
+    const conflicts = this.db.prepare(`
+      SELECT rs1.id FROM relationship_stats rs1
+      WHERE rs1.chat_id = ? AND rs1.${mergedCol} = ?
+        AND EXISTS (
+          SELECT 1 FROM relationship_stats rs2
+          WHERE rs2.chat_id = rs1.chat_id AND rs2.${mergedCol} = ? AND rs2.${otherCol} = rs1.${otherCol} AND rs2.stat_name = rs1.stat_name
+        )
+    `).all(chatId, fromId, toId) as { id: number }[];
+    for (const row of conflicts) {
+      this.db.prepare("DELETE FROM relationship_stats WHERE id = ?").run(row.id);
+    }
+  }
+
   mergeEntity(chatId: string, fromId: string, toId: string): void {
     const doMerge = this.db.transaction(() => {
       // ── Facts: repoint subject and object references ──────────────────────
       this.db.prepare("UPDATE facts SET subject_id = ? WHERE chat_id = ? AND subject_id = ?").run(toId, chatId, fromId);
       this.db.prepare("UPDATE facts SET object_id  = ? WHERE chat_id = ? AND object_id  = ?").run(toId, chatId, fromId);
 
-      // ── Relationship stats (observer side) ────────────────────────────────
-      // Delete fromId rows that would collide with an existing toId row
-      const obsConflicts = this.db.prepare(`
-        SELECT rs1.id FROM relationship_stats rs1
-        WHERE rs1.chat_id = ? AND rs1.observer_id = ?
-          AND EXISTS (
-            SELECT 1 FROM relationship_stats rs2
-            WHERE rs2.chat_id = rs1.chat_id AND rs2.observer_id = ? AND rs2.target_id = rs1.target_id AND rs2.stat_name = rs1.stat_name
-          )
-      `).all(chatId, fromId, toId) as { id: number }[];
-      for (const row of obsConflicts) {
-        this.db.prepare("DELETE FROM relationship_stats WHERE id = ?").run(row.id);
-      }
+      // ── Relationship stats: both sides, same shape ────────────────────────
+      // Drop the fromId rows that would collide with an existing toId row,
+      // then repoint the rest.
+      this.purgeStatConflicts(chatId, fromId, toId, "observer_id", "target_id");
       this.db.prepare("UPDATE relationship_stats SET observer_id = ? WHERE chat_id = ? AND observer_id = ?").run(toId, chatId, fromId);
 
-      // ── Relationship stats (target side) ──────────────────────────────────
-      const tgtConflicts = this.db.prepare(`
-        SELECT rs1.id FROM relationship_stats rs1
-        WHERE rs1.chat_id = ? AND rs1.target_id = ?
-          AND EXISTS (
-            SELECT 1 FROM relationship_stats rs2
-            WHERE rs2.chat_id = rs1.chat_id AND rs2.target_id = ? AND rs2.observer_id = rs1.observer_id AND rs2.stat_name = rs1.stat_name
-          )
-      `).all(chatId, fromId, toId) as { id: number }[];
-      for (const row of tgtConflicts) {
-        this.db.prepare("DELETE FROM relationship_stats WHERE id = ?").run(row.id);
-      }
+      this.purgeStatConflicts(chatId, fromId, toId, "target_id", "observer_id");
       this.db.prepare("UPDATE relationship_stats SET target_id = ? WHERE chat_id = ? AND target_id = ?").run(toId, chatId, fromId);
 
       // ── Commitments ───────────────────────────────────────────────────────
@@ -911,9 +831,19 @@ export class FableStore {
       .prepare("SELECT * FROM core_memory WHERE chat_id = ? AND character_id = ?")
       .get(chatId, characterId) as { character_id: string; data: string; version: number; updated_at: number } | undefined;
     if (!row) return null;
+    let data: CoreMemory;
+    try {
+      data = JSON.parse(row.data) as CoreMemory;
+    } catch {
+      // A corrupted document reads as "no core memory yet", which the callers
+      // already handle by writing defaults — better than throwing out of every
+      // prompt build for this character.
+      console.error("[FableStore] core_memory JSON is unreadable", { chatId, characterId });
+      return null;
+    }
     return {
       characterId: row.character_id,
-      data:        JSON.parse(row.data) as CoreMemory,
+      data,
       version:     row.version,
       updatedAt:   row.updated_at,
     };
@@ -928,7 +858,7 @@ export class FableStore {
          ON CONFLICT(chat_id, character_id)
          DO UPDATE SET data = excluded.data, version = excluded.version, updated_at = excluded.updated_at`
       )
-      .run(chatId, cm.characterId, JSON.stringify({ ...cm, updatedAt: new Date(t * 1000).toISOString() }), cm.version ?? 1, t);
+      .run(chatId, cm.characterId, JSON.stringify({ ...cm, updatedAt: new Date(t * 1000).toISOString() }), cm.version, t);
   }
 
   /** Partial update — merges top-level keys only (not nested objects) */
@@ -936,7 +866,7 @@ export class FableStore {
     const existing = this.getCoreMemory(chatId, characterId);
     if (!existing) return null;
     const merged: CoreMemory = { ...existing.data, ...patch, characterId };
-    merged.version = (existing.version ?? 0) + 1;
+    merged.version = existing.version + 1;
     this.setCoreMemory(chatId, merged);
     return this.getCoreMemory(chatId, characterId);
   }
@@ -969,137 +899,14 @@ export class FableStore {
   // `seq` preserves array order. Full-replace semantics: the client sends its
   // complete state and the transaction rewrites the mirror atomically.
 
-  /** Small singleton values that aren't collections (default preset, global
-   *  instructions). Upserted rather than wiped so a client that omits one
-   *  doesn't null it. */
-  private getKv<T>(key: string, fallback: T): T {
-    const row = this.db.prepare("SELECT value FROM app_kv WHERE key = ?").get(key) as
-      | { value: string }
-      | undefined;
-    if (!row) return fallback;
-    try {
-      return JSON.parse(row.value) as T;
-    } catch {
-      return fallback;
-    }
+  getAppState(): PersistedAppState {
+    return getAppState(this.db);
   }
 
-  getAppState(): {
-    characters: unknown[]; chats: unknown[]; personas: unknown[];
-    lorebooks: unknown[]; scenarios: unknown[]; presets: unknown[];
-    defaultPresetId: string | null; globalInstructions: Record<string, unknown>;
-  } {
-    const characters = (this.db
-      .prepare("SELECT data FROM app_characters ORDER BY seq")
-      .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
-
-    const personas = (this.db
-      .prepare("SELECT data FROM app_personas ORDER BY seq")
-      .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
-
-    const lorebooks = (this.db
-      .prepare("SELECT data FROM app_lorebooks ORDER BY seq")
-      .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
-
-    const scenarios = (this.db
-      .prepare("SELECT data FROM app_scenarios ORDER BY seq")
-      .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
-
-    const presets = (this.db
-      .prepare("SELECT data FROM app_presets ORDER BY seq")
-      .all() as Array<{ data: string }>).map((r) => JSON.parse(r.data));
-
-    const chatRows = this.db
-      .prepare("SELECT id, data FROM app_chats ORDER BY seq")
-      .all() as Array<{ id: string; data: string }>;
-    const msgStmt = this.db.prepare(
-      "SELECT data FROM app_messages WHERE chat_id = ? ORDER BY seq"
-    );
-
-    const chats = chatRows.map((row) => ({
-      ...(JSON.parse(row.data) as Record<string, unknown>),
-      messages: (msgStmt.all(row.id) as Array<{ data: string }>).map((m) => JSON.parse(m.data)),
-    }));
-
-    return {
-      characters, chats, personas, lorebooks, scenarios, presets,
-      defaultPresetId:    this.getKv<string | null>("defaultPresetId", null),
-      globalInstructions: this.getKv<Record<string, unknown>>("globalInstructions", {}),
-    };
-  }
-
-  replaceAppState(state: {
-    characters: Array<{ id: string }>;
-    chats:      Array<{ id: string; messages?: Array<{ id: string }> }>;
-    personas?:  Array<{ id: string }>;
-    lorebooks?: Array<{ id: string }>;
-    scenarios?: Array<{ id: string }>;
-    presets?:   Array<{ id: string }>;
-    /** Omitted (undefined) means "leave as-is"; null means "clear". */
-    defaultPresetId?:    string | null;
-    globalInstructions?: unknown;
-  }): void {
-    const {
-      characters, chats,
-      personas = [], lorebooks = [], scenarios = [], presets = [],
-      defaultPresetId, globalInstructions,
-    } = state;
-
-    const tx = this.db.transaction(() => {
-      this.db.prepare("DELETE FROM app_characters").run();
-      this.db.prepare("DELETE FROM app_chats").run();
-      this.db.prepare("DELETE FROM app_messages").run();
-      this.db.prepare("DELETE FROM app_personas").run();
-      this.db.prepare("DELETE FROM app_lorebooks").run();
-      this.db.prepare("DELETE FROM app_scenarios").run();
-      this.db.prepare("DELETE FROM app_presets").run();
-
-      const insPreset = this.db.prepare(
-        "INSERT OR REPLACE INTO app_presets (id, seq, data) VALUES (?, ?, ?)"
-      );
-      presets.forEach((p, i) => insPreset.run(p.id, i, JSON.stringify(p)));
-
-      // app_kv is upserted, never cleared — an older client that doesn't send
-      // these fields must not wipe them.
-      const insKv = this.db.prepare(
-        "INSERT OR REPLACE INTO app_kv (key, value) VALUES (?, ?)"
-      );
-      if (defaultPresetId !== undefined) insKv.run("defaultPresetId", JSON.stringify(defaultPresetId));
-      if (globalInstructions !== undefined) insKv.run("globalInstructions", JSON.stringify(globalInstructions));
-
-      const insChar = this.db.prepare(
-        "INSERT OR REPLACE INTO app_characters (id, seq, data) VALUES (?, ?, ?)"
-      );
-      characters.forEach((c, i) => insChar.run(c.id, i, JSON.stringify(c)));
-
-      const insPersona = this.db.prepare(
-        "INSERT OR REPLACE INTO app_personas (id, seq, data) VALUES (?, ?, ?)"
-      );
-      personas.forEach((p, i) => insPersona.run(p.id, i, JSON.stringify(p)));
-
-      const insLorebook = this.db.prepare(
-        "INSERT OR REPLACE INTO app_lorebooks (id, seq, data) VALUES (?, ?, ?)"
-      );
-      lorebooks.forEach((l, i) => insLorebook.run(l.id, i, JSON.stringify(l)));
-
-      const insScenario = this.db.prepare(
-        "INSERT OR REPLACE INTO app_scenarios (id, seq, data) VALUES (?, ?, ?)"
-      );
-      scenarios.forEach((s, i) => insScenario.run(s.id, i, JSON.stringify(s)));
-
-      const insChat = this.db.prepare(
-        "INSERT OR REPLACE INTO app_chats (id, seq, data) VALUES (?, ?, ?)"
-      );
-      const insMsg = this.db.prepare(
-        "INSERT OR REPLACE INTO app_messages (id, chat_id, seq, data) VALUES (?, ?, ?, ?)"
-      );
-      chats.forEach((chat, i) => {
-        const { messages = [], ...meta } = chat;
-        insChat.run(chat.id, i, JSON.stringify(meta));
-        messages.forEach((m, j) => insMsg.run(m.id, chat.id, j, JSON.stringify(m)));
-      });
-    });
-    tx();
+  /** `defaultPresetId`/`globalInstructions` omitted (undefined) means "leave as-is". */
+  replaceAppState(state: Partial<PersistedAppState> &
+    Pick<PersistedAppState, "characters" | "chats">): void {
+    replaceAppState(this.db, state);
   }
 
   // ── Memory lifecycle ──────────────────────────────────────────────────────
@@ -1137,287 +944,36 @@ export class FableStore {
 
   // ── Memory transfer ───────────────────────────────────────────────────────
 
-  /**
-   * Chats that hold memories involving a character — candidates for
-   * "continue with memories" when starting a new chat with them.
-   */
-  listMemorySources(characterId: string): Array<{
-    chatId: string; chatName: string | null; facts: number; updatedAt: number;
-  }> {
-    const rows = this.db.prepare(`
-      SELECT cm.chat_id AS chat_id,
-             cm.updated_at AS updated_at,
-             (SELECT COUNT(*) FROM facts f
-               WHERE f.chat_id = cm.chat_id AND f.superseded_by IS NULL) AS facts
-      FROM core_memory cm
-      WHERE cm.character_id = ?
-      ORDER BY cm.updated_at DESC
-    `).all(characterId) as Array<{ chat_id: string; updated_at: number; facts: number }>;
-
-    const nameOf = this.db.prepare("SELECT data FROM app_chats WHERE id = ?");
-    return rows.map((r) => {
-      let chatName: string | null = null;
-      const chat = nameOf.get(r.chat_id) as { data: string } | undefined;
-      if (chat) {
-        try { chatName = (JSON.parse(chat.data) as { name?: string }).name ?? null; } catch { /* ignore */ }
-      }
-      return { chatId: r.chat_id, chatName, facts: r.facts, updatedAt: r.updated_at };
-    });
+  /** Chats holding memories that involve a character — see lib/db/transfer.ts. */
+  listMemorySources(characterId: string): ReturnType<typeof listMemorySources> {
+    return listMemorySources(this.db, characterId);
   }
 
-  /**
-   * Copy one chat's entire memory into another chat. Used for the explicit
-   * "continue with memories" option when starting a new chat — memory NEVER
-   * carries over implicitly. Existing rows in the target chat are preserved;
-   * colliding entities/stats keep the target's version.
-   * Fact supersession links are remapped onto the copied ids.
-   */
-  transferMemory(fromChatId: string, toChatId: string): { entities: number; facts: number; stats: number } {
-    let entities = 0, facts = 0, stats = 0;
-    const tx = this.db.transaction(() => {
-      // Entities — keep target's on collision
-      for (const e of this.listEntities(fromChatId)) {
-        if (!this.getEntity(toChatId, e.id)) {
-          this.insertEntity(toChatId, e);
-          entities++;
-        }
-      }
-
-      // Facts — copy all (incl. superseded, preserving history), remap ids
-      const srcFacts = this.db
-        .prepare("SELECT * FROM facts WHERE chat_id = ? ORDER BY id")
-        .all(fromChatId)
-        .map(rowToFact);
-      const idMap = new Map<number, number>();
-      // importance and embedding must ride along: dropping them reset every
-      // transferred fact to 0.5 (losing its retrieval rank) and silently
-      // downgraded transferred chats to lexical-only retrieval forever.
-      const ins = this.db.prepare(
-        `INSERT INTO facts (chat_id, subject_id, predicate, object_id, object_literal,
-           t_valid_start, t_valid_end, t_ingested, confidence, importance, embedding, known_to, superseded_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
-      );
-      const srcEmbedding = this.db.prepare("SELECT embedding FROM facts WHERE id = ?");
-      for (const f of srcFacts) {
-        const emb = (srcEmbedding.get(f.id) as { embedding: Buffer | null } | undefined)?.embedding ?? null;
-        const info = ins.run(
-          toChatId, f.subjectId, f.predicate, f.objectId, f.objectLiteral,
-          f.tValidStart, f.tValidEnd, f.tIngested, f.confidence, f.importance, emb, JSON.stringify(f.knownTo)
-        );
-        idMap.set(f.id, info.lastInsertRowid as number);
-        facts++;
-      }
-      const setSup = this.db.prepare("UPDATE facts SET superseded_by = ? WHERE id = ?");
-      for (const f of srcFacts) {
-        if (f.supersededBy !== null && idMap.has(f.supersededBy)) {
-          setSup.run(idMap.get(f.supersededBy)!, idMap.get(f.id)!);
-        }
-      }
-
-      // Stats — keep target's on collision
-      const srcStats = this.db
-        .prepare("SELECT * FROM relationship_stats WHERE chat_id = ?")
-        .all(fromChatId)
-        .map(rowToStat);
-      const insStat = this.db.prepare(
-        `INSERT OR IGNORE INTO relationship_stats
-           (chat_id, observer_id, target_id, stat_name, value, decay_rate, last_updated)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      );
-      for (const s of srcStats) {
-        const r = insStat.run(toChatId, s.observerId, s.targetId, s.statName, s.value, s.decayRate, s.lastUpdated);
-        if (r.changes > 0) stats++;
-      }
-
-      // Commitments and memory cards — straight copies
-      const srcCommit = this.db.prepare("SELECT * FROM commitments WHERE chat_id = ?").all(fromChatId).map(rowToCommitment);
-      const insCommit = this.db.prepare(
-        `INSERT INTO commitments (chat_id, promisor_id, promisee_id, description, status, created_at, resolved_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      );
-      for (const c of srcCommit) {
-        insCommit.run(toChatId, c.promisorId, c.promiseeId, c.description, c.status, c.createdAt, c.resolvedAt);
-      }
-      const srcCards = this.db.prepare("SELECT * FROM memory_cards WHERE chat_id = ?").all(fromChatId).map(rowToMemoryCard);
-      const insCard = this.db.prepare(
-        `INSERT INTO memory_cards (chat_id, title, content, tags, entity_ids, importance, embedding, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      );
-      const srcCardEmb = this.db.prepare("SELECT embedding FROM memory_cards WHERE id = ?");
-      for (const c of srcCards) {
-        const emb = (srcCardEmb.get(c.id) as { embedding: Buffer | null } | undefined)?.embedding ?? null;
-        insCard.run(toChatId, c.title, c.content, JSON.stringify(c.tags), JSON.stringify(c.entityIds), c.importance, emb, c.createdAt, c.updatedAt);
-      }
-
-      // Core memory — only if the target has none yet
-      const rows = this.db
-        .prepare("SELECT * FROM core_memory WHERE chat_id = ?")
-        .all(fromChatId) as Array<{ character_id: string; data: string; version: number; updated_at: number }>;
-      for (const row of rows) {
-        const exists = this.db
-          .prepare("SELECT 1 FROM core_memory WHERE chat_id = ? AND character_id = ?")
-          .get(toChatId, row.character_id);
-        if (!exists) {
-          this.db
-            .prepare("INSERT INTO core_memory (chat_id, character_id, data, version, updated_at) VALUES (?, ?, ?, ?, ?)")
-            .run(toChatId, row.character_id, row.data, row.version, row.updated_at);
-        }
-      }
-    });
-    tx();
-    return { entities, facts, stats };
+  transferMemory(fromChatId: string, toChatId: string): ReturnType<typeof transferMemory> {
+    return transferMemory(this, this.db, fromChatId, toChatId);
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  /** Resolve a fact's object to a display string */
-  factObjectDisplay(chatId: string, fact: DbFact): string {
+  /**
+   * Resolve a fact's object to a display string.
+   *
+   * `lookup` defaults to a per-call query. Retrieval passes its own, backed by
+   * the batch it already fetched, so rendering twenty facts doesn't mean
+   * twenty more queries.
+   */
+  formatFactObject(
+    chatId: string,
+    fact: DbFact,
+    lookup: (id: string) => DbEntity | null = (id) => this.getEntity(chatId, id)
+  ): string {
     if (fact.objectId) {
-      const e = this.getEntity(chatId, fact.objectId);
+      const e = lookup(fact.objectId);
       if (e) return e.name + (fact.objectLiteral ? ` / "${fact.objectLiteral}"` : "");
       return fact.objectId;
     }
     return fact.objectLiteral ? `"${fact.objectLiteral}"` : "";
   }
 
-  /**
-   * Retrieve the currently-valid facts to inject into the system prompt.
-   *
-   * Two failure modes shaped this, both caught by tests/memory-eval:
-   *
-   * 1. It used to consider ONLY facts whose subject or object was the character.
-   *    Everything the player says about themselves is stored under the `player`
-   *    entity, so none of it was ever retrievable — the character could not
-   *    remember your sister, your fear, or what you promised. For roleplay that
-   *    is the wrong half of the graph. Facts about the player are now a
-   *    first-class group with their own guaranteed share of the window.
-   *
-   * 2. Ranking by confidence-then-recency alone does not survive a long story.
-   *    Every exchange adds facts, so anything learned early is pushed out within
-   *    a handful of turns. Durable facts (identity, kinship, fears, promises,
-   *    location) are therefore ranked ahead of incidental ones inside each group.
-   *
-   * Facts about neither participant — world knowledge picked up along the way —
-   * compete for the remaining slots on relevance to the current conversation.
-   *
-   * `context` is recent conversation text; without it relevance is 0 everywhere
-   * and ordering falls back to durable-then-confidence-then-recency.
-   */
-  retrieveFactsForPrompt(
-    chatId: string,
-    characterId: string,
-    limit = 20,
-    context = "",
-    playerId = "player",
-    queryEmbedding: Float32Array | null = null
-  ): string[] {
-    // Witness filter: known_to = [] means public (every 1:1 fact); a
-    // non-empty list restricts the fact to characters who were present when
-    // it was established. A group member who was out of the scene must not
-    // "remember" what happened without them.
-    const all = this.queryAllLiveFacts(chatId).filter(
-      (f) => f.knownTo.length === 0 || f.knownTo.includes(characterId)
-    );
-
-    // Relevance: cosine similarity against the current exchange when both
-    // sides have embeddings (semantic — "the crossing" matches "afraid of deep
-    // water"), keyword overlap otherwise (lexical fallback).
-    const contextWords = new Set(
-      context.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3)
-    );
-    const relevanceOf = (f: DbFact): number => {
-      if (queryEmbedding) {
-        const v = this.factEmbedding(f.id);
-        // Rescale cosine (~0.3..0.9 in practice) onto roughly the same 0..1
-        // band lexical overlap produces, so mixed corpora rank sanely
-        if (v) return Math.max(0, (cosine(queryEmbedding, v) - 0.3) / 0.6);
-      }
-      if (contextWords.size === 0) return 0;
-      const text = `${f.predicate} ${f.objectId ?? ""} ${f.objectLiteral ?? ""}`.toLowerCase();
-      const words = text.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3);
-      if (words.length === 0) return 0;
-      return words.filter((w) => contextWords.has(w)).length / words.length;
-    };
-
-    // Importance first (with the durable-predicate heuristic as a floor, so a
-    // model that under-scores kinship/fear/promise facts can't age them out),
-    // then relevance to the current exchange, then confidence, then recency.
-    const importanceOf = (f: DbFact): number =>
-      Math.max(f.importance, isDurableFact(f.predicate) ? 0.75 : 0);
-    const rank = (a: DbFact, b: DbFact) =>
-      (importanceOf(b) - importanceOf(a)) ||
-      (relevanceOf(b) - relevanceOf(a)) ||
-      (b.confidence - a.confidence) ||
-      (b.tValidStart - a.tValidStart);
-
-    const involves = (f: DbFact, id: string) => f.subjectId === id || f.objectId === id;
-
-    // ── Pinned identity-core facts ────────────────────────────────────────
-    // Family, fears, obligations, self-definition about either participant
-    // bypass relevance ranking entirely. At 120 live facts vs a 20-slot
-    // window, "sister Lila" fell out of the ranked pool late in the Tilly
-    // soak and the model confabulated the opposite ("you're an only child")
-    // rather than saying it didn't know. The cost of a miss here is
-    // confident fiction, so these facts don't compete — they're always in.
-    const PIN_CAP = Math.max(2, Math.floor(limit * 0.4));
-    const pinned = all
-      .filter((f) => (involves(f, characterId) || involves(f, playerId)) && isIdentityCoreFact(f.predicate))
-      .sort(rank)
-      .slice(0, PIN_CAP);
-    const isPinned = new Set(pinned.map((f) => f.id));
-
-    const aboutCharacter = all.filter((f) => !isPinned.has(f.id) && involves(f, characterId)).sort(rank);
-    const aboutPlayer    = all.filter((f) => !isPinned.has(f.id) && !involves(f, characterId) && involves(f, playerId)).sort(rank);
-    const world          = all.filter((f) => !isPinned.has(f.id) && !involves(f, characterId) && !involves(f, playerId)).sort(rank);
-
-    // Each participant gets a guaranteed share of the remaining room so
-    // neither can be crowded out. Take quotas first, then backfill any unused
-    // room in group order, so a sparse group never wastes slots.
-    const room = Math.max(0, limit - pinned.length);
-    const quota = Math.max(1, Math.floor(room * 0.4));
-    const groups = [aboutCharacter, aboutPlayer, world];
-    const topFacts: DbFact[] = [
-      ...pinned,
-      ...aboutCharacter.slice(0, quota),
-      ...aboutPlayer.slice(0, quota),
-    ];
-    for (const group of groups) {
-      for (const f of group) {
-        if (topFacts.length >= limit) break;
-        if (!topFacts.includes(f)) topFacts.push(f);
-      }
-    }
-    topFacts.length = Math.min(topFacts.length, limit);
-
-    // Batch-fetch all referenced entities in one query (avoids N+1 per fact)
-    const entityIds = new Set<string>();
-    for (const f of topFacts) {
-      entityIds.add(f.subjectId);
-      if (f.objectId) entityIds.add(f.objectId);
-    }
-    const entityMap = new Map<string, DbEntity>();
-    if (entityIds.size > 0) {
-      const ids          = Array.from(entityIds);
-      const placeholders = ids.map(() => "?").join(",");
-      const fetched = this.db
-        .prepare(`SELECT * FROM entities WHERE chat_id = ? AND id IN (${placeholders})`)
-        .all(chatId, ...ids) as Array<{ id: string }>;
-      for (const row of fetched) entityMap.set(row.id, rowToEntity(row));
-    }
-
-    return topFacts.map((f) => {
-      const subj = entityMap.get(f.subjectId)?.name ?? f.subjectId;
-      let obj: string;
-      if (f.objectId) {
-        const e = entityMap.get(f.objectId);
-        obj = e
-          ? e.name + (f.objectLiteral ? ` / "${f.objectLiteral}"` : "")
-          : f.objectId;
-      } else {
-        obj = f.objectLiteral ? `"${f.objectLiteral}"` : "";
-      }
-      return `${subj} ${f.predicate} ${obj}`;
-    });
-  }
 
 }

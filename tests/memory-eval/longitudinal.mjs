@@ -20,7 +20,7 @@ import path from "node:path";
 const require = createRequire(import.meta.url);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(HERE, "../..");
-const Database = require(path.join(APP_ROOT, "node_modules/better-sqlite3"));
+const Database = require("better-sqlite3");
 
 const PORT = 3158;
 const EVAL_DB = path.join(HERE, ".eval-db", "longitudinal.db");

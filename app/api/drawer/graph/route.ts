@@ -1,9 +1,11 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
+import { routeError, badRequest } from "@/lib/api/server";
+import type { GraphPayload } from "@/lib/api/dto";
 
 export const dynamic = "force-dynamic";
 
-// ─── GET /api/drawer/graph?chat=X&character=Y ────────────────────────────────
+// ─── GET /api/drawer/graph?chatId=X&characterId=Y ────────────────────────────────
 // Everything the mind map needs in one payload: entities as nodes, live facts
 // as edges (literal objects become lightweight text nodes), episodic scene
 // cards and reflections as event nodes linked to their participants, the
@@ -11,10 +13,10 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const chatId      = req.nextUrl.searchParams.get("chat");
-    const characterId = req.nextUrl.searchParams.get("character");
+    const chatId      = req.nextUrl.searchParams.get("chatId");
+    const characterId = req.nextUrl.searchParams.get("characterId");
     if (!chatId) {
-      return Response.json({ error: "chat param required" }, { status: 400 });
+      return badRequest("chatId param required");
     }
 
     const store = getStore();
@@ -70,7 +72,7 @@ export async function GET(req: NextRequest) {
       ? store.getCoreMemory(chatId, characterId)?.data.mood ?? null
       : null;
 
-    const commitments = store.allCommitments(chatId).map((c) => ({
+    const commitments = store.listAllCommitments(chatId).map((c) => ({
       id:          `commit:${c.id}`,
       name:        c.description.length > 40 ? c.description.slice(0, 38) + "…" : c.description,
       description: c.description,
@@ -88,9 +90,8 @@ export async function GET(req: NextRequest) {
       commitments,
       bond,
       mood,
-    });
+    } satisfies GraphPayload);
   } catch (err) {
-    console.error("[drawer/graph]", err);
-    return Response.json({ error: String(err) }, { status: 500 });
+    return routeError("[drawer/graph]", err);
   }
 }
