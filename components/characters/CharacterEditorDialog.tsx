@@ -23,7 +23,16 @@ interface FormState {
   personality:  string;
   scenario:     string;
   firstMessage: string;
+  // Card fields — collapsed under "Card details"
+  exampleDialogue:         string;
+  systemPrompt:            string;
+  postHistoryInstructions: string;
+  alternateGreetings:      string;  // one per block, separated by a line of ---
+  creator:                 string;
+  creatorNotes:            string;
 }
+
+const GREETING_SEPARATOR = "\n---\n";
 
 function toFormState(source: Partial<Character> | null): FormState {
   return {
@@ -34,6 +43,12 @@ function toFormState(source: Partial<Character> | null): FormState {
     personality:  source?.personality ?? "",
     scenario:     source?.scenario ?? "",
     firstMessage: source?.firstMessage ?? "",
+    exampleDialogue:         source?.exampleDialogue ?? "",
+    systemPrompt:            source?.systemPrompt ?? "",
+    postHistoryInstructions: source?.postHistoryInstructions ?? "",
+    alternateGreetings:      (source?.alternateGreetings ?? []).join(GREETING_SEPARATOR),
+    creator:                 source?.creator ?? "",
+    creatorNotes:            source?.creatorNotes ?? "",
   };
 }
 
@@ -60,6 +75,16 @@ function EditorForm({ editing, draft }: { editing: Character | null; draft: Part
       personality:  form.personality.trim() || undefined,
       scenario:     form.scenario.trim()    || undefined,
       firstMessage: form.firstMessage.trim() || undefined,
+      exampleDialogue:         form.exampleDialogue.trim()         || undefined,
+      systemPrompt:            form.systemPrompt.trim()            || undefined,
+      postHistoryInstructions: form.postHistoryInstructions.trim() || undefined,
+      alternateGreetings: form.alternateGreetings.split(/\n\s*---\s*\n/).map((g) => g.trim()).filter(Boolean),
+      creator:      form.creator.trim()      || undefined,
+      creatorNotes: form.creatorNotes.trim() || undefined,
+      // Not editable here, but part of the card: carried through from what was
+      // opened so importing then saving does not silently drop platform data.
+      characterVersion: (editing ?? draft)?.characterVersion,
+      cardExtensions:   (editing ?? draft)?.cardExtensions,
     };
     if (editing) updateCharacter(editing.id, data);
     else addCharacter(data);
@@ -115,6 +140,36 @@ function EditorForm({ editing, draft }: { editing: Character | null; draft: Part
           <Textarea value={form.firstMessage} onChange={set("firstMessage")} rows={3}
             placeholder="*looks up from cleaning a pistol* You're late." />
         </Field>
+
+        <details className="rounded-lg border border-[var(--border)] px-3 py-2">
+          <summary className="cursor-pointer select-none text-xs font-medium text-[var(--foreground)]">
+            Card details <span className="font-normal text-[var(--muted-fg)]">— the rest of the character-card format</span>
+          </summary>
+          <div className="mt-3 space-y-4">
+            <Field label="Example dialogue" hint="how they speak — separate exchanges with <START>">
+              <Textarea value={form.exampleDialogue} onChange={set("exampleDialogue")} rows={4}
+                placeholder={"<START>\n{{user}}: Where were you?\n{{char}}: *shrugs* Around."} />
+            </Field>
+            <Field label="System prompt" hint="the card's own instructions to the model">
+              <Textarea value={form.systemPrompt} onChange={set("systemPrompt")} rows={3} />
+            </Field>
+            <Field label="Post-history instructions" hint="a reminder placed near the end of the prompt">
+              <Textarea value={form.postHistoryInstructions} onChange={set("postHistoryInstructions")} rows={2} />
+            </Field>
+            <Field label="Alternate greetings" hint="separate with a line containing only ---">
+              <Textarea value={form.alternateGreetings} onChange={set("alternateGreetings")} rows={3} />
+            </Field>
+            <Field label="Creator" hint="credited in exported cards">
+              <Input value={form.creator} onChange={set("creator")} />
+            </Field>
+            <Field label="Creator notes" hint="shown to people who download the card, never sent to the model">
+              <Textarea value={form.creatorNotes} onChange={set("creatorNotes")} rows={2} />
+            </Field>
+            <p className="text-[11px] text-[var(--muted-fg)]">
+              <code>{"{{char}}"}</code> and <code>{"{{user}}"}</code> are filled in with the character&apos;s name and your persona.
+            </p>
+          </div>
+        </details>
       </div>
 
       {/* Footer */}

@@ -3,6 +3,7 @@
 // retrieved facts/episodes/lore/shared language. Owned by generation.ts;
 // mirrored by hand in tests/memory-eval/long-chat.mjs — keep the two in step.
 
+import { expandMacros, formatExampleDialogue } from "@/lib/cards/tavern";
 import type { Character, Persona } from "@/lib/types";
 import type { CoreMemory } from "@/lib/db/models";
 
@@ -141,10 +142,21 @@ export function buildSystemPrompt({
   if (customPrompt?.trim()) {
     sections.push(`[Preset Instructions]\n${customPrompt.trim()}`);
   }
+  // The card's own instructions, after the app-wide ones so a global rule is
+  // not outranked by a downloaded card, but ahead of the character sheet.
+  if (character.systemPrompt?.trim()) {
+    sections.push(`[Character Instructions]\n${character.systemPrompt.trim()}`);
+  }
 
   if (character.description) sections.push(character.description);
   if (character.personality)  sections.push(`Personality: ${character.personality}`);
   if (character.scenario)     sections.push(`Current scenario: ${character.scenario}`);
+  if (character.exampleDialogue?.trim()) {
+    sections.push(
+      `[Example Dialogue]\nHow ${character.name} speaks. These show voice and style, not events that happened:\n` +
+      formatExampleDialogue(character.exampleDialogue)
+    );
+  }
 
   // ── User Persona ──────────────────────────────────────────────────────────
   if (persona) {
@@ -208,6 +220,11 @@ export function buildSystemPrompt({
   // negative constraints are the first thing a long prompt loses, and this
   // block is last precisely because behavioural rules survive better here.
   const banned = (forbiddenWords ?? []).filter((w) => w.trim());
+  // Post-history instructions go last of the card-sourced text, closest to the
+  // reply — which is what the field is for.
+  if (character.postHistoryInstructions?.trim()) {
+    sections.push(`[Reminder]\n${character.postHistoryInstructions.trim()}`);
+  }
   sections.push(
     `Write in first person. Be immersive and emotionally consistent with your current mood and relationship state. Do not break character or refer to yourself as an AI.\n` +
     `Your memory above is what you actually know. If asked about something not in your memory or this conversation, say you don't know or don't remember — do not invent specifics such as names, events, or promises.` +
@@ -216,7 +233,9 @@ export function buildSystemPrompt({
       : "")
   );
 
-  return sections.join("\n\n");
+  // Cards are written with {{char}} / {{user}} placeholders; the model must see
+  // names. Expanded once over everything, so lore and persona text are covered too.
+  return expandMacros(sections.join("\n\n"), { char: character.name, user: persona?.name ?? "User" });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

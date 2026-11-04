@@ -9,7 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PersonaEditorDialog } from "@/components/characters/PersonaEditorDialog";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Plus, MessageSquare, UserCircle2, Check, Sparkles, History } from "lucide-react";
+import { Plus, MessageSquare, UserCircle2, Check, Sparkles, History, Download } from "lucide-react";
+import { exportCharacter } from "@/lib/cards/export";
+import type { Character } from "@/lib/types";
 import { useUiStore } from "@/lib/store/ui";
 import { getJson, sendJson } from "@/lib/api/client";
 
@@ -53,6 +55,19 @@ export function CharactersView() {
         // so the inspector re-fetched, found nothing, and the user was told
         // nothing — a silent loss of what they asked for.
         .catch((e: Error) => setImportError(`Carrying memories forward failed — ${e.message}`));
+    }
+  };
+
+  /** Download a character as a PNG card or JSON; say so when their art could not ride along. */
+  const handleExport = async (character: Character, format: "png" | "json") => {
+    setImportError(null);
+    try {
+      const { usedAvatar } = await exportCharacter(character, { format });
+      if (format === "png" && !usedAvatar) {
+        setImportError(`Exported ${character.name} with a blank image — this character has no uploaded art to embed.`);
+      }
+    } catch (e) {
+      setImportError(`Export failed — ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -132,6 +147,20 @@ export function CharactersView() {
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => openCharacterEditor(char.id)}>
                   Edit
+                </Button>
+                <Button
+                  variant="outline" size="sm"
+                  title="Download as a PNG character card (SillyTavern, Chub and others read it)"
+                  onClick={() => handleExport(char, "png")}
+                >
+                  <Download className="h-3 w-3 mr-1" />PNG
+                </Button>
+                <Button
+                  variant="outline" size="sm"
+                  title="Download as card JSON"
+                  onClick={() => handleExport(char, "json")}
+                >
+                  JSON
                 </Button>
               </div>
             </Card>

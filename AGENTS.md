@@ -71,6 +71,10 @@ Two memory layers, both per-character:
 
 **The extraction gate is deliberately dumb.** See `docs/extraction-gate.md` before changing it: content-based skipping was measured and rejected. Run `npm run eval:gate` after touching it.
 
+**Cards are `lib/cards/`.** `png.ts` is the only PNG codec (read and write); `tavern.ts` owns Character ↔ Tavern V2 and `expandMacros`. Import (`lib/import/cardFile.ts`) and export (`lib/cards/export.ts`) both go through it, so a field is added in one place and round-trips. A new `Character` field needs: the type, `characterToCard`, `cardToCharacterDraft`, the editor form, and a line in `tests/unit/cardsTavern.test.mjs`. Anything the editor does not show but the card carries (`cardExtensions`, `characterVersion`) must be passed through on save — `CharacterEditorDialog` builds the character from the form, so a field missing from `handleSave` is silently dropped. The migration plan is `docs/merge-characterbinder.md`.
+
+**Card text has placeholders.** `{{char}}` / `{{user}}` are expanded once, over the whole assembled system prompt (`buildSystemPrompt`) and in opening messages (`fillGreeting`). Never send card-sourced text to a model another way.
+
 ## Before you finish
 
 `npm run lint` and `npx tsc --noEmit` are both expected to be clean. Verify UI changes in the running app rather than assuming.

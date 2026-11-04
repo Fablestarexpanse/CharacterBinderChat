@@ -2,8 +2,9 @@
 
 import type { StateCreator } from "zustand";
 import type { FableStore } from "../index";
+import { expandMacros } from "@/lib/cards/tavern";
 import type {
-  Character, Chat, GenerationParams, MemoryTrace, Message, PersistedAppState, ProviderId,
+  Character, Chat, GenerationParams, MemoryTrace, Message, PersistedAppState, Persona, ProviderId,
 } from "@/lib/types";
 
 export interface ChatsSlice {
@@ -92,6 +93,19 @@ function patchMessage(
     ...c,
     messages: c.messages.map((m) => (m.id === messageId ? patch(m) : m)),
   }));
+}
+
+/**
+ * An opening message with its {{char}}/{{user}} placeholders filled in. Cards
+ * are written with them, and a greeting that opens "*{{char}} smiles at {{user}}*"
+ * is the first thing a new chat shows.
+ */
+function fillGreeting(
+  state: { personas: Persona[]; activePersonaId: string | null },
+  text: string, characterName: string, personaId?: string | null,
+): string {
+  const persona = state.personas.find((x) => x.id === (personaId ?? state.activePersonaId));
+  return expandMacros(text, { char: characterName, user: persona?.name ?? "User" });
 }
 
 export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (set, get) => ({
@@ -241,7 +255,7 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
         id:          `msg-${Date.now()}-first`,
         chatId:      id,
         role:        "assistant",
-        content:     character.firstMessage,
+        content:     fillGreeting(get(), character.firstMessage, character.name),
         characterId: character.id,
         timestamp:   new Date().toISOString(),
       });
@@ -272,7 +286,7 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
           id:          `msg-${Date.now()}-first`,
           chatId:      id,
           role:        "assistant",
-          content:     opening,
+          content:     fillGreeting(get(), opening, character?.name ?? "", personaId),
           characterId: character?.id,
           timestamp:   new Date().toISOString(),
         }]
@@ -313,7 +327,7 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
         id:          `msg-${Date.now()}-first`,
         chatId:      id,
         role:        "assistant",
-        content:     members[0].firstMessage,
+        content:     fillGreeting(get(), members[0].firstMessage, members[0].name),
         characterId: members[0].id,
         timestamp:   new Date().toISOString(),
       });
@@ -372,7 +386,7 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
             id:          `msg-${Date.now()}-first`,
             chatId,
             role:        "assistant",
-            content:     character.firstMessage,
+            content:     fillGreeting(state, character.firstMessage, character.name),
             characterId: character.id,
             timestamp:   new Date().toISOString(),
           }]

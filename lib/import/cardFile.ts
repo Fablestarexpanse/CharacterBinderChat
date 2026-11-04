@@ -10,6 +10,8 @@
 //   script                                       → script_card_v1 (unsupported)
 
 import type { Character, LoreEntry } from "@/lib/types";
+import { decodeCardPng, isPng } from "@/lib/cards/png";
+import { cardData, cardToCharacterDraft } from "@/lib/cards/tavern";
 
 // ─── Result types ─────────────────────────────────────────────────────────────
 
@@ -26,118 +28,23 @@ export type ImportedCard =
   | { kind: "scenario"; name: string; book: ImportedLorebook; firstMessage?: string }
   | { kind: "unsupported"; reason: string };
 
-// ─── PNG text-chunk reader ────────────────────────────────────────────────────
+// ─── PNG ──────────────────────────────────────────────────────────────────────
+// One codec for read and write: lib/cards/png.ts. This file used to carry its own
+// read-only copy.
 
-const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
-const KNOWN_KEYS = ["chara", "character", "tavern", "tavern_card_v2", "lorebook", "script", "scenario", "persona"];
-
-export function isPng(bytes: Uint8Array): boolean {
-  return bytes.length >= 8 && PNG_SIGNATURE.every((b, i) => bytes[i] === b);
-}
-
-/** Read every tEXt/iTXt keyword→text pair from a PNG. */
-function readPngText(bytes: Uint8Array): Map<string, string> {
-  const out = new Map<string, string>();
-  const dec = new TextDecoder();
-  let offset = 8;
-  while (offset + 8 <= bytes.length) {
-    // Unsigned read: signed shifts turn a length byte >= 0x80 negative, which
-    // walked `offset` backwards and hung the tab in an infinite loop on a
-    // corrupt or crafted PNG.
-    const length =
-      ((bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3]) >>> 0;
-    // A declared length past the end of the file is malformed — stop parsing
-    if (length > bytes.length - offset - 8) break;
-    const type = String.fromCharCode(bytes[offset + 4], bytes[offset + 5], bytes[offset + 6], bytes[offset + 7]);
-    const data = bytes.slice(offset + 8, offset + 8 + length);
-    offset += 12 + length; // len + type + data + crc
-    if (type === "IEND") break;
-    if (type !== "tEXt" && type !== "iTXt") continue;
-
-    const nullIdx = data.indexOf(0);
-    if (nullIdx === -1) continue;
-    const keyword = dec.decode(data.slice(0, nullIdx));
-
-    let text: string | null = null;
-    if (type === "tEXt") {
-      text = dec.decode(data.slice(nullIdx + 1));
-    } else {
-      // iTXt: keyword \0 compFlag compMethod lang \0 translated \0 text
-      let pos = nullIdx + 1;
-      const compressed = data[pos] !== 0;
-      pos += 2;
-      while (pos < data.length && data[pos] !== 0) pos++;
-      pos++;
-      while (pos < data.length && data[pos] !== 0) pos++;
-      pos++;
-      if (!compressed) text = dec.decode(data.slice(pos));
-    }
-    if (text !== null && !out.has(keyword)) out.set(keyword, text);
-  }
-  return out;
-}
-
-/** Base64 → UTF-8 string, or null if the input isn't base64. */
-function tryBase64(text: string): string | null {
-  try {
-    const bin = atob(text.trim());
-    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-    return new TextDecoder().decode(bytes);
-  } catch {
-    return null;
-  }
-}
+export { isPng };
 
 /** Extract the embedded JSON payload (and which keyword held it) from a PNG. */
 export function decodePngPayload(bytes: Uint8Array): { key: string; json: unknown } | null {
-  if (!isPng(bytes)) return null;
-  const texts = readPngText(bytes);
-  for (const key of KNOWN_KEYS) {
-    const raw = texts.get(key);
-    if (!raw) continue;
-    for (const candidate of [tryBase64(raw), raw]) {
-      if (!candidate) continue;
-      try {
-        return { key, json: JSON.parse(candidate) };
-      } catch {
-        // try the next decoding
-      }
-    }
-  }
-  return null;
+  const decoded = decodeCardPng(bytes);
+  if (decoded.json === null || decoded.key === null) return null;
+  return { key: decoded.key, json: JSON.parse(decoded.json) };
 }
 
 // ─── Converters ───────────────────────────────────────────────────────────────
 
 type Obj = Record<string, unknown>;
 const str = (o: Obj, k: string) => (typeof o[k] === "string" ? (o[k] as string) : undefined);
-
-/** A v2 card nests everything under `data`; a malformed one falls back to the flat object. */
-const cardData = (o: Obj): Obj =>
-  o.spec === "chara_card_v2" && o.data && typeof o.data === "object" ? (o.data as Obj) : o;
-
-/** SillyTavern v1/v2 card (or CharacterBinder character) → Character draft. */
-function parseCharacterCard(json: unknown): Partial<Character> | null {
-  if (!json || typeof json !== "object") return null;
-  const obj = json as Obj;
-  const data = cardData(obj);
-
-  const name = str(data, "name");
-  if (!name?.trim()) return null;
-
-  const avatar = str(data, "avatar");
-  return {
-    name,
-    description:  str(data, "description") ?? "",
-    personality:  str(data, "personality"),
-    scenario:     str(data, "scenario"),
-    firstMessage: str(data, "first_mes") ?? str(data, "firstMessage"),
-    avatar:       avatar && avatar !== "none" ? avatar : undefined,
-    tags: Array.isArray(data.tags)
-      ? (data.tags as unknown[]).filter((t): t is string => typeof t === "string")
-      : [],
-  };
-}
 
 /** One CharacterBook / LoreBook / world-info entry → FableChat LoreEntry fields. */
 function convertLoreEntry(e: Obj): Omit<LoreEntry, "id" | "lorebookId"> | null {
@@ -264,7 +171,7 @@ export function convertPayload(json: unknown, key: string | null): ImportedCard 
   }
 
   // Character (chara_card_v2, v1 flat, or FableChat's own JSON)
-  const draft = parseCharacterCard(json);
+  const draft = cardToCharacterDraft(json);
   if (draft) {
     const data = cardData(obj);
     const embeddedBook =

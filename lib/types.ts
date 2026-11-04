@@ -13,6 +13,22 @@ export interface Character {
   scenario?: string;
   firstMessage?: string;
   tags: string[];
+  // ─── Card fields ─────────────────────────────────────────────────────────
+  // The rest of the Tavern Card V2 spec, so an imported card survives a round
+  // trip instead of being flattened to the fields the editor happened to have.
+  /** Sample exchanges, in the card's `<START>` / {{char}}: / {{user}}: format */
+  exampleDialogue?: string;
+  /** The card's own instructions to the model */
+  systemPrompt?: string;
+  /** Reminder placed after the history; here, near the end of the system prompt */
+  postHistoryInstructions?: string;
+  /** Other opening messages the user can pick from when starting a chat */
+  alternateGreetings?: string[];
+  creator?: string;
+  creatorNotes?: string;
+  characterVersion?: string;
+  /** Platform-specific data the card carried, kept verbatim so export gives it back */
+  cardExtensions?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
