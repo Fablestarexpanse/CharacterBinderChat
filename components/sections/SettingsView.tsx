@@ -9,6 +9,8 @@ import { OllamaProvider } from "@/lib/providers/ollama";
 import { LMStudioProvider } from "@/lib/providers/lmstudio";
 import { OpenRouterProvider } from "@/lib/providers/openrouter";
 import { ComfyUIProvider } from "@/lib/providers/comfyui";
+import { useThemeStore } from "@/lib/store/theme";
+import { ACCENT_PRESETS, accentHex, normalizeHex, type ThemeMode } from "@/lib/theme";
 import { CheckCircle, XCircle, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 
 // ─── Per-provider test state ──────────────────────────────────────────────────
@@ -116,6 +118,112 @@ function ProviderCard({ name, description, children, onTest, helpText }: Provide
   );
 }
 
+// ─── Appearance ───────────────────────────────────────────────────────────────
+
+const MODES: { id: ThemeMode; label: string }[] = [
+  { id: "light",  label: "Light" },
+  { id: "dark",   label: "Dark" },
+  { id: "system", label: "Match system" },
+];
+
+function AppearanceCard() {
+  const theme = useThemeStore();
+  const current = accentHex(theme);
+  // The text box holds a half-typed value; only a valid hex is committed.
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? current;
+  const draftInvalid = draft !== null && normalizeHex(draft) === null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="font-semibold text-sm">Appearance</div>
+            <div className="text-xs text-[var(--muted-fg)]">Recolor the app. Saved in this browser only.</div>
+          </div>
+          <Button variant="outline" size="sm" className="h-7 px-3 text-xs" onClick={() => { theme.reset(); setDraft(null); }}>
+            Reset
+          </Button>
+        </div>
+      </CardHeader>
+      <CardBody className="space-y-4">
+        <div className="space-y-1.5">
+          <label className="block text-xs font-medium text-[var(--foreground)]">Mode</label>
+          <div role="radiogroup" aria-label="Color mode" className="inline-flex rounded-lg border border-[var(--border)] overflow-hidden">
+            {MODES.map((m) => (
+              <button
+                key={m.id}
+                role="radio"
+                aria-checked={theme.mode === m.id}
+                onClick={() => theme.setMode(m.id)}
+                className={`px-3 py-1.5 text-xs font-medium cursor-pointer transition-colors ${
+                  theme.mode === m.id
+                    ? "bg-[var(--purple)] text-white"
+                    : "text-[var(--foreground)] hover:bg-[var(--muted)]"
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="block text-xs font-medium text-[var(--foreground)]">Accent color</label>
+          <div role="radiogroup" aria-label="Accent color" className="flex flex-wrap gap-2">
+            {ACCENT_PRESETS.map((p) => {
+              const selected = theme.accentId === p.id;
+              return (
+                <button
+                  key={p.id}
+                  role="radio"
+                  aria-checked={selected}
+                  aria-label={p.label}
+                  title={p.label}
+                  onClick={() => { theme.setAccent(p.id); setDraft(null); }}
+                  style={{ backgroundColor: p.hex }}
+                  className={`h-7 w-7 rounded-full cursor-pointer transition-shadow ${
+                    selected ? "ring-2 ring-offset-2 ring-[var(--foreground)] ring-offset-[var(--card)]" : "hover:ring-2 hover:ring-[var(--border)]"
+                  }`}
+                />
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="block text-xs font-medium text-[var(--foreground)]">Custom color</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              aria-label="Pick a custom accent color"
+              value={theme.accentId === "custom" ? theme.customAccent : current}
+              onChange={(e) => { theme.setCustomAccent(e.target.value); setDraft(null); }}
+              className="h-8 w-10 cursor-pointer rounded border border-[var(--border)] bg-transparent p-0.5"
+            />
+            <Input
+              value={shown}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                if (normalizeHex(e.target.value)) theme.setCustomAccent(e.target.value);
+              }}
+              onBlur={() => setDraft(null)}
+              placeholder="#7c5cbf"
+              aria-invalid={draftInvalid}
+              className={`w-32 font-mono ${draftInvalid ? "border-red-300" : ""}`}
+            />
+            {draftInvalid && <span className="text-xs text-red-500">Use a hex like #7c5cbf</span>}
+          </div>
+          <p className="text-[11px] text-[var(--muted-fg)]">
+            Colors too light for white text are darkened automatically so buttons stay readable.
+          </p>
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
 // ─── Main Settings View ───────────────────────────────────────────────────────
 
 export function SettingsView() {
@@ -175,7 +283,7 @@ export function SettingsView() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-white">
+    <div className="flex-1 overflow-y-auto p-6 bg-[var(--card)]">
       <div className="max-w-2xl mx-auto space-y-6">
         <div>
           <h1 className="text-xl font-bold text-[var(--foreground)]">Settings</h1>
@@ -183,6 +291,8 @@ export function SettingsView() {
             Configure your AI providers. Hit <strong>Test</strong> to verify a connection and see available models.
           </p>
         </div>
+
+        <AppearanceCard />
 
         {/* Ollama */}
         <ProviderCard

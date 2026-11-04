@@ -93,7 +93,7 @@ function BuilderForm() {
                       className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-left transition-colors cursor-pointer ${
                         active
                           ? "border-[var(--purple)] bg-[var(--purple-light)]"
-                          : "border-[var(--border)] bg-white hover:bg-[var(--muted)]"
+                          : "border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)]"
                       }`}
                     >
                       <Avatar name={c.name} src={c.avatar} size="xs" />
@@ -121,7 +121,7 @@ function BuilderForm() {
                     className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-left transition-colors cursor-pointer ${
                       active
                         ? "border-[var(--purple)] bg-[var(--purple-light)]"
-                        : "border-[var(--border)] bg-white hover:bg-[var(--muted)]"
+                        : "border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)]"
                     }`}
                   >
                     <Avatar name={p.name} src={p.avatar} size="xs" />
@@ -154,7 +154,7 @@ function BuilderForm() {
                       className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition-colors cursor-pointer ${
                         active
                           ? "border-[var(--purple)] bg-[var(--purple-light)] text-[var(--purple-fg)]"
-                          : "border-[var(--border)] bg-white text-[var(--muted-fg)] hover:text-[var(--foreground)]"
+                          : "border-[var(--border)] bg-[var(--card)] text-[var(--muted-fg)] hover:text-[var(--foreground)]"
                       }`}
                     >
                       <Globe className="h-3 w-3" />
@@ -175,7 +175,7 @@ function BuilderForm() {
                 className={`w-full flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-colors cursor-pointer ${
                   scenarioId === null
                     ? "border-[var(--purple)] bg-[var(--purple-light)]"
-                    : "border-[var(--border)] bg-white hover:bg-[var(--muted)]"
+                    : "border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)]"
                 }`}
               >
                 <MessageSquare className={`h-3.5 w-3.5 flex-shrink-0 ${scenarioId === null ? "text-[var(--purple-fg)]" : "text-[var(--muted-fg)]"}`} />
@@ -198,7 +198,7 @@ function BuilderForm() {
                     className={`w-full flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-colors cursor-pointer ${
                       active
                         ? "border-[var(--purple)] bg-[var(--purple-light)]"
-                        : "border-[var(--border)] bg-white hover:bg-[var(--muted)]"
+                        : "border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)]"
                     }`}
                   >
                     <Clapperboard className={`h-3.5 w-3.5 flex-shrink-0 ${active ? "text-[var(--purple-fg)]" : "text-[var(--muted-fg)]"}`} />

@@ -67,7 +67,7 @@ export function MemoryTab() {
               onClick={() => setMemorySubTab(tab.id)}
               className={`flex-1 py-1 text-[10px] font-medium transition-colors ${
                 memorySubTab === tab.id
-                  ? "bg-white text-[var(--purple-fg)] shadow-sm"
+                  ? "bg-[var(--card)] text-[var(--purple-fg)] shadow-sm"
                   : "text-[var(--muted-fg)] hover:text-[var(--foreground)]"
               }`}
             >

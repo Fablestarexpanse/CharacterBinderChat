@@ -19,7 +19,7 @@ export function DialogContent({
       <DialogPrimitive.Content
         className={cn(
           "fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2",
-          "flex max-h-[85vh] flex-col rounded-2xl border border-[var(--border)] bg-white shadow-xl",
+          "flex max-h-[85vh] flex-col rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-xl",
           "focus:outline-none",
           className
         )}

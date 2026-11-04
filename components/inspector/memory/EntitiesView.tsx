@@ -120,7 +120,7 @@ export function EntitiesView({ chatId, extractionVersion }: Props) {
             const names = cluster.map((id) => entityMap.get(id)?.name ?? id);
 
             return (
-              <div key={clusterId} className="rounded border border-amber-200 bg-white p-2.5 space-y-1.5">
+              <div key={clusterId} className="rounded border border-amber-200 bg-[var(--card)] p-2.5 space-y-1.5">
                 <div className="text-[10px] text-amber-800 font-medium">
                   {cluster.map((id, i) => (
                     <span key={id}>
@@ -189,7 +189,7 @@ export function EntitiesView({ chatId, extractionVersion }: Props) {
           {entities.map((e) => (
             <div
               key={e.id}
-              className="rounded-lg border border-[var(--border)] bg-white p-2.5 flex items-start justify-between gap-2"
+              className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-2.5 flex items-start justify-between gap-2"
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">

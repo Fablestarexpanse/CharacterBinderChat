@@ -39,7 +39,7 @@ export function ChatsView() {
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-white">
+    <div className="flex-1 overflow-y-auto p-6 bg-[var(--card)]">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-start justify-between gap-4 mb-6">
           <div>

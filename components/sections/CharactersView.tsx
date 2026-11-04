@@ -84,7 +84,7 @@ export function CharactersView() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-white">
+    <div className="flex-1 overflow-y-auto p-6 bg-[var(--card)]">
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -211,7 +211,7 @@ export function CharactersView() {
                         <div className="flex items-center gap-1.5">
                           <span className="font-semibold text-sm text-[var(--foreground)]">{p.name}</span>
                           {isActive && (
-                            <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-[var(--purple-fg)] bg-white border border-[var(--purple)] rounded-full px-1.5 py-0.5">
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-[var(--purple-fg)] bg-[var(--card)] border border-[var(--purple)] rounded-full px-1.5 py-0.5">
                               <Check className="h-2.5 w-2.5" />
                               Active
                             </span>

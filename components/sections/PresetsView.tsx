@@ -203,7 +203,7 @@ export function PresetsView() {
   const hidden = advanced.filter((a) => paramSupport(providerId, a.key, model) === "unsupported");
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-white">
+    <div className="flex-1 overflow-y-auto p-6 bg-[var(--card)]">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-start justify-between mb-6">
           <div>

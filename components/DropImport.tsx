@@ -63,7 +63,7 @@ export function DropImport() {
     <>
       {dragging && (
         <div className="fixed inset-0 z-50 bg-[var(--purple)]/10 backdrop-blur-[2px] flex items-center justify-center pointer-events-none">
-          <div className="rounded-2xl border-2 border-dashed border-[var(--purple)] bg-white px-10 py-8 text-center shadow-lg">
+          <div className="rounded-2xl border-2 border-dashed border-[var(--purple)] bg-[var(--card)] px-10 py-8 text-center shadow-lg">
             <FileDown className="h-8 w-8 text-[var(--purple-fg)] mx-auto mb-3" />
             <div className="text-sm font-semibold text-[var(--foreground)]">Drop cards to import</div>
             <div className="text-xs text-[var(--muted-fg)] mt-1">

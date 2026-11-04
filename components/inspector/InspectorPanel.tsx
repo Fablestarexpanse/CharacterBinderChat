@@ -59,7 +59,7 @@ export function InspectorPanel() {
       )}
 
       {/* Tab bar */}
-      <div className="flex border-b border-[var(--border)] bg-white px-2 pt-2 gap-0.5 flex-shrink-0 overflow-x-auto">
+      <div className="flex border-b border-[var(--border)] bg-[var(--card)] px-2 pt-2 gap-0.5 flex-shrink-0 overflow-x-auto">
         {TABS.map((tab) => (
           <button
             key={tab.id}

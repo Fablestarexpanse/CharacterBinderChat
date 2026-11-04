@@ -116,7 +116,7 @@ export function ChatHeader() {
   );
 
   return (
-    <div className="flex items-center gap-3 px-4 h-14 border-b border-[var(--border)] bg-white flex-shrink-0">
+    <div className="flex items-center gap-3 px-4 h-14 border-b border-[var(--border)] bg-[var(--card)] flex-shrink-0">
       {/* Back to the chat list — clearing the active chat is what shows it */}
       <button
         onClick={() => setActiveChatId(null)}
@@ -178,7 +178,7 @@ export function ChatHeader() {
           <select
             value={currentModel}
             onChange={handleModelChange}
-            className={`h-8 rounded-lg border border-[var(--border)] bg-white text-xs text-[var(--foreground)] pr-2 focus:outline-none focus:ring-1 focus:ring-[var(--purple)] focus:border-[var(--purple)] ${
+            className={`h-8 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs text-[var(--foreground)] pr-2 focus:outline-none focus:ring-1 focus:ring-[var(--purple)] focus:border-[var(--purple)] ${
               loadingModels ? "pl-6" : "pl-2"
             }`}
             style={{ maxWidth: "200px" }}

@@ -181,7 +181,7 @@ function ChatRow({
               if (e.key === "Enter") commitRename();
               if (e.key === "Escape") { setDraft(chat.name); setRenaming(false); }
             }}
-            className="w-full rounded border border-[var(--purple)] bg-white px-1 py-0.5 text-xs text-[var(--foreground)] focus:outline-none"
+            className="w-full rounded border border-[var(--purple)] bg-[var(--card)] px-1 py-0.5 text-xs text-[var(--foreground)] focus:outline-none"
           />
         ) : (
           <>

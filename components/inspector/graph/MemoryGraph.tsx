@@ -441,7 +441,7 @@ export function MemoryGraph({ chatId, characterId, extractionVersion, full = fal
     <div ref={wrapRef} className="relative h-full w-full overflow-hidden">
       <canvas ref={canvasRef} className="block h-full w-full" />
       {/* Legend */}
-      <div className="pointer-events-none absolute bottom-2 left-2 flex flex-wrap gap-x-3 gap-y-1 rounded-lg bg-white/85 px-2.5 py-1.5 text-[9px] text-[var(--muted-fg)]">
+      <div className="pointer-events-none absolute bottom-2 left-2 flex flex-wrap gap-x-3 gap-y-1 rounded-lg bg-[var(--card)]/85 px-2.5 py-1.5 text-[9px] text-[var(--muted-fg)]">
         {[
           ["character", "Character"], ["place", "Place"], ["object", "Object"],
           ["faction", "Faction"], ["episode", "Scene"], ["insight", "Insight"],

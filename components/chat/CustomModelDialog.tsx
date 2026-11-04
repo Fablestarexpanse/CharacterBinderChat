@@ -83,7 +83,7 @@ export function CustomModelDialog({
             <select
               value={provider}
               onChange={(e) => setProvider(e.target.value as ProviderId)}
-              className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--purple)]"
+              className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--purple)]"
             >
               <option value="openrouter">OpenRouter</option>
               <option value="ollama">Ollama</option>

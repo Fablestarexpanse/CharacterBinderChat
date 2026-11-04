@@ -14,11 +14,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         className={cn(
           "inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--purple)] disabled:opacity-50 disabled:pointer-events-none cursor-pointer",
           {
-            "bg-[var(--foreground)] text-white hover:bg-[#2a2a3e]": variant === "default",
+            "bg-[var(--foreground)] text-[var(--background)] hover:opacity-85": variant === "default",
             "hover:bg-[var(--muted)] text-[var(--foreground)]": variant === "ghost",
             "border border-[var(--border)] hover:bg-[var(--muted)] text-[var(--foreground)]": variant === "outline",
             "bg-[var(--purple)] text-white hover:bg-[var(--purple-fg)]": variant === "purple",
-            "bg-[var(--purple-light)] text-[var(--purple-fg)] hover:bg-purple-100": variant === "subtle",
+            "bg-[var(--purple-light)] text-[var(--purple-fg)] hover:brightness-95": variant === "subtle",
           },
           {
             "h-7 px-2.5 text-xs gap-1": size === "sm",

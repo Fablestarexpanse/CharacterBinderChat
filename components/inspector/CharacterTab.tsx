@@ -106,7 +106,7 @@ export function CharacterTab() {
   return (
     <div className="p-3 space-y-3">
       {/* Who's in the scene: the character... */}
-      <div className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-white p-3">
+      <div className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
         <Avatar name={character.name} src={character.avatar} size="md" />
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold text-[var(--foreground)] truncate">{character.name}</div>
@@ -121,7 +121,7 @@ export function CharacterTab() {
       </div>
 
       {/* ...and you (the active persona) — click to switch to any saved one */}
-      <div className="rounded-lg border border-[var(--border)] bg-white overflow-hidden">
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] overflow-hidden">
         <button
           onClick={() => setPersonaPickerOpen((v) => !v)}
           title="Switch persona"
@@ -189,7 +189,7 @@ export function CharacterTab() {
           <div className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider mb-2">
             How {character.name} feels about you
           </div>
-          <div className="rounded-lg border border-[var(--border)] bg-white p-3 space-y-2">
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 space-y-2">
             {playerStats.map((s) => (
               <StatBar key={s.name} name={s.name} value={s.value} />
             ))}
@@ -207,7 +207,7 @@ export function CharacterTab() {
             {relationships.map((rel) => (
               <div
                 key={rel.targetId}
-                className="rounded-lg border border-[var(--border)] bg-white p-3"
+                className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3"
               >
                 <div className="text-xs font-medium text-[var(--foreground)] mb-2">
                   → {rel.targetName}

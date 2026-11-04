@@ -20,14 +20,14 @@ export function Section({
     <div className="border border-[var(--border)] rounded-lg overflow-hidden">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-3 py-2 bg-white hover:bg-[var(--muted)] transition-colors cursor-pointer"
+        className="w-full flex items-center justify-between px-3 py-2 bg-[var(--card)] hover:bg-[var(--muted)] transition-colors cursor-pointer"
       >
         <span className="text-[11px] font-semibold text-[var(--foreground)]">{title}</span>
         {open
           ? <ChevronUp className="h-3 w-3 text-[var(--muted-fg)]" />
           : <ChevronDown className="h-3 w-3 text-[var(--muted-fg)]" />}
       </button>
-      {open && <div className="px-3 pb-3 pt-1 space-y-1.5 bg-white">{children}</div>}
+      {open && <div className="px-3 pb-3 pt-1 space-y-1.5 bg-[var(--card)]">{children}</div>}
     </div>
   );
 }

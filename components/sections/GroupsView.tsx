@@ -38,7 +38,7 @@ export function GroupsView() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-white">
+    <div className="flex-1 overflow-y-auto p-6 bg-[var(--card)]">
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-2">
           <div>

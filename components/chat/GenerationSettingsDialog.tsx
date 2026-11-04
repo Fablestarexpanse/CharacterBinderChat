@@ -51,7 +51,7 @@ export function GenerationSettingsDialog({
             <select
               value={chat.presetId ?? ""}
               onChange={(e) => setChatPreset(chat.id, e.target.value || undefined)}
-              className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--purple)]"
+              className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--purple)]"
             >
               <option value="">
                 {defaultPreset ? `Default (${defaultPreset.name})` : "None — built-in defaults"}

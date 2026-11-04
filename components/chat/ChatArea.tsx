@@ -39,7 +39,7 @@ export function ChatArea() {
 
   if (!activeChatId || !chat) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-white">
+      <div className="flex-1 flex items-center justify-center bg-[var(--card)]">
         <div className="text-center space-y-3">
           <div className="h-16 w-16 rounded-2xl bg-[var(--purple-light)] flex items-center justify-center mx-auto">
             <MessageSquare className="h-8 w-8 text-[var(--purple-fg)]" />
@@ -54,7 +54,7 @@ export function ChatArea() {
   }
 
   return (
-    <div className="flex flex-col flex-1 min-w-0 bg-white">
+    <div className="flex flex-col flex-1 min-w-0 bg-[var(--card)]">
       <ChatHeader />
 
       {/* Messages */}

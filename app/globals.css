@@ -13,7 +13,47 @@
   --sidebar-bg: #f8f8fc;
   --sidebar-border: #ebebf2;
   --radius: 8px;
+  --scrollbar: #d8d8e8;
+  --scrollbar-hover: #c0c0d8;
+  --prose-em: #5a5a7a;
+  color-scheme: light;
 }
+
+/* Dark surfaces. The accent trio (--purple*) is set at runtime by ThemeApplier. */
+:root.dark {
+  --background: #14141c;
+  --foreground: #e8e8f2;
+  --card: #1b1b26;
+  --border: #2e2e3e;
+  --muted: #22222f;
+  --muted-fg: #9a9ab5;
+  --sidebar-bg: #101018;
+  --sidebar-border: #262634;
+  --scrollbar: #3a3a4e;
+  --scrollbar-hover: #4c4c64;
+  --prose-em: #b4b4d0;
+  color-scheme: dark;
+}
+
+/* Status tints are Tailwind palette classes, not variables, so they need a
+   dark counterpart or they glow as pale slabs on a dark page. */
+:root.dark .bg-red-50    { background-color: #3a1d22; }
+:root.dark .bg-green-50  { background-color: #16301f; }
+:root.dark .bg-amber-50,
+:root.dark .bg-yellow-50 { background-color: #33290f; }
+:root.dark .bg-amber-100 { background-color: #3d3012; }
+:root.dark .bg-purple-100 { background-color: var(--purple-light); }
+:root.dark .border-red-200,
+:root.dark .border-red-300 { border-color: #6b2c35; }
+:root.dark .border-amber-200 { border-color: #5c4713; }
+:root.dark .text-red-600,
+:root.dark .text-red-700 { color: #f08a8a; }
+:root.dark .text-green-600,
+:root.dark .text-green-700 { color: #6fd08a; }
+:root.dark .text-amber-700,
+:root.dark .text-amber-800,
+:root.dark .text-amber-900,
+:root.dark .text-yellow-700 { color: #e8b84a; }
 
 @theme inline {
   --color-background: var(--background);
@@ -39,11 +79,11 @@ body {
 /* Scrollbar styling */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d8d8e8; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #c0c0d8; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
 
 /* Chat message prose */
 .prose-chat { line-height: 1.7; }
 .prose-chat p { margin: 0 0 0.4rem; }
 .prose-chat p:last-child { margin-bottom: 0; }
-.prose-chat em { font-style: italic; color: #5a5a7a; }
+.prose-chat em { font-style: italic; color: var(--prose-em); }

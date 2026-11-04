@@ -27,7 +27,7 @@ export function ImageStudioView() {
     downloadFromUrl(url, `fablechat-${id.slice(0, 8)}.png`);
 
   return (
-    <div className="flex-1 flex min-w-0 overflow-hidden bg-white">
+    <div className="flex-1 flex min-w-0 overflow-hidden bg-[var(--card)]">
       {/* Settings — the same panel the inspector uses */}
       <div className="w-[320px] flex-shrink-0 border-r border-[var(--border)] flex flex-col">
         <div className="px-4 py-3 border-b border-[var(--border)] flex-shrink-0">
@@ -77,7 +77,7 @@ export function ImageStudioView() {
                     <Button
                       variant="outline"
                       size="icon"
-                      className="h-7 w-7 absolute top-2 right-2 bg-white/90 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="h-7 w-7 absolute top-2 right-2 bg-[var(--card)]/90 opacity-0 group-hover:opacity-100 transition-opacity"
                       title="Download"
                       onClick={() => download(out.url, out.jobId)}
                     >

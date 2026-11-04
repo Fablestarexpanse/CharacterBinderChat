@@ -31,7 +31,7 @@ export function WorkflowsView() {
   const loading = result === null;
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-white">
+    <div className="flex-1 overflow-y-auto p-6 bg-[var(--card)]">
       <div className="max-w-3xl mx-auto">
         <h1 className="text-xl font-bold text-[var(--foreground)]">Workflows</h1>
         <p className="text-sm text-[var(--muted-fg)] mt-1">

@@ -77,7 +77,7 @@ export function LoreTab() {
                   className={`w-full flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-colors cursor-pointer ${
                     active
                       ? "border-[var(--purple)] bg-[var(--purple-light)]"
-                      : "border-[var(--border)] bg-white hover:bg-[var(--muted)]"
+                      : "border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)]"
                   }`}
                 >
                   <Globe className={`h-3.5 w-3.5 flex-shrink-0 ${active ? "text-[var(--purple-fg)]" : "text-[var(--muted-fg)]"}`} />
@@ -129,7 +129,7 @@ export function LoreTab() {
         ) : (
           <div className="space-y-2">
             {triggered.map((entry) => (
-              <div key={entry.id} className="rounded-lg border border-[var(--border)] bg-white p-2.5">
+              <div key={entry.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-2.5">
                 <div className="flex items-start justify-between gap-2 mb-1">
                   <span className="text-xs font-medium text-[var(--purple-fg)]">{entry.key}</span>
                   <div className="flex items-center gap-1 flex-shrink-0">

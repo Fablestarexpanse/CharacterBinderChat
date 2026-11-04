@@ -73,7 +73,7 @@ export function GalleryView() {
   // ── Album grid ────────────────────────────────────────────────────────────
   if (!album) {
     return (
-      <div className="flex-1 overflow-y-auto p-6 bg-white">
+      <div className="flex-1 overflow-y-auto p-6 bg-[var(--card)]">
         <div className="max-w-5xl mx-auto">
           <h1 className="text-xl font-bold text-[var(--foreground)]">Gallery</h1>
           <p className="text-sm text-[var(--muted-fg)] mt-1 mb-6">
@@ -109,7 +109,7 @@ export function GalleryView() {
                         </div>
                       )}
                       <div className="absolute bottom-2 right-2">
-                        <Badge variant="default" className="bg-white/90">
+                        <Badge variant="default" className="bg-[var(--card)]/90">
                           {count} image{count === 1 ? "" : "s"}
                         </Badge>
                       </div>
@@ -164,7 +164,7 @@ export function GalleryView() {
   const chatStillExists = !!album.chatId && chats.some((c) => c.id === album.chatId);
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-white">
+    <div className="flex-1 overflow-y-auto p-6 bg-[var(--card)]">
       <div className="max-w-5xl mx-auto">
         <button
           onClick={leaveAlbum}
@@ -284,7 +284,7 @@ export function GalleryView() {
                   {selecting && (
                     <button
                       onClick={() => toggle(job.id)}
-                      className="absolute top-2 left-2 rounded bg-white/90 p-1 cursor-pointer"
+                      className="absolute top-2 left-2 rounded bg-[var(--card)]/90 p-1 cursor-pointer"
                       title={isSel ? "Deselect" : "Select"}
                     >
                       {isSel
@@ -294,7 +294,7 @@ export function GalleryView() {
                   )}
 
                   {extra > 0 && (
-                    <Badge variant="default" className="absolute bottom-2 left-2 bg-white/90">
+                    <Badge variant="default" className="absolute bottom-2 left-2 bg-[var(--card)]/90">
                       +{extra}
                     </Badge>
                   )}
@@ -304,7 +304,7 @@ export function GalleryView() {
                       <Button
                         variant="outline"
                         size="icon"
-                        className="h-7 w-7 bg-white/90"
+                        className="h-7 w-7 bg-[var(--card)]/90"
                         title="Download"
                         onClick={() => download(url, job.id)}
                       >
@@ -313,7 +313,7 @@ export function GalleryView() {
                       <Button
                         variant="outline"
                         size="icon"
-                        className="h-7 w-7 bg-white/90"
+                        className="h-7 w-7 bg-[var(--card)]/90"
                         title="Select this render to delete"
                         onClick={() => { setSelecting(true); setSelected(new Set([job.id])); }}
                       >

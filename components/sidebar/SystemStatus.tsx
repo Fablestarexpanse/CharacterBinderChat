@@ -94,7 +94,7 @@ export function SystemStatus() {
       <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-fg)] mb-2">
         System
       </div>
-      <div className="rounded-lg border border-[var(--border)] bg-white p-2.5 space-y-1.5">
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-2.5 space-y-1.5">
         {providerStatuses.map((p) => (
           <div key={p.id} className="flex items-center gap-1.5">
             <StatusDot connected={p.connected} checking={p.checking} />

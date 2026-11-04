@@ -121,7 +121,7 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
       {/* Add a fact by hand — extraction misses things, and corrections need
           to outrank incidental output (the route stores them at high importance). */}
       {adding ? (
-        <div className="rounded-lg border border-[var(--purple)] bg-white p-2 space-y-1.5">
+        <div className="rounded-lg border border-[var(--purple)] bg-[var(--card)] p-2 space-y-1.5">
           <Input
             value={draft.predicate}
             onChange={(e) => setDraft((d) => ({ ...d, predicate: e.target.value }))}
@@ -182,7 +182,7 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
       {liveFacts.length > 0 && (
         <div className="space-y-1.5">
           {liveFacts.map((f) => (
-            <div key={f.id} className="group rounded-lg border border-[var(--border)] bg-white p-2.5">
+            <div key={f.id} className="group rounded-lg border border-[var(--border)] bg-[var(--card)] p-2.5">
               <div className="flex items-start gap-1.5">
                 <p className="flex-1 min-w-0 text-[11px] text-[var(--foreground)] leading-snug">
                   <span className="font-medium text-[var(--purple-fg)]">{f.predicate}</span>

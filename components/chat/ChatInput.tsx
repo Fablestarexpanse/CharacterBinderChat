@@ -124,7 +124,7 @@ export function ChatInput() {
                 <button
                   key={p.id}
                   onClick={() => setActivePersona(p.id)}
-                  className="flex items-center gap-1.5 rounded-full bg-white pl-1 pr-3 py-1 text-xs text-[var(--foreground)] border border-[var(--border)] hover:border-[var(--purple)] transition-colors cursor-pointer"
+                  className="flex items-center gap-1.5 rounded-full bg-[var(--card)] pl-1 pr-3 py-1 text-xs text-[var(--foreground)] border border-[var(--border)] hover:border-[var(--purple)] transition-colors cursor-pointer"
                 >
                   <Avatar name={p.name} src={p.avatar} size="xs" />
                   {p.name}
@@ -203,7 +203,7 @@ export function ChatInput() {
       )}
 
       <div
-        className={`flex flex-col gap-2 rounded-2xl border bg-white p-2 transition-colors ${
+        className={`flex flex-col gap-2 rounded-2xl border bg-[var(--card)] p-2 transition-colors ${
           isImageCommand ? "border-[var(--purple)]" : "border-[var(--border)]"
         } focus-within:border-[var(--purple)] focus-within:ring-1 focus-within:ring-[var(--purple)]`}
       >

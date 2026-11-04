@@ -370,7 +370,7 @@ export function ImageStudioTab() {
                   ) : (
                     <div className="h-5 w-5 rounded-full border-2 border-[var(--purple)] border-t-transparent animate-spin" />
                   )}
-                  <div className="absolute bottom-0 left-0 right-0 bg-white/80 px-1.5 py-1">
+                  <div className="absolute bottom-0 left-0 right-0 bg-[var(--card)]/80 px-1.5 py-1">
                     <div className="text-[10px] text-[var(--foreground)] truncate">{job.prompt.slice(0, 20)}</div>
                     <Badge
                       variant={job.status === "complete" ? "green" : job.status === "failed" ? "red" : "yellow"}
