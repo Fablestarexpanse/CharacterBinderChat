@@ -10,6 +10,7 @@ import { LMStudioProvider } from "@/lib/providers/lmstudio";
 import { OpenRouterProvider } from "@/lib/providers/openrouter";
 import { ComfyUIProvider } from "@/lib/providers/comfyui";
 import { useThemeStore } from "@/lib/store/theme";
+import { useMemorySettings } from "@/lib/store/memorySettings";
 import { ACCENT_PRESETS, accentHex, normalizeHex, type ThemeMode } from "@/lib/theme";
 import { CheckCircle, XCircle, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 
@@ -224,6 +225,39 @@ function AppearanceCard() {
   );
 }
 
+// ─── Memory ───────────────────────────────────────────────────────────────────
+
+function MemoryCard() {
+  const gate = useMemorySettings((s) => s.extractionGate);
+  const setGate = useMemorySettings((s) => s.setExtractionGate);
+  return (
+    <Card>
+      <CardHeader>
+        <div className="font-semibold text-sm">Memory</div>
+        <div className="text-xs text-[var(--muted-fg)]">How often the model is asked to update memory. Saved in this browser only.</div>
+      </CardHeader>
+      <CardBody>
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={gate === "trivial"}
+            onChange={(e) => setGate(e.target.checked ? "trivial" : "off")}
+            className="mt-0.5 h-4 w-4 accent-[var(--purple)] cursor-pointer"
+          />
+          <span>
+            <span className="block text-xs font-medium text-[var(--foreground)]">Skip empty exchanges</span>
+            <span className="block text-[11px] text-[var(--muted-fg)] mt-0.5">
+              Don&apos;t spend model calls on exchanges like &quot;ok&quot; / &quot;*nods*&quot;. Skipped turns are
+              picked up by the next extraction, and at most three are skipped in a row. Most useful for
+              short, fast chat; roleplay with long turns will rarely trigger it. Off by default.
+            </span>
+          </span>
+        </label>
+      </CardBody>
+    </Card>
+  );
+}
+
 // ─── Main Settings View ───────────────────────────────────────────────────────
 
 export function SettingsView() {
@@ -293,6 +327,8 @@ export function SettingsView() {
         </div>
 
         <AppearanceCard />
+
+        <MemoryCard />
 
         {/* Ollama */}
         <ProviderCard

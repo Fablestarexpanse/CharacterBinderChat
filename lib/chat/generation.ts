@@ -12,6 +12,8 @@ import { matchLoreEntries, booksForChat } from "./lorebook";
 import { resolveGeneration } from "./settings";
 import { fitHistoryToBudget } from "./tokenBudget";
 import { recordSentPrompt } from "./sentPrompts";
+import { createGate } from "./extractionGate";
+import { useMemorySettings } from "@/lib/store/memorySettings";
 import type { Chat, Character, MessageRole, MemoryTaskRequest } from "@/lib/types";
 import type { CoreMemoryGetResponse } from "@/lib/api/dto";
 
@@ -433,6 +435,9 @@ function cancelPendingExtraction(messageId?: string): boolean {
 
 // ─── Knowledge extraction (Drawer 2 + Core Memory refresh) ───────────────────
 
+/** Per-chat skip bookkeeping for the extraction gate. */
+const gates = new Map<string, ReturnType<typeof createGate>>();
+
 function runExtraction(chatId: string, speakerId?: string, messageId?: string): void {
   // Read current store state directly rather than a stale snapshot — the
   // assistant's completed reply is only present in the live store state.
@@ -448,6 +453,20 @@ function runExtraction(chatId: string, speakerId?: string, messageId?: string): 
   // The chat may have been cleared while this was pending — extracting from
   // an empty (or image-only) history would hallucinate memory from nothing.
   if (!chat.messages.some((m) => m.role === "assistant" && !m.error && !m.imageJobId)) return;
+
+  // Gate: an exchange with nothing in it skips the memory calls. The next
+  // extraction re-reads the last 16 messages, so this delays rather than drops.
+  {
+    const real = chat.messages.filter((m) => !m.error && !m.imageJobId);
+    const lastAssistant = [...real].reverse().find((m) => m.role === "assistant");
+    const lastUser = [...real].reverse().find((m) => m.role === "user");
+    let gate = gates.get(chatId);
+    if (!gate) { gate = createGate(); gates.set(chatId, gate); }
+    if (!gate.shouldExtract(useMemorySettings.getState().extractionGate, lastUser?.content ?? "", lastAssistant?.content ?? "")) {
+      console.info("[memory] extraction skipped: trivial exchange");
+      return;
+    }
+  }
 
   // Witness list for group scenes: everyone present right now (+ player).
   // 1:1 chats send no list, and their facts stay public.

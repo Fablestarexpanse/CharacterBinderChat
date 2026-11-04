@@ -11,6 +11,7 @@
     "eval": "node tests/memory-eval/run.mjs",
     "eval:long": "node tests/memory-eval/long-chat.mjs",
     "eval:longitudinal": "node tests/memory-eval/longitudinal.mjs",
+    "eval:gate": "node --import ./tests/unit/loader.mjs tests/memory-eval/gate-offline.mjs",
     "test": "node --import ./tests/unit/loader.mjs --test \"tests/unit/*.test.mjs\"",
     "test:api": "node --test \"tests/api/*.test.mjs\""
   },
