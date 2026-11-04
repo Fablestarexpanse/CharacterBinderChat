@@ -11,6 +11,7 @@ import { buildSystemPrompt, estimateTokens } from "./promptBuilder";
 import { matchLoreEntries, booksForChat } from "./lorebook";
 import { resolveGeneration } from "./settings";
 import { fitHistoryToBudget } from "./tokenBudget";
+import { recordSentPrompt } from "./sentPrompts";
 import type { Chat, Character, MessageRole, MemoryTaskRequest } from "@/lib/types";
 import type { CoreMemoryGetResponse } from "@/lib/api/dto";
 
@@ -110,6 +111,137 @@ function pickSpeaker(chat: Chat, characters: Character[]): string {
   return present[(idx + 1) % present.length];
 }
 
+/** Who would answer next, for a prompt preview. Same rule generation uses. */
+export function nextSpeakerId(chat: Chat, characters: Character[]): string | undefined {
+  return presentMemberIds(chat).length >= 2 ? pickSpeaker(chat, characters) : chat.characterId;
+}
+
+// ─── Prompt assembly ──────────────────────────────────────────────────────────
+// Everything between "the chat as it stands" and "the exact messages the model
+// receives". Lives apart from generateAssistantReply so Peek Prompt can run the
+// SAME path for a live preview — a preview built by separate code would drift
+// from what is really sent, which defeats its purpose.
+
+export interface AssembledPrompt {
+  /** What goes to the provider: system prompt first, then the fitted history. */
+  history:     Array<{ role: MessageRole; content: string }>;
+  systemPrompt: string;
+  params:      ReturnType<typeof resolveGeneration>["params"];
+  fit:         ReturnType<typeof fitHistoryToBudget>;
+  prefill:     string;
+  providerId:  string;
+  modelId:     string;
+  speakerName: string | null;
+  coreMemory:  CoreMemoryGetResponse["coreMemory"];
+  knownFacts:  CoreMemoryGetResponse["knownFacts"];
+  episodes:    CoreMemoryGetResponse["episodes"];
+  insights:    CoreMemoryGetResponse["insights"];
+  sharedLanguage: CoreMemoryGetResponse["sharedLanguage"];
+  lore:        ReturnType<typeof matchLoreEntries>;
+}
+
+export async function assemblePrompt(chatId: string, speakerCharId: string | undefined): Promise<AssembledPrompt | null> {
+  const store = useFableStore.getState();
+  const chat = store.chats.find((c) => c.id === chatId);
+  if (!chat) return null;
+  const present = presentMemberIds(chat);
+  const isGroup = present.length >= 2;
+  const character = store.characters.find((c) => c.id === speakerCharId);
+  const providerId = chat.providerId ?? "ollama";
+  const modelId    = chat.modelId    ?? "llama3.2:latest";
+
+  // ── Fetch Core Memory (Drawer 1) + Drawer 2 known facts ────────────────
+  // The last few turns act as the relevance signal for fact retrieval
+  const recentText = chat.messages.slice(-3).map((m) => m.content).join(" ");
+  const { coreMemory, knownFacts, episodes, insights, sharedLanguage } = character
+    ? await fetchCoreMemory(chatId, character.id, character.name, recentText)
+    : NO_MEMORY;
+
+  // ── Build message history within the model's token budget ──────────────
+  const persona = store.personas.find((p) => p.id === store.activePersonaId) ?? null;
+  // Preset + global instructions + per-chat overrides, collapsed once.
+  // NOTE: none of this may be forwarded to the extraction routes — they run
+  // format:"json" on backend defaults, and a roleplay temperature or a
+  // jailbreak prompt would break structured extraction.
+  const resolved = resolveGeneration(chat, store);
+  // Lorebook entries fire on keywords in the recent turns — a wider window
+  // than fact retrieval so lore doesn't flicker out one exchange after its
+  // subject was raised.
+  const loreScanText = chat.messages.slice(-6).map((m) => m.content).join("\n");
+  const lore = matchLoreEntries(booksForChat(store.lorebooks, chat), loreScanText);
+  // A chat-builder scenario snapshot overrides the character sheet's own
+  const promptCharacter = character && chat.scenarioText
+    ? { ...character, scenario: chat.scenarioText }
+    : character;
+  let systemPrompt = buildSystemPrompt({
+    character: promptCharacter,
+    coreMemory, persona,
+    knownFacts, episodes, insights, lore, sharedLanguage,
+    globalPrompt:   resolved.globalPrompt,
+    customPrompt:   resolved.customPrompt,
+    forbiddenWords: resolved.forbiddenWords,
+  });
+
+  // ── Group scene block ───────────────────────────────────────────────────
+  // The speaker needs to know who else is in the room, and that other
+  // characters' lines in the history are not theirs to continue.
+  if (isGroup && character) {
+    const othersHere = present
+      .filter((id) => id !== character.id)
+      .map((id) => store.characters.find((c) => c.id === id))
+      .filter((c): c is Character => !!c);
+    const away = (chat.absentIds ?? [])
+      .map((id) => store.characters.find((c) => c.id === id)?.name)
+      .filter(Boolean);
+    systemPrompt +=
+      `\n\n[Scene]\nThis is a group scene. Also present:\n` +
+      othersHere.map((c) => `  - ${c.name}: ${c.description.slice(0, 160)}`).join("\n") +
+      (away.length ? `\nNot currently present (do not have them act): ${away.join(", ")}` : "") +
+      `\nOther characters' lines appear in the conversation prefixed with their name. ` +
+      `Speak and act ONLY as ${character.name} — never write dialogue or actions for anyone else.`;
+  }
+
+  // Failure notices (m.error) are UI artifacts, not dialogue — sending them
+  // back to the model taught it to roleplay error messages.
+  // In groups, only the speaker's own lines are assistant turns; everyone
+  // else (player and other characters) arrives as named user turns.
+  const speakerLabel = (m: { role: string; characterId?: string }) =>
+    m.role === "user"
+      ? persona?.name ?? "User"
+      : store.characters.find((c) => c.id === m.characterId)?.name ?? "Narrator";
+  const fullHistory: Array<{ role: MessageRole; content: string }> = chat.messages
+    .filter((m) => m.content.trim().length > 0 && !m.imageJobId && !m.error)
+    .map((m) => {
+      if (!isGroup) return { role: m.role as MessageRole, content: m.content };
+      const own = m.role === "assistant" && m.characterId === character?.id;
+      return own
+        ? { role: "assistant" as MessageRole, content: m.content }
+        : { role: "user" as MessageRole, content: `${speakerLabel(m)}: ${m.content}` };
+    });
+  // ── Prefill ─────────────────────────────────────────────────────────────
+  // A trailing assistant turn is how every backend here expresses "continue
+  // from this" — the reply comes back as the continuation, not a fresh turn.
+  // It goes in BEFORE the fit so it counts against the budget, and the fit's
+  // "newest is always kept" rule then protects it from being trimmed.
+  const prefill = resolved.prefill;
+  if (prefill) fullHistory.push({ role: "assistant", content: prefill });
+
+  const fit = fitHistoryToBudget(systemPrompt, fullHistory, modelId, undefined, resolved.params.contextSize);
+  if (fit.dropped > 0) {
+    console.info(`[chat] context window: dropped ${fit.dropped} oldest message(s) to fit`);
+  }
+  const history: Array<{ role: MessageRole; content: string }> = [
+    { role: "system", content: systemPrompt },
+    ...fit.messages,
+  ];
+
+  return {
+    history, systemPrompt, params: resolved.params, fit, prefill, providerId, modelId,
+    speakerName: character?.name ?? null,
+    coreMemory, knownFacts, episodes, insights, sharedLanguage, lore,
+  };
+}
+
 // ─── Generate a reply to the chat's current history ──────────────────────────
 
 export async function generateAssistantReply(chatId: string, speakerId?: string): Promise<void> {
@@ -152,92 +284,12 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
   let produced = false;
 
   try {
-    // ── Fetch Core Memory (Drawer 1) + Drawer 2 known facts ────────────────
-    // The last few turns act as the relevance signal for fact retrieval
-    const recentText = chat.messages.slice(-3).map((m) => m.content).join(" ");
-    const { coreMemory, knownFacts, episodes, insights, sharedLanguage } = character
-      ? await fetchCoreMemory(chatId, character.id, character.name, recentText)
-      : NO_MEMORY;
-
-    // ── Build message history within the model's token budget ──────────────
-    const persona = store.personas.find((p) => p.id === store.activePersonaId) ?? null;
-    // Preset + global instructions + per-chat overrides, collapsed once.
-    // NOTE: none of this may be forwarded to the extraction routes — they run
-    // format:"json" on backend defaults, and a roleplay temperature or a
-    // jailbreak prompt would break structured extraction.
-    const resolved = resolveGeneration(chat, store);
-    // Lorebook entries fire on keywords in the recent turns — a wider window
-    // than fact retrieval so lore doesn't flicker out one exchange after its
-    // subject was raised.
-    const loreScanText = chat.messages.slice(-6).map((m) => m.content).join("\n");
-    const lore = matchLoreEntries(booksForChat(store.lorebooks, chat), loreScanText);
-    // A chat-builder scenario snapshot overrides the character sheet's own
-    const promptCharacter = character && chat.scenarioText
-      ? { ...character, scenario: chat.scenarioText }
-      : character;
-    let systemPrompt = buildSystemPrompt({
-      character: promptCharacter,
-      coreMemory, persona,
-      knownFacts, episodes, insights, lore, sharedLanguage,
-      globalPrompt:   resolved.globalPrompt,
-      customPrompt:   resolved.customPrompt,
-      forbiddenWords: resolved.forbiddenWords,
-    });
-
-    // ── Group scene block ───────────────────────────────────────────────────
-    // The speaker needs to know who else is in the room, and that other
-    // characters' lines in the history are not theirs to continue.
-    if (isGroup && character) {
-      const othersHere = present
-        .filter((id) => id !== character.id)
-        .map((id) => store.characters.find((c) => c.id === id))
-        .filter((c): c is Character => !!c);
-      const away = (chat.absentIds ?? [])
-        .map((id) => store.characters.find((c) => c.id === id)?.name)
-        .filter(Boolean);
-      systemPrompt +=
-        `\n\n[Scene]\nThis is a group scene. Also present:\n` +
-        othersHere.map((c) => `  - ${c.name}: ${c.description.slice(0, 160)}`).join("\n") +
-        (away.length ? `\nNot currently present (do not have them act): ${away.join(", ")}` : "") +
-        `\nOther characters' lines appear in the conversation prefixed with their name. ` +
-        `Speak and act ONLY as ${character.name} — never write dialogue or actions for anyone else.`;
-    }
-
-    // Failure notices (m.error) are UI artifacts, not dialogue — sending them
-    // back to the model taught it to roleplay error messages.
-    // In groups, only the speaker's own lines are assistant turns; everyone
-    // else (player and other characters) arrives as named user turns.
-    const speakerLabel = (m: { role: string; characterId?: string }) =>
-      m.role === "user"
-        ? persona?.name ?? "User"
-        : store.characters.find((c) => c.id === m.characterId)?.name ?? "Narrator";
-    const fullHistory: Array<{ role: MessageRole; content: string }> = chat.messages
-      .filter((m) => m.content.trim().length > 0 && !m.imageJobId && !m.error)
-      .map((m) => {
-        if (!isGroup) return { role: m.role as MessageRole, content: m.content };
-        const own = m.role === "assistant" && m.characterId === character?.id;
-        return own
-          ? { role: "assistant" as MessageRole, content: m.content }
-          : { role: "user" as MessageRole, content: `${speakerLabel(m)}: ${m.content}` };
-      });
-    // ── Prefill ─────────────────────────────────────────────────────────────
-    // A trailing assistant turn is how every backend here expresses "continue
-    // from this" — the reply comes back as the continuation, not a fresh turn.
-    // It goes in BEFORE the fit so it counts against the budget, and the fit's
-    // "newest is always kept" rule then protects it from being trimmed.
-    const prefill = resolved.prefill;
-    if (prefill) fullHistory.push({ role: "assistant", content: prefill });
+    const assembled = await assemblePrompt(chatId, speakerCharId);
+    if (!assembled) return;
+    const { history, fit, prefill, coreMemory, knownFacts, episodes, insights, sharedLanguage, lore } = assembled;
     accumulated = prefill;
-
-    const fit = fitHistoryToBudget(systemPrompt, fullHistory, modelId, undefined, resolved.params.contextSize);
-    if (fit.dropped > 0) {
-      console.info(`[chat] context window: dropped ${fit.dropped} oldest message(s) to fit`);
-    }
     store.setChatContext(chatId, fit.usedTokens, fit.contextMax);
-    const history: Array<{ role: MessageRole; content: string }> = [
-      { role: "system", content: systemPrompt },
-      ...fit.messages,
-    ];
+    recordSentPrompt(chatId, assembled);
 
     // ── Create placeholder assistant message + stream into it ───────────────
     // Seeded with the prefill so the bubble reads correctly from the first
@@ -259,7 +311,7 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
     abortController = controller;
 
     try {
-      for await (const token of provider.streamChat(history, modelId, resolved.params, controller.signal)) {
+      for await (const token of provider.streamChat(history, modelId, assembled.params, controller.signal)) {
         produced = true;
         accumulated += token;
         store.updateMessageContent(chatId, assistantMsgId, accumulated);

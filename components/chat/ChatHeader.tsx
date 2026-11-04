@@ -8,12 +8,14 @@ import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { GenerationSettingsDialog } from "./GenerationSettingsDialog";
 import { CustomModelDialog } from "./CustomModelDialog";
+import { PeekPromptDialog } from "./PeekPromptDialog";
 import { regenerateLastReply } from "@/lib/chat/generation";
 import type { ModelInfo } from "@/lib/types";
 import {
   PanelRightOpen,
   PanelRightClose,
   Settings2,
+  Eye,
   RefreshCw,
   Trash2,
   Loader2,
@@ -47,6 +49,7 @@ export function ChatHeader() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [customOpen,   setCustomOpen]   = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [peekOpen,     setPeekOpen]     = useState(false);
 
   // Backend models never belong in the chat selector: the image scene
   // director is configured in Settings, and embedding models can't chat at
@@ -210,6 +213,9 @@ export function ChatHeader() {
 
       {/* Action buttons */}
       <div className="flex items-center gap-1">
+        <Button variant="ghost" size="icon" title="Peek prompt — see exactly what the model receives" onClick={() => setPeekOpen(true)}>
+          <Eye className="h-4 w-4" />
+        </Button>
         <Button variant="ghost" size="icon" title="Generation settings" onClick={() => setSettingsOpen(true)}>
           <Settings2 className="h-4 w-4" />
         </Button>
@@ -254,6 +260,9 @@ export function ChatHeader() {
           )}
         </Button>
       </div>
+
+      {/* Mounted only while open: opening starts a fresh live preview */}
+      {peekOpen && <PeekPromptDialog chatId={chat.id} open onOpenChange={setPeekOpen} />}
 
       <GenerationSettingsDialog
         chatId={chat.id}
