@@ -178,38 +178,51 @@ Personas are global, not per-chat.
 ## Project layout
 
 ```
-fablechat/
+CharacterBinderChat/
+├── start.sh, start.bat           # one-click launcher (both call scripts/start.mjs)
 ├── app/
 │   ├── api/
 │   │   ├── chat/core-memory/     # Drawer 1 CRUD + LLM refresh
-│   │   ├── drawer/               # Drawer 2: entities, facts, stats, extract
-│   │   └── state/                # Durable chats/characters/personas + export
+│   │   ├── drawer/               # Drawer 2: entities, facts, stats, extract, branch, snapshot
+│   │   ├── state/                # Durable app state: GET/PUT/PATCH + /changes (revisions)
+│   │   ├── cards/                # Card API for outside writers (agents): create/edit/delete/undo
+│   │   ├── backup/               # Full database backup and two-step restore
+│   │   └── secrets/              # Encrypted API keys
 │   └── page.tsx
 ├── components/
-│   ├── characters/               # CharacterEditorDialog, PersonaEditorDialog
-│   ├── chat/                     # ChatHeader, ChatInput, MessageItem
+│   ├── cards/                    # Export buttons shared by every card kind
+│   ├── characters/               # CharacterEditorDialog (+ Quick Import), PersonaEditorDialog
+│   ├── chat/                     # ChatHeader, ChatInput, MessageItem, Peek Prompt
 │   ├── inspector/                # CharacterTab, CoreMemoryTab, MemoryTab…
 │   │   ├── graph/                # MemoryGraph — the story-web canvas
 │   │   └── memory/               # Facts, Relationships, Entities sub-views
 │   ├── sections/                 # One screen per sidebar entry
 │   ├── sidebar/                  # Sidebar, SystemStatus
 │   ├── ui/                       # Hand-rolled primitives (dialog is the one Radix wrapper)
-│   └── StateSync.tsx             # Hydrate from SQLite, mirror edits back
+│   ├── StateSync.tsx             # Mounts the sync engine
+│   ├── SecretsSync.tsx           # Keeps API keys out of localStorage
+│   └── RemoteChanges.tsx         # "An agent changed X — Undo" notices
 ├── lib/
-│   ├── api/                      # server.ts (routeError, envelope validator) + client.ts (getJson)
-│   ├── chat/                     # generation, promptBuilder, tokenBudget — client-safe
-│   ├── server/                   # memoryExtractor, memoryRewriter, retrieval, coreMemory — SQLite-side
-│   ├── db/                       # FableStore (better-sqlite3), schema, models, rows, predicates
+│   ├── api/                      # server.ts (routeError, guard, envelope validator) + client.ts
+│   ├── cards/                    # Card format: PNG codec, Tavern V2, platforms, converters, validator, Quick Import parser, zip reader
+│   ├── chat/                     # generation, promptBuilder, lorebook, references, branch — client-safe
+│   ├── db/                       # FableStore (better-sqlite3), schema, appState (revisions), backup, branch
 │   ├── hooks/                    # useHydrated, useModelCatalog, useInspectedCharacter
-│   ├── import/                   # CharacterBinder / SillyTavern card parsing
+│   ├── import/                   # Card files and CharacterBinder archives → the store
 │   ├── llm/                      # Shared LLM transport, JSON parsing, embeddings
 │   ├── providers/                # Ollama, LMStudio, OpenRouter, ComfyUI adapters
-│   ├── store/                    # Zustand client store (slices) + ui.ts (transient)
+│   ├── security/                 # Local access rules (used by proxy.ts and guard)
+│   ├── server/                   # memoryExtractor, retrieval, coreMemory, cards service, secrets — SQLite-side
+│   ├── store/                    # Zustand client store (slices) + ui.ts, theme.ts, memorySettings.ts
+│   ├── sync/                     # Sync engine, diff, remote-merge policy, lifecycle
 │   ├── text/                     # Lexical overlap — the no-embeddings fallback
 │   ├── types.ts                  # Shared wire and domain types
 │   └── utils.ts                  # cn, downloads, time formatting, forbidden words
+├── mcp/                          # MCP server for agents (a thin client of /api/cards)
+├── proxy.ts                      # Access control for every request
+├── scripts/                      # The launcher
 └── data/
-    └── fablestore.db             # auto-created SQLite database
+    └── fablestore.db             # auto-created SQLite database (back it up from Settings)
 ```
 
 ---
@@ -245,9 +258,14 @@ Extraction failures are surfaced, not swallowed: if the model returns unparseabl
 
 ### Data & backups
 
-Chats, characters, and personas are written to SQLite a moment after every change, and the app hydrates from the database on load — so clearing browser storage doesn't lose anything. **Settings → Your Data → Export** downloads everything as JSON.
+Chats, characters, personas, lorebooks and scenarios are written to SQLite a moment after every change, and the app
+hydrates from the database on load, so clearing browser storage doesn't lose anything. Open tabs pick up changes made
+elsewhere (an agent, another tab) within a few seconds.
 
-`data/fablestore.db` is the single file worth backing up.
+**Back up from Settings → Backup & restore.** That file holds everything, including what the characters remember.
+Restoring shows what a file contains before replacing anything, keeps the database it replaces as a safety copy, and
+leaves your API keys alone (backups never contain them). The JSON export under *Your Data* is a portable copy of the
+cards and chats, **without** the memory: it is not a backup.
 
 ---
 
@@ -260,7 +278,11 @@ Every sidebar section is a working screen: Characters, Chats, Groups, Lorebooks,
 Not yet built:
 
 - **Some image-studio controls are decorative**: the LoRA stack, ControlNet, refiner, aspect-ratio and character-reference controls don't reach the workflow yet — prompt, dimensions, steps, CFG, sampler, seed and batch do.
-- **The OpenRouter API key is stored in browser localStorage** and used directly from the client. Fine for a single-user local app; a server-side proxy would be better.
+- **Narrow screens**: below about 768 px the layout does not adapt yet (the sidebar and inspector do not collapse).
+- **Images are stored inside the database rows** (as data URLs), which makes edits of characters with large avatars
+  heavy and exports carry the 512 px copy rather than the original. An asset store is planned.
+
+See `docs/audit-2026-11.md` for the full list and `docs/plan-2026-11.md` for the order of work.
 
 ---
 
@@ -276,9 +298,16 @@ Not yet built:
 - [x] Per-chat generation settings
 - [x] PNG card import (CharacterBinder / SillyTavern)
 - [x] Group chats with witness-scoped memory
+- [x] Card export (PNG/JSON, per platform), Quick Import, CharacterBinder archive import
+- [x] Branch from any message, with memory as of that point
+- [x] Fact editing, pinning and locks; Peek Prompt
+- [x] Agents via MCP, with server-authoritative sync and undo
+- [x] Full backup and restore; one-click launcher; local access control and encrypted keys
+- [ ] Asset store for images (originals kept, smaller database)
+- [ ] Library page: search, tags, bulk actions, archive export
+- [ ] Mobile layout
 - [ ] GPU / VRAM monitoring
 - [ ] Export chat as story document
-- [ ] Mobile layout
 
 ---
 
@@ -289,16 +318,21 @@ npm run dev        # Turbopack dev server
 npm run build      # production build
 npm run lint       # ESLint
 npm run typecheck  # tsc --noEmit
-npm test           # 60 unit tests (node --test, no server, no API key)
+npm test           # ~430 unit tests (node --test, no server, no API key)
+npm run audit:prod # high/critical advisories in what ships
+npm run eval:gate  # offline check of the extraction gate against recorded soaks
 ```
 
-Those four run on every push, and so does the API suite — CI starts the dev
+All of those but `eval:gate` run on every push, and so does the API suite — CI starts the dev
 server on a scratch database and points `FABLE_TEST_URL` at it
 (`.github/workflows/ci.yml`). To run that suite locally against your own server:
 
 ```bash
-FABLE_TEST_URL=http://localhost:3001 npm run test:api   # route contracts + bi-temporal invariants
+FABLE_TEST_URL=http://localhost:3001 npm run test:api   # route contracts, bi-temporal invariants, backup, and the MCP server end to end
 ```
+
+Node 22.18 or newer is required for the tests (they load the app's `.ts` modules through Node's type stripping).
+There are no browser tests in CI yet; changes to sync or the UI have been verified by hand in a browser.
 
 It writes only under per-run ids and cleans up after itself, but it does write,
 so point it at a scratch `FABLE_DB_PATH` if that matters to you.
@@ -317,4 +351,4 @@ The Python reference implementation of Drawer 2 — including a 77-test pytest s
 
 ## License
 
-MIT
+MIT. Code ported from CharacterBinder is MIT too; its notice is in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

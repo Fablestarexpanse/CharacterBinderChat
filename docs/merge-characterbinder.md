@@ -1,5 +1,8 @@
 # Merging CharacterBinder into FableChat
 
+> **History.** This was the plan for the merge; all five phases are done. What is still missing or could be
+> better is in `docs/audit-2026-11.md`, and the work in progress is in `docs/plan-2026-11.md`.
+
 **Goal:** one tool, one launch. CharacterBinder
 (github.com/Fablestarexpanse/CharacterBinder, MIT) is a separate Vite app that
 builds character, lorebook, persona, scenario and script cards and exports them
