@@ -12,6 +12,17 @@ import { create } from "zustand";
 import type { Character } from "@/lib/types";
 import type { SidebarSection, InspectorTab } from "./index";
 
+/** Something changed outside this tab. `historyId` is set when it can be undone. */
+export interface RemoteNotice {
+  key: number;
+  text: string;
+  historyId: number | null;
+  /** "lost": the tab's own unsaved edit was replaced, which deserves more weight than an FYI */
+  kind: "info" | "lost";
+}
+
+let noticeKey = 0;
+
 interface UiStore {
   // Navigation
   activeSection: SidebarSection;
@@ -39,6 +50,11 @@ interface UiStore {
   openCharacterEditor: (id?: string | null, draft?: Partial<Character> | null) => void;
   closeCharacterEditor: () => void;
 
+  // Changes made by something other than this tab (an agent, another device)
+  remoteNotices: RemoteNotice[];
+  pushRemoteNotices: (notices: Array<Omit<RemoteNotice, "key">>) => void;
+  dismissRemoteNotice: (key: number) => void;
+
   // Composer
   inputValue: string;
   setInputValue: (v: string) => void;
@@ -65,6 +81,14 @@ export const useUiStore = create<UiStore>()((set) => ({
     set({ characterEditorOpen: true, characterEditorId: id, characterEditorDraft: draft }),
   closeCharacterEditor: () =>
     set({ characterEditorOpen: false, characterEditorId: null, characterEditorDraft: null }),
+
+  remoteNotices: [],
+  pushRemoteNotices: (notices) =>
+    set((s) => ({
+      // Capped: a burst of agent writes must not bury the page in banners
+      remoteNotices: [...s.remoteNotices, ...notices.map((n) => ({ ...n, key: ++noticeKey }))].slice(-5),
+    })),
+  dismissRemoteNotice: (key) => set((s) => ({ remoteNotices: s.remoteNotices.filter((n) => n.key !== key) })),
 
   inputValue: "",
   setInputValue: (v) => set({ inputValue: v }),

@@ -19,6 +19,7 @@ import { CharacterEditorDialog } from "@/components/characters/CharacterEditorDi
 import { NewChatDialog } from "@/components/chat/NewChatDialog";
 import { StateSync } from "@/components/StateSync";
 import { SecretsSync } from "@/components/SecretsSync";
+import { RemoteChanges } from "@/components/RemoteChanges";
 import { DropImport } from "@/components/DropImport";
 import { useHydrated } from "@/lib/hooks/useHydrated";
 import { useUiStore } from "@/lib/store/ui";
@@ -71,6 +72,8 @@ export default function Home() {
       <StateSync />
       {/* Keeps the OpenRouter key encrypted on the server, out of localStorage */}
       <SecretsSync />
+      {/* Says what an agent or another device changed, with Undo */}
+      <RemoteChanges />
       {/* Fixed rather than in-flow: the root here is a flex row, so a block
           banner would become a flex child and squeeze the sidebar. */}
       {lastSyncError && (

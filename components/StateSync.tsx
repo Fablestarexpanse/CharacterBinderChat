@@ -14,14 +14,20 @@
 //            seed is still a full PUT. localStorage persist stays on as a
 //            same-browser cache.
 //
-// Known limitation: last-write-wins. Two browsers editing simultaneously will
-// not merge — fine for a single-user local app.
+// Server-authoritative: the server holds a revision that every write bumps. The tab
+// polls /api/state/changes for what others (an agent, another device) wrote, and
+// pulls BEFORE each save so it never builds on stale rows. Its saves carry the
+// revision they are based on; if a shared row changed since, the server keeps its
+// own copy and the tab takes it (see lib/sync/remote.ts for who wins what).
 
 import { useEffect, useRef } from "react";
 import { useFableStore } from "@/lib/store";
 import type { PersistedAppState } from "@/lib/types";
-import { diffState, snapshot, type Baseline } from "@/lib/sync/stateDiff";
+import { diffState, snapshot, type Baseline, type SyncedName } from "@/lib/sync/stateDiff";
+import { mergeRemote, type RemoteChanges } from "@/lib/sync/remote";
+import { useUiStore } from "@/lib/store/ui";
 
+const POLL_MS = 3000;      // how often an open, visible tab asks what changed elsewhere
 const DEBOUNCE_MS = 800;   // trailing quiet-period before a save
 const MAX_WAIT_MS = 5000;  // during constant streaming, save at least this often
 
@@ -63,6 +69,11 @@ export function StateSync() {
     let sentSingletons: Record<string, unknown> = {};
     let saving = false;
     let dirtyWhileSaving = false;
+    // The server revision this tab has fully taken in
+    let baseRev = 0;
+    let pulling = false;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    const onVisible = () => { if (!document.hidden) void pull(); };
 
     const noteSaved = (state: ReturnType<typeof useFableStore.getState>) => {
       baseline = snapshot(state, SYNCED_COLLECTIONS);
@@ -95,10 +106,73 @@ export function StateSync() {
           headers: { "Content-Type": "application/json" },
           body:    JSON.stringify(payload),
         });
-        if (await report(res)) noteSaved(state);
+        const body = await res.clone().json().catch(() => null) as { rev?: number } | null;
+        if (await report(res)) {
+          noteSaved(state);
+          if (typeof body?.rev === "number") baseRev = body.rev;
+        }
       } catch (e) {
         console.warn("[state-sync] save failed:", e);
         useFableStore.getState().setLastSyncError(e instanceof Error ? e.message : String(e));
+      }
+    };
+
+    /**
+     * Take in what other writers changed since `baseRev`. Called on a timer, when
+     * the tab becomes visible, and before every save. Never throws: a failed poll
+     * is just a poll that found nothing, and the next one tries again.
+     */
+    const pull = async () => {
+      if (pulling) return;
+      pulling = true;
+      try {
+        const res = await fetch(`/api/state/changes?since=${baseRev}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const ch = await res.json() as RemoteChanges & {
+          rev: number; events: Array<{ id: number; source: string; summary: string; historyId: number | null }>;
+        };
+        const noRows = !Object.keys(ch.upserts ?? {}).length && !Object.keys(ch.removals ?? {}).length;
+        if (noRows && !(ch.events?.length)) { baseRev = Math.max(baseRev, ch.rev); return; }
+
+        // Same trust as the initial load: ids are checked by the merge, and a chat
+        // must carry its messages or the transcript view would throw on it.
+        if (ch.upserts?.chats) {
+          ch.upserts.chats = ch.upserts.chats.filter(
+            (r) => Array.isArray((r.data as { messages?: unknown } | null)?.messages));
+        }
+
+        const store = useFableStore.getState();
+        const local = Object.fromEntries(SYNCED_COLLECTIONS.map((k) => [k, store[k]]));
+        const merged = mergeRemote(local, baseline, { upserts: ch.upserts ?? {}, removals: ch.removals ?? {} });
+
+        if (Object.keys(merged.next).length > 0) {
+          store.applyRemoteCollections(merged.next as Parameters<typeof store.applyRemoteCollections>[0]);
+          // The tab now holds exactly the server's version of these rows, so they
+          // are not "unsaved changes" — re-baseline them, or the next diff would
+          // send them straight back.
+          const after = useFableStore.getState();
+          for (const t of merged.touched) {
+            const row = (after[t.collection as SyncedName] as Array<{ id: string }>).find((r) => r.id === t.id);
+            const m = (baseline[t.collection as SyncedName] ??= new Map());
+            if (row) m.set(t.id, row); else m.delete(t.id);
+          }
+        }
+        baseRev = Math.max(baseRev, ch.rev);
+
+        const named = (collection: string, id: string) =>
+          (local[collection as SyncedName] as Array<{ id: string; name?: string }> | undefined)?.find((r) => r.id === id)?.name ?? id;
+        useUiStore.getState().pushRemoteNotices([
+          // The user's own undo is not news to them
+          ...(ch.events ?? []).filter((e) => e.source !== "user").map((e) => ({ text: e.summary, historyId: e.historyId, kind: "info" as const })),
+          ...merged.discarded.map((d) => ({
+            text: `“${named(d.collection, d.id)}” was ${d.what === "delete" ? "changed" : "changed elsewhere"} while you were ${d.what === "delete" ? "deleting it" : "editing it"} — the newer version was kept.`,
+            historyId: null, kind: "lost" as const,
+          })),
+        ]);
+      } catch (e) {
+        console.warn("[state-sync] poll failed:", e instanceof Error ? e.message : e);
+      } finally {
+        pulling = false;
       }
     };
 
@@ -110,6 +184,9 @@ export function StateSync() {
       saving = true;
       lastSaveAt = Date.now();
       try {
+        // Pull first: build the diff on what the server holds NOW, not on rows an
+        // agent has since replaced. Rows this replaces drop out of the diff.
+        await pull();
         const state = useFableStore.getState();
         const patch = diffState(baseline, state, SYNCED_COLLECTIONS);
         const singletons = Object.fromEntries(
@@ -119,9 +196,26 @@ export function StateSync() {
         const res = await fetch("/api/state", {
           method:  "PATCH",
           headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ ...(patch ?? { upserts: {}, removals: {}, order: {} }), ...singletons }),
+          body:    JSON.stringify({ ...(patch ?? { upserts: {}, removals: {}, order: {} }), ...singletons, baseRev }),
         });
-        if (await report(res)) noteSaved(state);
+        const body = await res.clone().json().catch(() => null) as
+          { rev?: number; prevRev?: number; conflicts?: Array<{ collection: string; id: string; reason: string }> } | null;
+        if (await report(res)) {
+          noteSaved(state);
+          const conflicts = body?.conflicts ?? [];
+          // Only if nothing else wrote in between may the revision jump to ours;
+          // otherwise the pull below must start from where this tab left off.
+          const intervened = typeof body?.prevRev === "number" && body.prevRev !== baseRev;
+          if (typeof body?.rev === "number" && !intervened && conflicts.length === 0) baseRev = body.rev;
+          if (conflicts.length > 0) {
+            // The server kept its own copy of these. Say so, then take it.
+            useUiStore.getState().pushRemoteNotices(conflicts.map((c) => ({
+              text: `Your change to “${(state[c.collection as SyncedName] as Array<{ id: string; name?: string }>).find((r) => r.id === c.id)?.name ?? c.id}” was not saved — it had been ${c.reason === "deleted" ? "deleted" : "changed"} elsewhere.`,
+              historyId: null, kind: "lost" as const,
+            })));
+          }
+          if (conflicts.length > 0 || intervened) await pull();
+        }
       } catch (e) {
         console.warn("[state-sync] save failed:", e);
         useFableStore.getState().setLastSyncError(e instanceof Error ? e.message : String(e));
@@ -186,6 +280,7 @@ export function StateSync() {
           });
           // The server now holds exactly what was just hydrated
           noteSaved(useFableStore.getState());
+          baseRev = typeof (data as { rev?: unknown }).rev === "number" ? (data as { rev: number }).rev : 0;
         } else {
           // First run: seed the durable copy from local state
           await saveFull();
@@ -210,12 +305,21 @@ export function StateSync() {
           SYNCED_SINGLETONS.some((key) => state[key] !== prev[key]);
         if (changed) schedule();
       });
+
+      // Pick up what other writers do, without waiting for this tab to save.
+      // Skipped while hidden: a background tab has no one to tell.
+      pollTimer = setInterval(() => { if (!document.hidden && !saving) void pull(); }, POLL_MS);
+      document.addEventListener("visibilitychange", onVisible);
+      window.addEventListener("focus", onVisible);
     })();
 
     return () => {
       disposed = true;
       unsubscribe();
       if (timer) clearTimeout(timer);
+      if (pollTimer) clearInterval(pollTimer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
     };
   }, []);
 

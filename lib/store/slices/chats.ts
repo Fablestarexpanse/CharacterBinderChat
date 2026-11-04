@@ -15,6 +15,8 @@ export interface ChatsSlice {
   /** Replace the local collections with the durable SQLite copy (on app load).
    *  Object-shaped: the positional list had grown past readability. */
   hydrateFromServer: (data: PersistedAppState) => void;
+  /** Take in rows another writer changed (see lib/sync/remote.ts). Replaces whole collections. */
+  applyRemoteCollections: (next: Partial<Pick<PersistedAppState, "characters" | "chats" | "personas" | "lorebooks" | "scenarios" | "presets">>) => void;
   /** Adds a message and returns its generated ID */
   addMessage: (chatId: string, message: Omit<Message, "id" | "timestamp">) => string;
   /** Insert a message directly after another (per-message image generation) */
@@ -112,6 +114,18 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
   chats: [],
   activeChatId: null,
   setActiveChatId: (id) => set({ activeChatId: id }),
+
+  applyRemoteCollections: (next) =>
+    set((s) => {
+      const chats = next.chats ?? s.chats;
+      const personas = next.personas ?? s.personas;
+      return {
+        ...next,
+        // A chat or persona removed elsewhere must not stay "open" or "active"
+        activeChatId: s.activeChatId && chats.some((c) => c.id === s.activeChatId) ? s.activeChatId : (next.chats ? null : s.activeChatId),
+        activePersonaId: s.activePersonaId && !personas.some((p) => p.id === s.activePersonaId) ? null : s.activePersonaId,
+      };
+    }),
 
   hydrateFromServer: ({
     characters, chats, personas, lorebooks, scenarios,
