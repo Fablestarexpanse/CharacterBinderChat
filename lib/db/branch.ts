@@ -118,8 +118,8 @@ export function branchMemory(db: DB, input: BranchMemoryInput): BranchMemoryResu
     // ── Facts, remapping ids so superseded_by points inside the copy
     const insFact = db.prepare(
       `INSERT INTO facts (chat_id, subject_id, predicate, object_id, object_literal,
-         t_valid_start, t_valid_end, t_ingested, confidence, importance, known_to, embedding, superseded_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
+         t_valid_start, t_valid_end, t_ingested, confidence, importance, known_to, embedding, pinned, locked, superseded_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
     );
     const idMap = new Map<number, number>();
     for (const f of facts) {
@@ -129,7 +129,7 @@ export function branchMemory(db: DB, input: BranchMemoryInput): BranchMemoryResu
       const info = insFact.run(
         toChatId, f.subject_id, f.predicate, f.object_id, f.object_literal,
         f.t_valid_start, reopened ? null : f.t_valid_end, f.t_ingested, f.confidence, f.importance,
-        f.known_to, f.embedding,
+        f.known_to, f.embedding, f.pinned, f.locked,
       );
       idMap.set(f.id, info.lastInsertRowid as number);
       result.facts++;

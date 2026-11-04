@@ -105,11 +105,22 @@ export function retrieveFactsForPrompt(
   // soak and the model confabulated the opposite ("you're an only child")
   // rather than saying it didn't know. The cost of a miss here is
   // confident fiction, so these facts don't compete — they're always in.
+  //
+  // Facts the USER pinned come first and bypass ranking the same way, whoever
+  // they are about — a pin is an explicit "never leave this out". They are
+  // capped at half the window so a long pin list cannot starve the rest of the
+  // prompt; past the cap the highest-ranked pins win.
+  const userPinned = all.filter((f) => f.pinned).sort(rank).slice(0, Math.max(2, Math.floor(limit * 0.5)));
+  const userPinnedIds = new Set(userPinned.map((f) => f.id));
   const PIN_CAP = Math.max(2, Math.floor(limit * 0.4));
-  const pinned = all
-    .filter((f) => (involves(f, characterId) || involves(f, playerId)) && isIdentityCoreFact(f.predicate))
-    .sort(rank)
-    .slice(0, PIN_CAP);
+  const pinned = [
+    ...userPinned,
+    ...all
+      .filter((f) => !userPinnedIds.has(f.id)
+        && (involves(f, characterId) || involves(f, playerId)) && isIdentityCoreFact(f.predicate))
+      .sort(rank)
+      .slice(0, PIN_CAP),
+  ];
   const isPinned = new Set(pinned.map((f) => f.id));
 
   const aboutCharacter = all.filter((f) => !isPinned.has(f.id) && involves(f, characterId)).sort(rank);

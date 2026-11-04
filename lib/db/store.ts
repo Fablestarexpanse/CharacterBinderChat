@@ -85,6 +85,10 @@ export class FableStore {
     // Embeddings for semantic retrieval (Phase C) — nullable, lexical fallback
     addCol("facts",        "embedding", "embedding BLOB");
     addCol("memory_cards", "embedding", "embedding BLOB");
+    // User curation of facts: pin = always in the prompt, lock = automatic
+    // extraction cannot supersede it
+    addCol("facts", "pinned", "pinned INTEGER NOT NULL DEFAULT 0");
+    addCol("facts", "locked", "locked INTEGER NOT NULL DEFAULT 0");
   }
 
   private _initSchema(): void {
@@ -363,7 +367,13 @@ export class FableStore {
     confidence?:   number;
     importance?:   number;
     knownTo?:      string[];
-  }): { factId: number; duplicate: boolean; superseded: number[] } {
+    /**
+     * Honour locked facts (default). Automatic extraction must: a locked fact is
+     * the user's word and a model's later guess does not get to replace it. A
+     * hand-entered fact passes false, because the user is the one overruling.
+     */
+    respectLocks?: boolean;
+  }): { factId: number; duplicate: boolean; superseded: number[]; blockedByLock?: boolean } {
     const family      = predicateFamily(fact.predicate);
     const objectKey   = fact.objectId ?? (fact.objectLiteral ?? "").toLowerCase().trim();
     const sameFamily  = (p: string) => predicateFamily(p) === family;
@@ -375,21 +385,78 @@ export class FableStore {
     const duplicate = existing.find((ex) => sameFamily(ex.predicate) && keyOf(ex) === objectKey);
     if (duplicate) return { factId: duplicate.id, duplicate: true, superseded: [] };
 
-    const toSupersede = isSingleValued(fact.predicate)
+    const respectLocks = fact.respectLocks ?? true;
+    const conflicting = isSingleValued(fact.predicate)
       ? existing.filter((ex) => sameFamily(ex.predicate) && keyOf(ex) !== objectKey)
       : [];
+    // A locked value for a single-valued predicate wins outright. Reported as a
+    // duplicate so callers (the extractor) skip it exactly as they skip a repeat
+    // — nothing is written, and the locked fact stays the one the prompt sees.
+    const lockedWinner = respectLocks ? conflicting.find((ex) => ex.locked) : undefined;
+    if (lockedWinner) {
+      return { factId: lockedWinner.id, duplicate: true, superseded: [], blockedByLock: true };
+    }
+    const toSupersede = conflicting;
 
     const factId = this.insertFact(chatId, { ...fact, predicate: normPredicate(fact.predicate) });
-    for (const old of toSupersede) this.supersedeFact(chatId, old.id, factId);
+    for (const old of toSupersede) this.supersedeFact(chatId, old.id, factId, undefined, true);
 
     return { factId, duplicate: false, superseded: toSupersede.map((f) => f.id) };
   }
 
-  supersedeFact(chatId: string, oldId: number, newId: number, atTime?: number): void {
+  /**
+   * Close `oldId`, replaced by `newId`. A locked fact is left alone unless
+   * `force` — the user lock is the whole point of the flag, and this is the one
+   * place every automatic supersession funnels through.
+   */
+  supersedeFact(chatId: string, oldId: number, newId: number, atTime?: number, force = false): void {
     const t = atTime ?? now();
     this.db
-      .prepare("UPDATE facts SET t_valid_end = ?, superseded_by = ? WHERE id = ? AND chat_id = ?")
+      .prepare(`UPDATE facts SET t_valid_end = ?, superseded_by = ?
+                WHERE id = ? AND chat_id = ? ${force ? "" : "AND locked = 0"}`)
       .run(t, newId, oldId, chatId);
+  }
+
+  /**
+   * Hand-curate a live fact. Changing what it SAYS (predicate or value) also
+   * locks it and floors its importance — a correction the user bothered to make
+   * must outrank, and survive, incidental extraction — unless the caller says
+   * otherwise. The embedding is cleared because it described the old wording.
+   */
+  updateFact(chatId: string, factId: number, patch: {
+    predicate?: string; objectLiteral?: string; pinned?: boolean; locked?: boolean;
+  }): { ok: true; fact: DbFact } | { ok: false; error: string } {
+    const row = this.db.prepare("SELECT * FROM facts WHERE id = ? AND chat_id = ?").get(factId, chatId);
+    if (!row) return { ok: false, error: `fact ${factId} not found in this chat` };
+    const cur = rowToFact(row);
+
+    const textChanged =
+      (patch.predicate !== undefined && normPredicate(patch.predicate) !== cur.predicate) ||
+      (patch.objectLiteral !== undefined && patch.objectLiteral !== cur.objectLiteral);
+    if (patch.objectLiteral !== undefined && cur.objectId !== null) {
+      return { ok: false, error: "this fact points at an entity — edit the entity, or delete the fact and add a new one" };
+    }
+    if (patch.predicate !== undefined && !normPredicate(patch.predicate)) {
+      return { ok: false, error: "predicate cannot be empty" };
+    }
+    if (patch.objectLiteral !== undefined && !patch.objectLiteral.trim()) {
+      return { ok: false, error: "value cannot be empty" };
+    }
+
+    const next = {
+      predicate: patch.predicate !== undefined ? normPredicate(patch.predicate) : cur.predicate,
+      objectLiteral: patch.objectLiteral !== undefined ? patch.objectLiteral.trim() : cur.objectLiteral,
+      pinned: patch.pinned ?? cur.pinned,
+      locked: patch.locked ?? (textChanged ? true : cur.locked),
+      importance: textChanged ? Math.max(cur.importance, 0.8) : cur.importance,
+    };
+    this.db.prepare(
+      `UPDATE facts SET predicate = ?, object_literal = ?, pinned = ?, locked = ?, importance = ?
+         ${textChanged ? ", embedding = NULL" : ""}
+       WHERE id = ? AND chat_id = ?`
+    ).run(next.predicate, next.objectLiteral, next.pinned ? 1 : 0, next.locked ? 1 : 0, next.importance, factId, chatId);
+
+    return { ok: true, fact: rowToFact(this.db.prepare("SELECT * FROM facts WHERE id = ?").get(factId)) };
   }
 
   /**

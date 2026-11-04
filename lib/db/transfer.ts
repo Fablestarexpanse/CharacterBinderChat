@@ -72,15 +72,15 @@ export function transferMemory(
     // downgraded transferred chats to lexical-only retrieval forever.
     const ins = db.prepare(
       `INSERT INTO facts (chat_id, subject_id, predicate, object_id, object_literal,
-         t_valid_start, t_valid_end, t_ingested, confidence, importance, embedding, known_to, superseded_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
+         t_valid_start, t_valid_end, t_ingested, confidence, importance, embedding, known_to, pinned, locked, superseded_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
     );
     const srcEmbedding = db.prepare("SELECT embedding FROM facts WHERE id = ?");
     for (const f of srcFacts) {
       const emb = (srcEmbedding.get(f.id) as { embedding: Buffer | null } | undefined)?.embedding ?? null;
       const info = ins.run(
         toChatId, f.subjectId, f.predicate, f.objectId, f.objectLiteral,
-        f.tValidStart, f.tValidEnd, f.tIngested, f.confidence, f.importance, emb, JSON.stringify(f.knownTo)
+        f.tValidStart, f.tValidEnd, f.tIngested, f.confidence, f.importance, emb, JSON.stringify(f.knownTo), f.pinned ? 1 : 0, f.locked ? 1 : 0
       );
       idMap.set(f.id, info.lastInsertRowid as number);
       facts++;

@@ -58,6 +58,8 @@ export interface DbFact {
   importance:    number;         // 0.0–1.0 — how much it matters (retrieval sort key)
   knownTo:       string[];       // entity IDs who know this fact
   supersededBy:  number | null;  // FK to replacement fact
+  pinned:        boolean;        // user: always injected into the prompt
+  locked:        boolean;        // user: automatic extraction may not supersede it
 }
 
 // ─── Relationship Stat ────────────────────────────────────────────────────────

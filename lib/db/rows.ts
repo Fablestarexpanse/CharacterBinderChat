@@ -18,6 +18,7 @@ interface FactRow {
   t_valid_start: number; t_valid_end: number | null; t_ingested: number;
   confidence: number; importance: number | null;
   known_to: string | null; superseded_by: number | null;
+  pinned: number | null; locked: number | null;
 }
 interface StatRow {
   id: number; observer_id: string; target_id: string; stat_name: string;
@@ -71,6 +72,8 @@ export function rowToFact(raw: unknown): DbFact {
     importance:    r.importance ?? 0.5,
     knownTo:       parseJsonArray(r.known_to),
     supersededBy:  r.superseded_by ?? null,
+    pinned:        !!r.pinned,
+    locked:        !!r.locked,
   };
 }
 

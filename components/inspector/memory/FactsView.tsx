@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useFableStore } from "@/lib/store";
-import { Loader2, Trash2, Plus, X } from "lucide-react";
+import { Loader2, Trash2, Plus, X, Pin, Lock, LockOpen, Pencil, Check } from "lucide-react";
 import { formatAgeFromUnixSeconds, formatDateFromUnixSeconds } from "./utils";
 import { sendJson } from "@/lib/api/client";
 import type { DrawerFact } from "@/lib/api/dto";
@@ -27,6 +27,8 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ predicate: "", object: "" });
   const [writeError, setWriteError] = useState<string | null>(null);
+  // Inline edit of one fact's value
+  const [editing, setEditing] = useState<{ id: number; text: string } | null>(null);
   const url = `/api/drawer/facts?chatId=${encodeURIComponent(chatId)}&subject=${encodeURIComponent(characterId)}${showHistory ? "&includeSuperseded=1" : ""}`;
   const { data, error, loading } = useDrawerRead<{ facts?: DrawerFact[] }>(
     `${chatId}:${characterId}:${extractionVersion}:${showHistory ? 1 : 0}`, url);
@@ -46,6 +48,21 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
     } finally {
       setBusyId(null);
       setConfirmDelete(null);
+    }
+  };
+
+  /** Pin / lock / edit one fact. Any change refreshes every memory view. */
+  const patchFact = async (factId: number, body: { objectLiteral?: string; pinned?: boolean; locked?: boolean }) => {
+    setBusyId(factId);
+    setWriteError(null);
+    try {
+      await sendJson("PATCH", "/api/drawer/facts", { chatId, factId, ...body });
+      setEditing(null);
+      bumpExtraction();
+    } catch (e) {
+      setWriteError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -184,11 +201,71 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
           {liveFacts.map((f) => (
             <div key={f.id} className="group rounded-lg border border-[var(--border)] bg-[var(--card)] p-2.5">
               <div className="flex items-start gap-1.5">
+                {editing?.id === f.id ? (
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <span className="text-[11px] font-medium text-[var(--purple-fg)]">{f.predicate}</span>
+                    <Input
+                      value={editing.text}
+                      onChange={(e) => setEditing({ id: f.id, text: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && editing.text.trim()) patchFact(f.id, { objectLiteral: editing.text });
+                        if (e.key === "Escape") setEditing(null);
+                      }}
+                      className="h-7 text-[11px]"
+                      autoFocus
+                    />
+                    <p className="text-[10px] text-[var(--muted-fg)]">Saving locks this fact so extraction can&apos;t change it.</p>
+                    <div className="flex gap-1">
+                      <Button size="sm" className="h-6 text-[10px]" disabled={!editing.text.trim()}
+                        onClick={() => patchFact(f.id, { objectLiteral: editing.text })}>
+                        <Check className="h-3 w-3" /> Save
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={() => setEditing(null)}>Cancel</Button>
+                    </div>
+                  </div>
+                ) : (
                 <p className="flex-1 min-w-0 text-[11px] text-[var(--foreground)] leading-snug">
                   <span className="font-medium text-[var(--purple-fg)]">{f.predicate}</span>
                   {" "}
                   <span>{f.objectDisplay}</span>
                 </p>
+                )}
+                {editing?.id !== f.id && (
+                <>
+                {f.editable && (
+                  <button
+                    // objectDisplay wraps literals in quotes for reading; the stored value has none
+                    onClick={() => setEditing({ id: f.id, text: f.objectDisplay.replace(/^"([\s\S]*)"$/, "$1") })}
+                    title="Edit this fact"
+                    className="flex-shrink-0 rounded p-1 text-[var(--muted-fg)] opacity-0 group-hover:opacity-100 hover:text-[var(--foreground)] transition-all cursor-pointer"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )}
+                <button
+                  onClick={() => patchFact(f.id, { pinned: !f.pinned })}
+                  disabled={busyId === f.id}
+                  aria-pressed={f.pinned}
+                  title={f.pinned ? "Pinned — always in the prompt. Click to unpin" : "Pin — always include this in the prompt"}
+                  className={`flex-shrink-0 rounded p-1 transition-all cursor-pointer ${
+                    f.pinned ? "text-[var(--purple-fg)] opacity-100" : "text-[var(--muted-fg)] opacity-0 group-hover:opacity-100 hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  <Pin className="h-3 w-3" />
+                </button>
+                <button
+                  onClick={() => patchFact(f.id, { locked: !f.locked })}
+                  disabled={busyId === f.id}
+                  aria-pressed={f.locked}
+                  title={f.locked ? "Locked — extraction can't replace this. Click to unlock" : "Lock — stop extraction from replacing this"}
+                  className={`flex-shrink-0 rounded p-1 transition-all cursor-pointer ${
+                    f.locked ? "text-[var(--purple-fg)] opacity-100" : "text-[var(--muted-fg)] opacity-0 group-hover:opacity-100 hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  {f.locked ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
+                </button>
+                </>
+                )}
                 <button
                   onClick={() => (confirmDelete === f.id ? handleDelete(f.id) : setConfirmDelete(f.id))}
                   onBlur={() => setConfirmDelete((v) => (v === f.id ? null : v))}
@@ -206,6 +283,8 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
                 </button>
               </div>
               <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                {f.pinned && <Badge variant="default">pinned</Badge>}
+                {f.locked && <Badge variant="default">locked</Badge>}
                 {f.confidence < 1.0 && (
                   <Badge variant="default">{Math.round(f.confidence * 100)}%</Badge>
                 )}

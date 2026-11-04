@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { routeError, badRequest } from "@/lib/api/server";
 import type { DrawerFact } from "@/lib/api/dto";
+import { embedText, vecToBuffer } from "@/lib/llm/embeddings";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,9 @@ export async function GET(req: NextRequest) {
       tValidStart:   f.tValidStart,
       tValidEnd:     f.tValidEnd,
       supersededBy:  f.supersededBy,
+      pinned:        f.pinned,
+      locked:        f.locked,
+      editable:      f.objectId === null,
     }));
     return Response.json({ facts: enriched } satisfies { facts: DrawerFact[] });
   } catch (err) {
@@ -96,6 +100,8 @@ export async function POST(req: NextRequest) {
       objectLiteral: objectLiteral ?? null,
       confidence:    confidence    ?? 1.0,
       importance:    importance    ?? 0.8,
+      // The user typing a fact is the one overruling a locked value
+      respectLocks:  false,
     });
 
     return Response.json({ ok: true, ...result });
@@ -128,5 +134,53 @@ export async function DELETE(req: NextRequest) {
     return Response.json({ ok: true, revived: result.revived });
   } catch (err) {
     return routeError("[drawer/facts DELETE]", err);
+  }
+}
+
+// PATCH /api/drawer/facts
+// Body: { chatId, factId, predicate?, objectLiteral?, pinned?, locked? }
+// Curate a live fact. Editing its wording locks it (and ranks it up) unless
+// `locked` is sent explicitly — see FableStore.updateFact. Pin and lock are
+// plain booleans; anything else is refused rather than coerced.
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = await req.json() as Record<string, unknown>;
+    const { chatId, factId, predicate, objectLiteral, pinned, locked } = body;
+    if (typeof chatId !== "string" || !chatId || !Number.isInteger(factId)) {
+      return badRequest("chatId and an integer factId are required");
+    }
+    for (const [name, v] of [["predicate", predicate], ["objectLiteral", objectLiteral]] as const) {
+      if (v !== undefined && typeof v !== "string") return badRequest(`${name} must be a string`);
+    }
+    for (const [name, v] of [["pinned", pinned], ["locked", locked]] as const) {
+      if (v !== undefined && typeof v !== "boolean") return badRequest(`${name} must be a boolean`);
+    }
+    if ([predicate, objectLiteral, pinned, locked].every((v) => v === undefined)) {
+      return badRequest("nothing to change");
+    }
+
+    const store = getStore();
+    const result = store.updateFact(chatId, factId as number, {
+      predicate:     predicate as string | undefined,
+      objectLiteral: objectLiteral as string | undefined,
+      pinned:        pinned as boolean | undefined,
+      locked:        locked as boolean | undefined,
+    });
+    if (!result.ok) {
+      const status = result.error.includes("not found") ? 404 : 400;
+      return Response.json({ ok: false, error: result.error }, { status });
+    }
+
+    // The wording changed, so its vector is stale. Re-embed best-effort: with
+    // Ollama down the fact simply ranks lexically until it next comes back.
+    if (objectLiteral !== undefined || predicate !== undefined) {
+      try {
+        const vec = await embedText(`${result.fact.predicate} ${result.fact.objectLiteral ?? ""}`);
+        if (vec) store.setFactEmbedding(chatId, result.fact.id, vecToBuffer(vec));
+      } catch { /* embeddings are optional infrastructure */ }
+    }
+    return Response.json({ ok: true, pinned: result.fact.pinned, locked: result.fact.locked });
+  } catch (err) {
+    return routeError("[drawer/facts PATCH]", err);
   }
 }

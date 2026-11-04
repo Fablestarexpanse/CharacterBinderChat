@@ -38,6 +38,10 @@ CREATE TABLE IF NOT EXISTS facts (
   -- L2-normalised float32 vector, nullable. Embeddings are optional and
   -- retrieval falls back to lexical ranking without them
   embedding      BLOB,
+  -- User curation. pinned: always injected into the prompt. locked: automatic
+  -- extraction may not supersede or overwrite it (a hand edit locks it)
+  pinned         INTEGER NOT NULL DEFAULT 0,
+  locked         INTEGER NOT NULL DEFAULT 0,
   superseded_by  INTEGER REFERENCES facts(id),
   FOREIGN KEY (chat_id, subject_id) REFERENCES entities(chat_id, id),
   FOREIGN KEY (chat_id, object_id)  REFERENCES entities(chat_id, id)

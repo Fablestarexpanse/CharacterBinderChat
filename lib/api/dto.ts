@@ -38,6 +38,10 @@ export interface DrawerFact {
   tValidStart:   number;
   tValidEnd:     number | null;
   supersededBy:  number | null;
+  pinned:        boolean;
+  locked:        boolean;
+  /** Value is free text. A fact pointing at an entity has its wording edited on the entity. */
+  editable:      boolean;
 }
 
 /** GET /api/workflows — one ComfyUI template in the workflows/ directory. */
