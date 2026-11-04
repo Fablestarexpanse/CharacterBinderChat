@@ -67,12 +67,23 @@ CharacterBinder's job is split into three pieces and each goes where it belongs:
 - Shapeless prose uses the keyword sorter only. The AI sorter was dropped (see
   below); wiring it to the Ollama/OpenRouter connection is a small follow-up.
 
-**Phase 4 — migration and the rest of the editor.** Import a CharacterBinder
-archive `.zip` (its manifest lists every card with type). Token counter per field,
-templates, Decode PNG inspector, script cards (decide whether they belong).
+**Phase 4 — migration done; three extras deliberately skipped.**
+- **Archive import.** Drop or pick a CharacterBinder "Archive All" `.zip` on the
+  Characters screen (or anywhere in the window) and the whole collection comes
+  across: characters (art becomes the avatar, embedded lorebooks created and
+  linked, all card fields kept), lorebooks, personas, scenarios. Characters are
+  saved directly rather than opened for review one by one. Re-running is safe:
+  anything already present is skipped, and two *different* characters sharing a
+  name are both kept. A persona the user already chose is never changed. Tested with
+  a real JSZip-built archive and with hostile ones (decompression bombs, lying size
+  headers, truncation).
+- **Not ported, on purpose:** the per-field token counter (Peek Prompt already
+  shows real token counts for what is sent), built-in templates (Quick Import and
+  card import cover starting from existing text), the Decode PNG inspector (a
+  JSON export of any card shows the same), and script cards (no home in a chat
+  app). Each is a small addition if wanted.
 
-**Phase 5 — MCP server over HTTP,** then archive the CharacterBinder repo with a
-README pointing here.
+**Phase 5 — MCP server: needs a decision, not built.** See "Open question" below.
 
 ## What is deliberately not ported
 - **The in-browser WebLLM sorter** (a 2.2 GB WebGPU model download). FableChat has
@@ -88,3 +99,30 @@ README pointing here.
 - `fable_drawer2/` and the eval harness mirror `promptBuilder.ts` by hand
   (see its header); `tests/memory-eval/long-chat.mjs` does not yet know about the
   new card sections. They only matter for characters that use the new fields.
+
+## Open question: the MCP server
+
+CharacterBinder's MCP server lets a coding agent create and edit cards. It works
+because the *browser* holds the library and the server just relays to it.
+FableChat is the reverse: the browser holds a working copy and SQLite holds the
+durable one, and `StateSync` sends only what changed in the browser (a diff against
+what it last saved). An MCP server that wrote cards straight to SQLite would be
+invisible to an open tab until reload, and the tab's next save could overwrite or
+remove what the agent wrote. That is a correctness problem, not a detail.
+
+Two honest options:
+1. **Server-authoritative edits.** Add card routes that write SQLite, and make the
+   open tab pick up server changes (poll or push) before it syncs. Correct, but it
+   changes StateSync from "the browser is the editor" to a two-writer model.
+2. **Keep the bridge idea.** The MCP server talks to the open tab over a local
+   WebSocket, as CharacterBinder does, and the tab applies changes through its own
+   store (so StateSync stays the only writer). Needs the pairing-token handshake
+   that CharacterBinder already solved; only works while the app is open.
+
+Option 2 is smaller and safe now; option 1 is the better long-term shape and is
+also what any future multi-device use would need.
+
+## Retiring CharacterBinder
+Once the above is settled: publish a final CharacterBinder release whose README
+points here and says how to import an archive, then archive the repository. That
+is a repository setting, so it is yours to do.

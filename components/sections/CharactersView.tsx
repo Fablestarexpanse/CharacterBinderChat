@@ -109,6 +109,8 @@ export function CharactersView() {
     // types (lorebook, persona, scenario) land directly in their sections.
     const [result] = await importCardFiles([file]);
     if (!result.ok) setImportError(`${result.file}: ${result.message}`);
+    // An archive has no editor to open, so say what happened
+    else if (result.archive) setExportNotice(`${result.file}: ${result.message}`);
   };
 
   return (
@@ -208,7 +210,7 @@ export function CharactersView() {
               <Plus className="h-6 w-6 text-[var(--muted-fg)] mx-auto mb-1" />
               <div className="text-sm text-[var(--muted-fg)]">Import card</div>
               <div className="text-xs text-[var(--muted-fg)]">
-                PNG (CharacterBinder / SillyTavern) or JSON — or drop it anywhere
+                PNG (CharacterBinder / SillyTavern), JSON, or a CharacterBinder archive (.zip) — or drop it anywhere
               </div>
             </div>
           </Card>
@@ -217,7 +219,7 @@ export function CharactersView() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".json,.png,application/json,image/png"
+          accept=".json,.png,.zip,application/json,image/png,application/zip"
           className="hidden"
           onChange={handleImportFile}
         />

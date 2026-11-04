@@ -10,15 +10,19 @@ import {
   convertPayload,
   isPng,
   type ImportedCard,
-  type ImportedLorebook,
 } from "./cardFile";
 import { downscaleImage } from "@/lib/image/downscale";
 import { useUiStore } from "@/lib/store/ui";
+import { importBook } from "./storeWrites";
+import { importArchive } from "./archive";
+import { isZip } from "@/lib/cards/zip";
 
 export interface ImportResult {
   file: string;
   ok: boolean;
   message: string;
+  /** A whole-collection import: the message is a summary, not one card's outcome */
+  archive?: boolean;
 }
 
 export async function importCardFiles(files: File[]): Promise<ImportResult[]> {
@@ -27,9 +31,14 @@ export async function importCardFiles(files: File[]): Promise<ImportResult[]> {
 
   for (const file of files) {
     try {
+      // A CharacterBinder archive is a whole collection, not a card
+      if (/\.zip$/i.test(file.name) || isZip(new Uint8Array(await file.slice(0, 4).arrayBuffer()))) {
+        results.push(await importArchive(file));
+        continue;
+      }
       const card = await decodeFile(file);
       if (!card) {
-        results.push({ file: file.name, ok: false, message: "not a PNG card or JSON file." });
+        results.push({ file: file.name, ok: false, message: "not a PNG card, JSON file or CharacterBinder archive (.zip)." });
         continue;
       }
       results.push(await applyCard(card, file, characterOpened));
@@ -56,16 +65,6 @@ async function decodeFile(file: File): Promise<ImportedCard | null> {
     return { kind: "unsupported", reason: "PNG has no embedded card data." };
   }
   return convertPayload(payload.json, payload.key);
-}
-
-function importBook(book: ImportedLorebook): { id: string; count: number } {
-  const store = useFableStore.getState();
-  const bookId = store.addLorebook(book.name);
-  if (book.description) store.updateLorebook(bookId, { description: book.description });
-  for (const entry of book.entries) {
-    useFableStore.getState().addLoreEntry(bookId, entry);
-  }
-  return { id: bookId, count: book.entries.length };
 }
 
 async function applyCard(

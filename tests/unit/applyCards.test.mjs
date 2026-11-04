@@ -16,7 +16,7 @@ test("a file that is neither PNG nor JSON is reported, not thrown", async () => 
 
   assert.equal(result.ok, false);
   assert.equal(result.file, "notes.txt");
-  assert.match(result.message, /not a PNG card or JSON file/);
+  assert.match(result.message, /not a PNG card, JSON file or CharacterBinder archive/);
 });
 
 test("malformed JSON degrades to a reported failure", async () => {
