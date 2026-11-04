@@ -99,6 +99,20 @@ CREATE TABLE IF NOT EXISTS core_memory (
   PRIMARY KEY (chat_id, character_id)
 );
 
+-- ─── Memory snapshots ──────────────────────────────────────────────────────
+-- Stats and core memory are current-state only, so branching a chat from an
+-- earlier message needs a record of what they were then. One row per message
+-- whose extraction finished: core memory rows and relationship stats as JSON.
+-- Facts, cards and commitments need no snapshot, since they are timestamped.
+
+CREATE TABLE IF NOT EXISTS memory_snapshots (
+  chat_id    TEXT    NOT NULL,
+  message_id TEXT    NOT NULL,
+  created_at INTEGER NOT NULL,
+  data       TEXT    NOT NULL,
+  PRIMARY KEY (chat_id, message_id)
+);
+
 -- ─── App State: characters / chats / messages / personas ────────────────────
 -- Durable mirror of the client store. Rows hold the full JSON of each object
 -- and seq preserves array order. Drawer 2 remains the queryable layer.

@@ -93,6 +93,14 @@ export interface Chat {
   messages: Message[];
   createdAt: string;
   updatedAt: string;
+  /** Set on a chat made with "Branch from here": where it forked from. The
+   *  source may since have been deleted, so this is a label, not a reference
+   *  anything depends on. */
+  branchOf?: {
+    chatId: string; chatName: string; messageId: string;
+    /** Stats and core memory were copied from live values, not a snapshot of that moment */
+    approximateMemory?: boolean;
+  };
   contextUsed?: number;
   contextMax?: number;
   /** Which preset applies. Unset falls back to the store's defaultPresetId,

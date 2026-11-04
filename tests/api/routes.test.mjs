@@ -195,3 +195,18 @@ test("state PATCH: an empty patch is accepted and changes nothing", { skip }, as
   const after = await get("/api/state");
   assert.equal(after.body.chats.length, before.body.chats.length);
 });
+
+test("branch: malformed requests are refused before anything is written", { skip }, async () => {
+  const noSource = await send("POST", "/api/drawer/branch", { chat: { id: "x", messages: [] } });
+  assert.equal(noSource.status, 400);
+  const sameId = await send("POST", "/api/drawer/branch", {
+    sourceChatId: "a", chat: { id: "a", messages: [] }, keptMessageIds: [], messageIdMap: {}, fallbackCutoff: null,
+  });
+  assert.equal(sameId.status, 400);
+  const badCutoff = await send("POST", "/api/drawer/branch", {
+    sourceChatId: "a", chat: { id: "b", messages: [] }, keptMessageIds: [], messageIdMap: {}, fallbackCutoff: "soon",
+  });
+  assert.equal(badCutoff.status, 400);
+  const snap = await send("POST", "/api/drawer/snapshot", { chatId: "a" });
+  assert.equal(snap.status, 400);
+});

@@ -415,7 +415,7 @@ export function flushPendingExtraction(): void {
   const p = pending;
   pending = null;
   clearTimeout(p.timer);
-  runExtraction(p.chatId, p.speakerId);
+  runExtraction(p.chatId, p.speakerId, p.messageId);
 }
 
 /**
@@ -433,7 +433,7 @@ function cancelPendingExtraction(messageId?: string): boolean {
 
 // ─── Knowledge extraction (Drawer 2 + Core Memory refresh) ───────────────────
 
-function runExtraction(chatId: string, speakerId?: string): void {
+function runExtraction(chatId: string, speakerId?: string, messageId?: string): void {
   // Read current store state directly rather than a stale snapshot — the
   // assistant's completed reply is only present in the live store state.
   const {
@@ -536,8 +536,15 @@ function runExtraction(chatId: string, speakerId?: string): void {
   }
 
   Promise.all(calls)
-    .then((errors) => {
+    .then(async (errors) => {
       setLastExtractionError(errors.find((e) => e !== null) ?? null);
+      // Record the memory state this message produced so a branch from here can
+      // start from exactly it. Skipped after a failed extraction: a half-updated
+      // state is not worth preserving, and branching falls back to live values.
+      if (messageId && errors.every((e) => e === null)) {
+        await sendJson("POST", "/api/drawer/snapshot", { chatId, messageId })
+          .catch((e: Error) => console.warn("[snapshot]", e.message));
+      }
       bumpExtraction();
     })
     .finally(() => {

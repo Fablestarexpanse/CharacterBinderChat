@@ -162,7 +162,17 @@ export function ChatHeader() {
               <div className="font-semibold text-sm text-[var(--foreground)] truncate">
                 {chat.name}
               </div>
-              {character && (
+              {chat.branchOf ? (
+                <div
+                  className="text-[11px] text-[var(--muted-fg)] truncate"
+                  title={chat.branchOf.approximateMemory
+                    ? "Memory was copied as it stands now, not as it was at the branch point — relationship stats and mood may be ahead of this story."
+                    : undefined}
+                >
+                  Branched from {chat.branchOf.chatName}
+                  {chat.branchOf.approximateMemory && " · memory approximate"}
+                </div>
+              ) : character && (
                 <div className="text-[11px] text-[var(--muted-fg)] truncate">
                   {character.tags.slice(0, 2).join(" · ")}
                 </div>

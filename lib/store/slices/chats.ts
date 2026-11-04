@@ -38,6 +38,8 @@ export interface ChatsSlice {
   setChatContext: (chatId: string, contextUsed: number, contextMax: number) => void;
   /** Merge per-chat generation settings (temperature, maxTokens, topP…) */
   updateChatSettings: (chatId: string, settings: Partial<GenerationParams>) => void;
+  /** Insert a fully built chat (a branch) and open it */
+  addBranchedChat: (chat: Chat) => void;
   createChat: (characterId?: string) => string;
   /** Chat-builder create: character + persona + worlds + scenario override in one shot */
   createChatFromBuilder: (config: {
@@ -225,6 +227,8 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
   updateChatSettings: (chatId, settings) => {
     set((state) => patchChat(state, chatId, (c) => ({ ...c, settings: { ...c.settings, ...settings } })));
   },
+
+  addBranchedChat: (chat) => set((state) => ({ chats: [chat, ...state.chats], activeChatId: chat.id })),
 
   createChat: (characterId) => {
     const id = `chat-${Date.now()}`;

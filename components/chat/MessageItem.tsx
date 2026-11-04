@@ -5,6 +5,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useFableStore } from "@/lib/store";
+import { branchChat } from "@/lib/chat/branch";
 import { regenerateLastReply } from "@/lib/chat/generation";
 import { generateSceneImage } from "@/lib/chat/imageGen";
 import { ImageCard } from "@/components/chat/ImageCard";
@@ -20,6 +21,7 @@ import {
   X,
   ImagePlus,
   Brain,
+  GitBranch,
   Clock,
   Loader2,
 } from "lucide-react";
@@ -180,6 +182,16 @@ export function MessageItem({ message }: MessageItemProps) {
               <RefreshCw className="h-3 w-3" />
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            title="Branch from here — new chat with the story and memory as of this message"
+            disabled={isGenerating || message.error}
+            onClick={() => { void branchChat(message.chatId, message.id); }}
+          >
+            <GitBranch className="h-3 w-3" />
+          </Button>
           {!isUser && message.memoryTrace && (
             <Button
               variant="ghost"

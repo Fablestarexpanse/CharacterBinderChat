@@ -15,6 +15,7 @@ import { contentWords, jaccard, normalizeText } from "@/lib/text/overlap";
 import type { PersistedAppState } from "@/lib/types";
 import { getAppState, replaceAppState, patchAppState, countAfterPatch, type AppStatePatchInput } from "./appState";
 import { listMemorySources, transferMemory } from "./transfer";
+import { saveMemorySnapshot, branchMemory, type BranchMemoryInput } from "./branch";
 import type {
   DbEntity,
   DbFact,
@@ -922,7 +923,7 @@ export class FableStore {
   /** Remove every memory row belonging to a chat */
   purgeChatMemory(chatId: string): void {
     const tx = this.db.transaction(() => {
-      for (const t of ["facts", "relationship_stats", "commitments", "memory_cards", "core_memory", "entities"]) {
+      for (const t of ["facts", "relationship_stats", "commitments", "memory_cards", "core_memory", "entities", "memory_snapshots"]) {
         this.db.prepare(`DELETE FROM ${t} WHERE chat_id = ?`).run(chatId);
       }
     });
@@ -940,7 +941,7 @@ export class FableStore {
       (this.db.prepare("SELECT id FROM app_chats").all() as Array<{ id: string }>).map((r) => r.id)
     );
     const referenced = new Set<string>();
-    for (const t of ["facts", "relationship_stats", "commitments", "memory_cards", "core_memory", "entities"]) {
+    for (const t of ["facts", "relationship_stats", "commitments", "memory_cards", "core_memory", "entities", "memory_snapshots"]) {
       for (const r of this.db.prepare(`SELECT DISTINCT chat_id FROM ${t}`).all() as Array<{ chat_id: string }>) {
         referenced.add(r.chat_id);
       }
@@ -959,6 +960,22 @@ export class FableStore {
 
   transferMemory(fromChatId: string, toChatId: string): ReturnType<typeof transferMemory> {
     return transferMemory(this, this.db, fromChatId, toChatId);
+  }
+
+  // ── Branching ─────────────────────────────────────────────────────────────
+
+  chatExists(chatId: string): boolean {
+    return !!this.db.prepare("SELECT 1 FROM app_chats WHERE id = ?").get(chatId);
+  }
+
+  /** Record core memory + stats as they stand, keyed by the message just extracted. */
+  saveMemorySnapshot(chatId: string, messageId: string): void {
+    saveMemorySnapshot(this.db, chatId, messageId);
+  }
+
+  /** Copy a chat's memory as it was at a point in the story — see lib/db/branch.ts. */
+  branchMemory(input: BranchMemoryInput): ReturnType<typeof branchMemory> {
+    return branchMemory(this.db, input);
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
