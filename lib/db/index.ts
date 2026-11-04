@@ -19,15 +19,23 @@ const globalForStore = globalThis as {
   _fableStoreCache?: { store: FableStore; builtBy: unknown };
 };
 
+/** Where the live database file is. */
+export function dbFilePath(): string {
+  return process.env.FABLE_DB_PATH ?? path.join(process.cwd(), "data", "fablestore.db");
+}
+
+/** Close the cached store so its file can be replaced. The next getStore() reopens whatever is at the path. */
+export function closeStore(): void {
+  globalForStore._fableStoreCache?.store?.close();
+  globalForStore._fableStoreCache = undefined;
+}
+
 export function getStore(): FableStore {
   const cached = globalForStore._fableStoreCache;
   if (cached && cached.builtBy === FableStore) return cached.store;
 
   cached?.store?.close();
-  const dbPath =
-    process.env.FABLE_DB_PATH ??
-    path.join(process.cwd(), "data", "fablestore.db");
-  const store = new FableStore(dbPath);
+  const store = new FableStore(dbFilePath());
   globalForStore._fableStoreCache = { store, builtBy: FableStore };
   return store;
 }

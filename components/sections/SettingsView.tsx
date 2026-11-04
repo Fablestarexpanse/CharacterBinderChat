@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useFableStore, DEFAULT_UTILITY_MODEL } from "@/lib/store";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -258,6 +258,112 @@ function MemoryCard() {
   );
 }
 
+// ─── Backup & restore ─────────────────────────────────────────────────────────
+
+interface StagedBackup {
+  token: string;
+  name: string;
+  summary: { characters: number; chats: number; messages: number; facts: number; madeAt: number | null; bytes: number };
+}
+
+function BackupCard() {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [staged, setStaged] = useState<StagedBackup | null>(null);
+  const [busy, setBusy] = useState<"checking" | "restoring" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Step 1: send the file for inspection. Nothing is replaced yet.
+  const choose = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";                       // allow choosing the same file again
+    if (!file) return;
+    setError(null); setStaged(null); setBusy("checking");
+    try {
+      const res = await fetch("/api/backup/restore?stage=1", { method: "POST", body: file });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.ok) throw new Error(body?.error ?? `HTTP ${res.status}`);
+      setStaged({ token: body.token, name: file.name, summary: body.summary });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // Step 2: the person has seen what is in it and said yes.
+  const confirm = async () => {
+    if (!staged) return;
+    setError(null); setBusy("restoring");
+    try {
+      const res = await fetch("/api/backup/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Confirm-Restore": "replace-everything" },
+        body: JSON.stringify({ token: staged.token }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.ok) throw new Error(body?.error ?? `HTTP ${res.status}`);
+      window.location.reload();                // everything on screen is now stale
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setBusy(null);
+    }
+  };
+
+  const s = staged?.summary;
+  return (
+    <Card>
+      <CardHeader>
+        <div className="font-semibold text-sm">Backup &amp; restore</div>
+        <div className="text-xs text-[var(--muted-fg)]">
+          One file with everything: characters, chats <em>and</em> everything the characters remember.
+        </div>
+      </CardHeader>
+      <CardBody className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href="/api/backup"
+            download
+            className="inline-flex items-center h-7 px-3 text-xs font-medium rounded-lg border border-[var(--border)] hover:bg-[var(--muted)] text-[var(--foreground)] transition-colors"
+          >
+            Download full backup
+          </a>
+          <Button variant="outline" size="sm" className="h-7 px-3 text-xs" disabled={busy !== null} onClick={() => fileRef.current?.click()}>
+            {busy === "checking" ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Checking…</> : "Restore from a backup…"}
+          </Button>
+          <input ref={fileRef} type="file" accept=".db,.sqlite,.sqlite3,application/vnd.sqlite3,application/octet-stream" className="hidden" onChange={choose} />
+        </div>
+
+        {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{error}</div>}
+
+        {staged && s && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800 space-y-2">
+            <div className="font-semibold">Restore from {staged.name}?</div>
+            <div>
+              It holds {s.characters} character{s.characters === 1 ? "" : "s"}, {s.chats} chat{s.chats === 1 ? "" : "s"} ({s.messages.toLocaleString()} messages)
+              and {s.facts.toLocaleString()} remembered facts
+              {s.madeAt ? <>, made {new Date(s.madeAt * 1000).toLocaleString()}</> : null}.
+            </div>
+            <div>
+              <strong>This replaces everything currently in FableChat.</strong> What you have now is kept as a safety copy
+              next to the database file, so you can undo this by hand. Your API keys are not touched.
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" className="h-7 px-3 text-xs bg-red-600 hover:bg-red-700 text-white" disabled={busy !== null} onClick={confirm}>
+                {busy === "restoring" ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Restoring…</> : "Replace everything"}
+              </Button>
+              <Button variant="outline" size="sm" className="h-7 px-3 text-xs" disabled={busy !== null} onClick={() => setStaged(null)}>Cancel</Button>
+            </div>
+          </div>
+        )}
+
+        <p className="text-[11px] text-[var(--muted-fg)]">
+          API keys are never included in a backup. After restoring on a different computer, enter them again.
+        </p>
+      </CardBody>
+    </Card>
+  );
+}
+
 // ─── Main Settings View ───────────────────────────────────────────────────────
 
 export function SettingsView() {
@@ -329,6 +435,8 @@ export function SettingsView() {
         <AppearanceCard />
 
         <MemoryCard />
+
+        <BackupCard />
 
         {/* Ollama */}
         <ProviderCard
@@ -458,7 +566,9 @@ export function SettingsView() {
               Export chats &amp; characters (JSON)
             </a>
             <p className="text-xs text-[var(--muted-fg)] mt-2">
-              Chats sync to the database automatically a moment after each change.
+              Chats sync to the database automatically a moment after each change. This JSON export holds
+              characters, chats, lorebooks, personas, scenarios and presets, <strong>but not what the characters
+              remember</strong>. For a complete copy, use Backup &amp; restore above.
             </p>
           </CardBody>
         </Card>

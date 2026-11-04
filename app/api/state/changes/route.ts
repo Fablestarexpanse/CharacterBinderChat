@@ -17,7 +17,8 @@ export async function GET(req: NextRequest) {
     const raw = req.nextUrl.searchParams.get("since");
     const since = raw === null ? NaN : Number(raw);
     if (!Number.isInteger(since) || since < 0) return badRequest("since must be a non-negative integer revision");
-    return Response.json(getStore().getChangesSince(since));
+    const store = getStore();
+    return Response.json({ ...store.getChangesSince(since), epoch: store.epoch() });
   } catch (err) {
     return routeError("[state/changes GET]", err);
   }

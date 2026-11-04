@@ -108,6 +108,19 @@ export function currentRev(db: DB): number {
   return getKv<number>(db, REV_KEY, 0);
 }
 
+/**
+ * An identifier for this database's lifetime. A restore replaces it, so a tab that
+ * remembers revision N of the OLD database can tell it is now talking to a different
+ * one (revision numbers mean nothing across databases) and reload.
+ */
+export function getEpoch(db: DB): string {
+  const existing = getKv<string | null>(db, "epoch", null);
+  if (existing) return existing;
+  const fresh = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  db.prepare("INSERT OR REPLACE INTO app_kv (key, value) VALUES ('epoch', ?)").run(JSON.stringify(fresh));
+  return fresh;
+}
+
 /** Start a new revision. Only call inside the write transaction that uses it. */
 function bumpRev(db: DB): number {
   const next = currentRev(db) + 1;

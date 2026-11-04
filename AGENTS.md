@@ -83,6 +83,10 @@ Two memory layers, both per-character:
 
 **Outside writers go through `lib/server/cards.ts`**, never straight to SQLite: it validates, converts card formats, keeps the previous version (`app_history`) and records an event (`app_events`) in the same transaction as the write, so the change is atomic, attributable and undoable. A new card field must be added to `CHARACTER_FIELDS` there as well as to the editor, or `update_card` will refuse it. `mcp/tools.mjs` holds no card logic on purpose; keep it that way.
 
+**Backup is a database snapshot, and restore swaps the file.** `lib/db/backup.ts`: `writeBackup` uses SQLite's online backup, stamps it, strips `secret:*` keys and vacuums; `swapInDatabase` validates first (magic bytes, `integrity_check`, required tables), renames the old database (never deletes it; the newest three are kept), restores the live API keys into the new file, and mints a new **epoch**. Tabs compare epochs on every poll and reload when it changes: revision numbers mean nothing across databases. Add a table the app needs to `REQUIRED_TABLES` only if an older backup would be unusable without it, or old backups become unrestorable. The JSON export (`/api/state?download=1`) deliberately omits memory; do not describe it as a backup.
+
+**The sync loop lives in `lib/sync/engine.ts`, not in a component.** `StateSync` only mounts it through `createLifecycle`, because React's development double-invoke runs an effect's cleanup right after its first run; a loop whose cleanup disposes it then silently never starts (no polling, no saving, in development only). Unit tests cannot see that class of bug: after any change to sync, run it in a browser and confirm `/api/state/changes` is being requested.
+
 ## Before you finish
 
 `npm run lint` and `npx tsc --noEmit` are both expected to be clean. Verify UI changes in the running app rather than assuming.

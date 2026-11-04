@@ -15,7 +15,7 @@ import { contentWords, jaccard, normalizeText } from "@/lib/text/overlap";
 import type { PersistedAppState } from "@/lib/types";
 import { saveHistory, getHistory, getHistoryGroup, deleteHistory, recordEvent } from "./appHistory";
 import {
-  getAppState, replaceAppState, patchAppState, countAfterPatch, currentRev, getChangesSince,
+  getAppState, replaceAppState, patchAppState, countAfterPatch, currentRev, getChangesSince, getEpoch,
   type AppStatePatchInput,
 } from "./appState";
 import { listMemorySources, transferMemory } from "./transfer";
@@ -35,6 +35,7 @@ import type {
 } from "./models";
 import { DEFAULT_DECAY_RATES } from "./models";
 import { migrateToChatScoped } from "./migrate";
+import { writeBackup } from "./backup";
 
 const APP_TABLES: Record<string, string> = {
   characters: "app_characters", chats: "app_chats", personas: "app_personas",
@@ -62,6 +63,11 @@ export class FableStore {
     migrateToChatScoped(this.db, () => this._initSchema());
     this._initSchema();
     this._ensureColumns();
+  }
+
+  /** Write a shareable snapshot of the whole database (memory included) to `dest`. */
+  backupTo(dest: string): Promise<void> {
+    return writeBackup(this.db, dest);
   }
 
   /** Release the file handle. Used when a dev hot reload replaces this class. */
@@ -1014,6 +1020,11 @@ export class FableStore {
   getHistoryGroup(rev: number) { return getHistoryGroup(this.db, rev); }
   deleteHistory(id: number) { deleteHistory(this.db, id); }
   recordEvent(e: Parameters<typeof recordEvent>[1]) { recordEvent(this.db, e); }
+
+  /** See getEpoch in appState.ts */
+  epoch(): string {
+    return getEpoch(this.db);
+  }
 
   /** Latest app-state revision */
   rev(): number {

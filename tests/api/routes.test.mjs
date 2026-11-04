@@ -210,3 +210,48 @@ test("branch: malformed requests are refused before anything is written", { skip
   const snap = await send("POST", "/api/drawer/snapshot", { chatId: "a" });
   assert.equal(snap.status, 400);
 });
+
+// ─── Backup and restore: only the non-destructive paths are exercised here ───
+
+test("backup: the download is a real SQLite file, named by date, with no API keys in it", { skip }, async () => {
+  const res = await fetch(`${BASE}/api/backup`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-disposition"), /fablechat-backup-\d{4}-\d{2}-\d{2}\.db/);
+  const buf = Buffer.from(await res.arrayBuffer());
+  assert.equal(buf.subarray(0, 15).toString("latin1"), "SQLite format 3");
+  assert.ok(!buf.toString("latin1").includes("secret:"), "no stored keys");
+});
+
+test("restore: a file that is not a backup is refused at staging, with a reason", { skip }, async () => {
+  const res = await fetch(`${BASE}/api/backup/restore?stage=1`, { method: "POST", body: Buffer.from("not a database ".repeat(100)) });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /not a database file/);
+});
+
+test("restore: nothing is replaced without the confirmation header and a valid token", { skip }, async () => {
+  const before = await get("/api/state");
+  const noHeader = await send("POST", "/api/backup/restore", { token: "0".repeat(32) });
+  assert.equal(noHeader.status, 400);
+  assert.match(noHeader.body.error, /X-Confirm-Restore/);
+
+  const badToken = await fetch(`${BASE}/api/backup/restore`, {
+    method: "POST", headers: { "Content-Type": "application/json", "X-Confirm-Restore": "replace-everything" }, body: JSON.stringify({ token: "../../etc/passwd" }),
+  });
+  assert.equal(badToken.status, 400, "a path-shaped token is not accepted");
+
+  const expired = await fetch(`${BASE}/api/backup/restore`, {
+    method: "POST", headers: { "Content-Type": "application/json", "X-Confirm-Restore": "replace-everything" }, body: JSON.stringify({ token: "a".repeat(32) }),
+  });
+  assert.equal(expired.status, 400);
+  assert.match((await expired.json()).error, /expired/);
+
+  const after = await get("/api/state");
+  assert.equal(after.body.chats.length, before.body.chats.length, "the database was not touched");
+});
+
+test("state: responses carry an epoch, and it is stable between calls", { skip }, async () => {
+  const a = await get("/api/state"), b = await get("/api/state");
+  assert.equal(typeof a.body.epoch, "string");
+  assert.equal(a.body.epoch, b.body.epoch);
+  assert.equal((await get("/api/state/changes?since=0")).body.epoch, a.body.epoch);
+});

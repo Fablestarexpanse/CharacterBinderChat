@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    return Response.json({ ...state, rev });
+    return Response.json({ ...state, rev, epoch: store.epoch() });
   } catch (err) {
     return routeError("[state GET]", err);
   }
