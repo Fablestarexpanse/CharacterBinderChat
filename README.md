@@ -78,24 +78,38 @@ The result: characters that remember, grow, and stay consistent over hundreds of
 
 ### Prerequisites
 
-- Node.js 20.9+ (required by Next.js 16)
+- **[Node.js](https://nodejs.org) 22.18 or newer** (the "LTS" download is fine). That is the only thing to install.
 - At least one LLM provider:
   - [Ollama](https://ollama.ai) (default: `http://127.0.0.1:11434`)
   - [LM Studio](https://lmstudio.ai) (default: `http://127.0.0.1:1234`)
   - Or an [OpenRouter](https://openrouter.ai) API key
 
-### Install & run
+### Run it
+
+Download or clone the repository, then:
+
+- **Windows:** double-click **`start.bat`**
+- **macOS / Linux:** run **`./start.sh`**
+
+The launcher checks Node, installs dependencies the first time, builds the app, starts it, and opens your browser at
+[http://localhost:3000](http://localhost:3000). Run it again later and it opens the copy that is already running instead of
+starting a second. After an update it rebuilds by itself. Keep its window open while you use FableChat; Ctrl+C stops it.
+If port 3000 is busy it uses the next free one and says so.
+
+The first run downloads about 300 MB of dependencies and takes a minute or two. If it fails mentioning `node-gyp`, the
+message says which build tools to install.
+
+The SQLite database is created automatically in `data/` on first run, and column upgrades apply when an older database is opened.
+**Back it up** from Settings → Backup & restore.
+
+Prefer a terminal, or developing on it?
 
 ```bash
 git clone https://github.com/Fablestarexpanse/CharacterBinderChat.git
 cd CharacterBinderChat
 npm install
-npm run dev
+npm run dev          # development server with hot reload
 ```
-
-Open [http://localhost:3000](http://localhost:3000).
-
-The SQLite database is created automatically at `data/fablestore.db` on first run, and column upgrades apply when an older database is opened.
 
 ### Configuration
 

@@ -156,7 +156,7 @@ export function swapInDatabase(o: SwapOptions): SwapResult {
   // Move the old database (and any leftover WAL/SHM, which would otherwise be
   // applied to the NEW file) out of the way
   fs.renameSync(o.livePath, preRestorePath);
-  for (const s of sidecars) if (fs.existsSync(o.livePath + s)) fs.renameSync(o.livePath + s, preRestorePath + s);
+  for (const s of sidecars) if (fs.existsSync(/*turbopackIgnore: true*/ o.livePath + s)) fs.renameSync(/*turbopackIgnore: true*/ o.livePath + s, /*turbopackIgnore: true*/ preRestorePath + s);
 
   try {
     fs.renameSync(o.stagedPath, o.livePath);
@@ -172,9 +172,11 @@ export function swapInDatabase(o: SwapOptions): SwapResult {
     }
   } catch (e) {
     // Put the old database back; the caller reopens it as if nothing happened
-    try { fs.rmSync(o.livePath, { force: true }); for (const s of sidecars) fs.rmSync(o.livePath + s, { force: true }); } catch { /* best effort */ }
+    // The paths are computed on purpose (the live file and its safety copy), so the
+    // bundler is told not to treat them as project files to trace.
+    try { fs.rmSync(o.livePath, { force: true }); for (const s of sidecars) fs.rmSync(/*turbopackIgnore: true*/ o.livePath + s, { force: true }); } catch { /* best effort */ }
     fs.renameSync(preRestorePath, o.livePath);
-    for (const s of sidecars) if (fs.existsSync(preRestorePath + s)) fs.renameSync(preRestorePath + s, o.livePath + s);
+    for (const s of sidecars) if (fs.existsSync(/*turbopackIgnore: true*/ preRestorePath + s)) fs.renameSync(/*turbopackIgnore: true*/ preRestorePath + s, /*turbopackIgnore: true*/ o.livePath + s);
     throw new Error(`Restore failed and was rolled back: ${e instanceof Error ? e.message : String(e)}`);
   }
 
