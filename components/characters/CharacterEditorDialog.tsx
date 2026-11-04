@@ -12,6 +12,7 @@ import { AvatarPicker } from "@/components/ui/AvatarPicker";
 import { Trash2 } from "lucide-react";
 import { Field } from "@/components/ui/field";
 import { useUiStore } from "@/lib/store/ui";
+import { QuickImportPanel, type QuickImportResult } from "./QuickImportPanel";
 
 // ─── Form state ───────────────────────────────────────────────────────────────
 
@@ -68,6 +69,32 @@ function EditorForm({ editing, draft }: { editing: Character | null; draft: Part
   const set = (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
 
+  /**
+   * Apply sorted text to the form. Never destroys: a field already filled in gets
+   * the new text added after it; the name is only taken when there is none.
+   */
+  const applyQuickImport = ({ fields, tags }: QuickImportResult) => {
+    setForm((f) => {
+      const next = { ...f };
+      const add = (key: keyof FormState, value: string | undefined) => {
+        if (!value?.trim()) return;
+        next[key] = next[key].trim() ? `${next[key].trim()}\n\n${value.trim()}` : value.trim();
+      };
+      if (!next.name.trim() && fields.name) next.name = fields.name.trim();
+      add("description", fields.description);
+      add("personality", fields.personality);
+      add("scenario", fields.scenario);
+      add("firstMessage", fields.first_mes);
+      add("exampleDialogue", fields.mes_example);
+      add("creator", fields.creator);
+      add("creatorNotes", fields.creator_notes);
+      const have = next.tags.split(",").map((t) => t.trim()).filter(Boolean);
+      const merged = [...have, ...tags.filter((t) => !have.some((h) => h.toLowerCase() === t.toLowerCase()))];
+      next.tags = merged.join(", ");
+      return next;
+    });
+  };
+
   const handleSave = () => {
     const data = {
       name:         form.name.trim(),
@@ -110,6 +137,8 @@ function EditorForm({ editing, draft }: { editing: Character | null; draft: Part
 
       {/* Scrollable body */}
       <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+        <QuickImportPanel onApply={applyQuickImport} />
+
         <Field label="Name">
           <Input value={form.name} onChange={set("name")} placeholder="Ronan" autoFocus />
         </Field>

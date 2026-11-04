@@ -12,6 +12,8 @@
 import type { Character, LoreEntry } from "@/lib/types";
 import { decodeCardPng, isPng } from "@/lib/cards/png";
 import { cardData, cardToCharacterDraft } from "@/lib/cards/tavern";
+import { detectPlatform } from "@/lib/cards/platforms";
+import { convertCardFrom } from "@/lib/cards/convert";
 
 // ─── Result types ─────────────────────────────────────────────────────────────
 
@@ -182,10 +184,17 @@ export function convertPayload(json: unknown, key: string | null): ImportedCard 
       : { kind: "unsupported", reason: "Lorebook has no usable entries (keywords + content)." };
   }
 
-  // Character (chara_card_v2, v1 flat, or FableChat's own JSON)
-  const draft = cardToCharacterDraft(json);
+  // Character. JanitorAI, Agnai and Backyard each write their own field names
+  // (persona/greeting, sampleChat, aiName/basePrompt); convert those to a V2 card
+  // first. Everything else is already V2 or flat and reads directly.
+  const platform = detectPlatform(json);
+  const normalised =
+    platform === "janitorai" || platform === "agnai" || platform === "backyard"
+      ? convertCardFrom(obj, platform)
+      : json;
+  const draft = cardToCharacterDraft(normalised);
   if (draft) {
-    const data = cardData(obj);
+    const data = cardData((normalised && typeof normalised === "object" ? normalised : obj) as Obj);
     const embeddedBook =
       data.character_book ? parseLorebook(data.character_book, `${draft.name} Lore`) ?? undefined : undefined;
     return { kind: "character", draft, embeddedBook };

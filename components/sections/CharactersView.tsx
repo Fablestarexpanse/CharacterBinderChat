@@ -11,6 +11,7 @@ import { PersonaEditorDialog } from "@/components/characters/PersonaEditorDialog
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Plus, MessageSquare, UserCircle2, Check, Sparkles, History, Download } from "lucide-react";
 import { exportCharacter, exportPersona } from "@/lib/cards/export";
+import { PLATFORM_LIST, type PlatformId } from "@/lib/cards/platforms";
 import { ExportButtons } from "@/components/cards/ExportButtons";
 import type { Character } from "@/lib/types";
 import { useUiStore } from "@/lib/store/ui";
@@ -33,6 +34,9 @@ export function CharactersView() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  // Which site's card format an export is written for, and what it will not keep
+  const [platform, setPlatform] = useState<PlatformId>("sillytavern");
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [personaEditor, setPersonaEditor] = useState<{ open: boolean; id: string | null }>({
     open: false,
     id: null,
@@ -62,12 +66,19 @@ export function CharactersView() {
   /** Download a character as a PNG card or JSON; say so when their art could not ride along. */
   const handleExport = async (character: Character, format: "png" | "json") => {
     setImportError(null);
+    setExportNotice(null);
     try {
       const book = lorebooks.find((b) => b.id === character.lorebookId);
-      const { usedAvatar } = await exportCharacter(character, { format, book });
+      const { usedAvatar, lossy } = await exportCharacter(character, { format, book, platform });
+      const notes: string[] = [];
       if (format === "png" && !usedAvatar) {
-        setImportError(`Exported ${character.name} with a blank image — this character has no uploaded art to embed.`);
+        notes.push(`${character.name} has no uploaded art, so the PNG carries a blank image.`);
       }
+      if (lossy.length > 0) {
+        const name = PLATFORM_LIST.find((p) => p.id === platform)?.name ?? platform;
+        notes.push(`${name} drops or only partly keeps: ${lossy.join(", ")}.`);
+      }
+      if (notes.length > 0) setExportNotice(`Exported ${character.name}. ${notes.join(" ")}`);
     } catch (e) {
       setImportError(`Export failed — ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -115,6 +126,26 @@ export function CharactersView() {
             New Character
           </Button>
         </div>
+
+        <div className="mb-3 flex items-center gap-2 text-xs text-[var(--muted-fg)]">
+          <label htmlFor="export-platform">Export cards for</label>
+          <select
+            id="export-platform"
+            value={platform}
+            onChange={(e) => setPlatform(e.target.value as PlatformId)}
+            className="h-7 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-xs text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--purple)]"
+          >
+            {PLATFORM_LIST.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <span className="truncate">{PLATFORM_LIST.find((p) => p.id === platform)?.description}</span>
+        </div>
+
+        {exportNotice && (
+          <div role="status" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 flex items-start gap-2">
+            <span className="flex-1">{exportNotice}</span>
+            <button onClick={() => setExportNotice(null)} className="cursor-pointer" aria-label="Dismiss">✕</button>
+          </div>
+        )}
 
         {importError && (
           <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">

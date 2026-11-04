@@ -6,6 +6,9 @@
 import type { Character, Lorebook, Persona, Scenario } from "@/lib/types";
 import { BLANK_PNG, encodeCardPng, isPng } from "./png";
 import { characterToCard, loreToCharacterBook, lorebookToCard, personaToCard, scenarioToCard } from "./tavern";
+import { PLATFORMS, type PlatformId } from "./platforms";
+import { convertCardTo, lossyFields } from "./convert";
+import { validateTavernCardV2 } from "./validate";
 
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
@@ -66,6 +69,8 @@ export interface ExportOptions {
   format: "png" | "json";
   /** Lorebook to embed as the card's character_book */
   book?: Lorebook;
+  /** Which site's format to write. Default SillyTavern, the full V2 card. */
+  platform?: PlatformId;
 }
 
 /** One file out: JSON as-is, or the same JSON embedded in a PNG under `key`. */
@@ -83,14 +88,33 @@ async function emit(
   return { usedAvatar };
 }
 
-/** Returns whether the card's own art made it into the file (always true for JSON). */
-export function exportCharacter(character: Character, { format, book }: ExportOptions): Promise<{ usedAvatar: boolean }> {
+export interface CharacterExportResult {
+  /** Whether the character's own art made it into the file (always true for JSON) */
+  usedAvatar: boolean;
+  /** Labels of fields this character has content in that the chosen platform will drop or only partly keep */
+  lossy: string[];
+}
+
+/**
+ * Export a character for a platform. Refuses a card the spec would reject (no
+ * name or description) with the reason, and reports which of the character's own
+ * fields the platform will drop, so the caller can say so before it is a surprise.
+ */
+export async function exportCharacter(
+  character: Character, { format, book, platform = "sillytavern" }: ExportOptions,
+): Promise<CharacterExportResult> {
   const card = characterToCard(
     character,
     book ? loreToCharacterBook(book.name, book.description, book.entries) : undefined,
   );
-  // "chara" is the keyword SillyTavern, Chub and most platforms read
-  return emit(card, "chara", character.name, character.avatar, format);
+  const check = validateTavernCardV2(card);
+  if (!check.valid) throw new Error(check.errors.join("; "));
+
+  const lossy = lossyFields(card, platform);
+
+  const converted = convertCardTo(card, platform);
+  const { usedAvatar } = await emit(converted, PLATFORMS[platform].metadataKey, character.name, character.avatar, format);
+  return { usedAvatar, lossy };
 }
 
 export const exportLorebook = (book: Lorebook, format: "png" | "json") =>

@@ -50,11 +50,22 @@ CharacterBinder's job is split into three pieces and each goes where it belongs:
   block, so `before_char` / `after_char` round-trips but does not move text. Applying
   it would mean splitting that block around the character sheet.
 
-**Phase 3 — Quick Import and platforms.** Port `cardTextParser.ts` (pure, 664
-lines, with its tests) as "paste anything" in the character editor; port the
-platform registry and converters so export can target Janitor, Chub, Agnai, Risu
-etc. and warn which fields a platform drops. Shapeless prose goes to the
-Ollama/OpenRouter connection FableChat already has, not a second in-browser model.
+**Phase 3 — done.** Quick Import and platforms.
+- `lib/cards/textParser.ts` is CharacterBinder's parser unchanged (headed sections,
+  W++, JSON, prose); its 29 tests came across through a small vitest shim
+  (`tests/unit/_vitest.mjs`). "Quick import" in the character editor shows how the
+  text would be split with a checkbox per field; it adds to filled fields rather
+  than replacing them, and never drops text (unrecognised sections land in
+  Description with their label).
+- `lib/cards/platforms.ts` + `convert.ts`: SillyTavern, JanitorAI, Chub, Agnai,
+  Venus, Backyard, RisuAI, generic. 48 ported tests, including "every platform
+  writes every field it claims to keep". Export has a platform picker and lists what
+  *this* character has that the platform will drop. JanitorAI / Agnai / Backyard
+  JSON now imports as a character.
+- `lib/cards/validate.ts`: export refuses a card the spec would reject (no name or
+  description) with the reason.
+- Shapeless prose uses the keyword sorter only. The AI sorter was dropped (see
+  below); wiring it to the Ollama/OpenRouter connection is a small follow-up.
 
 **Phase 4 — migration and the rest of the editor.** Import a CharacterBinder
 archive `.zip` (its manifest lists every card with type). Token counter per field,

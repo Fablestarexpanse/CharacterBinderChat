@@ -169,7 +169,7 @@ export function cardToCharacterDraft(json: unknown): Partial<Character> | null {
  */
 export function expandMacros(text: string, names: { char: string; user: string }): string {
   return text
-    .replace(/\{\{\s*char\s*\}\}|<BOT>/gi, () => names.char)
+    .replace(/\{\{\s*(?:char|bot)\s*\}\}|<BOT>/gi, () => names.char)
     .replace(/\{\{\s*user\s*\}\}|<USER>/gi, () => names.user);
 }
 
@@ -244,4 +244,45 @@ export function scenarioToCard(s: { name: string; scenario: string; firstMessage
     version: "1.0",
     creator_notes: "",
   };
+}
+
+// ─── Blank and coerced cards ──────────────────────────────────────────────────
+
+/** An empty, spec-valid card: the starting shape for every conversion path. */
+export function createBlankCard(name = ""): TavernCardV2 {
+  return {
+    spec: "chara_card_v2",
+    spec_version: "2.0",
+    data: {
+      name, description: "", personality: "", scenario: "", first_mes: "", mes_example: "",
+      creator_notes: "", system_prompt: "", post_history_instructions: "",
+      alternate_greetings: [], tags: [], creator: "", character_version: "1.0", extensions: {},
+    },
+  };
+}
+
+/**
+ * A card's `data` block from an arbitrary object, keeping only V2 fields and only
+ * where the value has the right type. A third-party card that declares v2 with a
+ * partial or wrongly-typed block otherwise reaches a converter with undefined
+ * fields, and the first `.replace()` on one throws at export time.
+ */
+export function coerceCardData(body: Record<string, unknown>): TavernCardV2["data"] {
+  const blank = createBlankCard().data as unknown as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...blank };
+  for (const [key, fallback] of Object.entries(blank)) {
+    if (!(key in body)) continue;
+    const v = body[key];
+    if (key === "extensions") {
+      if (v && typeof v === "object" && !Array.isArray(v)) out[key] = v;
+    } else if (Array.isArray(fallback)) {
+      out[key] = Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : fallback;
+    } else {
+      out[key] = typeof v === "string" ? v : fallback;
+    }
+  }
+  if (body.character_book && typeof body.character_book === "object" && !Array.isArray(body.character_book)) {
+    out.character_book = body.character_book;
+  }
+  return out as unknown as TavernCardV2["data"];
 }
