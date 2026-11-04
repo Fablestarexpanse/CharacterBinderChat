@@ -1,7 +1,7 @@
 "use client";
 
 import { useFableStore } from "@/lib/store";
-import { useInspectedCharacter } from "@/lib/hooks/useInspectedCharacter";
+import { useInspectedCharacter, noCharacterText } from "@/lib/hooks/useInspectedCharacter";
 import { Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
@@ -21,7 +21,7 @@ const MEMORY_SUB_TABS: { id: MemorySubTab; label: string }[] = [
 
 export function MemoryTab() {
   const { extractionVersion, isExtracting, lastExtractionError } = useFableStore();
-  const { chat, character } = useInspectedCharacter();
+  const { chat, character, deleted } = useInspectedCharacter();
 
   const [memorySubTab, setMemorySubTab] = useState<MemorySubTab>("relationships");
   const [exportError, setExportError] = useState<string | null>(null);
@@ -29,7 +29,7 @@ export function MemoryTab() {
   if (!character) {
     return (
       <div className="p-4 text-center text-sm text-[var(--muted-fg)]">
-        No character assigned to this chat.
+        {noCharacterText(deleted)}
       </div>
     );
   }

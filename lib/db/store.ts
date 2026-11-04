@@ -1093,6 +1093,25 @@ export class FableStore {
     return transferMemory(this, this.db, fromChatId, toChatId);
   }
 
+  // ── References between app rows ──────────────────────────────────────────
+
+  /** Chats where a character is the 1:1 partner or a group member. */
+  countChatsUsingCharacter(characterId: string): number {
+    return (this.db.prepare(
+      `SELECT COUNT(*) AS n FROM app_chats
+        WHERE json_extract(data, '$.characterId') = ?
+           OR EXISTS (SELECT 1 FROM json_each(json_extract(data, '$.memberIds')) WHERE value = ?)`
+    ).get(characterId, characterId) as { n: number }).n;
+  }
+
+  /** Chats that explicitly list a lorebook (a chat with no list uses every book). */
+  countChatsListingLorebook(lorebookId: string): number {
+    return (this.db.prepare(
+      `SELECT COUNT(*) AS n FROM app_chats
+        WHERE EXISTS (SELECT 1 FROM json_each(json_extract(data, '$.lorebookIds')) WHERE value = ?)`
+    ).get(lorebookId) as { n: number }).n;
+  }
+
   // ── Key/value ─────────────────────────────────────────────────────────────
 
   getKv(key: string): string | null {

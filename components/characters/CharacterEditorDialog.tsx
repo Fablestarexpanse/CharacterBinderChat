@@ -12,6 +12,7 @@ import { AvatarPicker } from "@/components/ui/AvatarPicker";
 import { Trash2 } from "lucide-react";
 import { Field } from "@/components/ui/field";
 import { useUiStore } from "@/lib/store/ui";
+import { chatsUsingCharacter, plural } from "@/lib/chat/references";
 import { QuickImportPanel, type QuickImportResult } from "./QuickImportPanel";
 
 // ─── Form state ───────────────────────────────────────────────────────────────
@@ -60,7 +61,8 @@ function toFormState(source: Partial<Character> | null): FormState {
 // seed the form without any set-state-in-effect.
 
 function EditorForm({ editing, draft }: { editing: Character | null; draft: Partial<Character> | null }) {
-  const { addCharacter, updateCharacter, deleteCharacter, lorebooks } = useFableStore();
+  const { addCharacter, updateCharacter, deleteCharacter, lorebooks, chats } = useFableStore();
+  const usedByChats = editing ? chatsUsingCharacter(chats, editing.id) : 0;
   const { closeCharacterEditor } = useUiStore();
 
   const [form, setForm]                   = useState<FormState>(() => toFormState(editing ?? draft));
@@ -219,8 +221,14 @@ function EditorForm({ editing, draft }: { editing: Character | null; draft: Part
       <div className="flex items-center gap-2 border-t border-[var(--border)] px-5 py-3">
         {editing && (
           confirmDelete ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-red-600">Delete permanently?</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-red-600">
+                Delete permanently?
+                {usedByChats > 0 && (
+                  <> {plural(usedByChats, "chat")} use{usedByChats === 1 ? "s" : ""} {editing?.name}. They will stay, but
+                  can&apos;t continue until you restore this character, and their memory stays with them.</>
+                )}
+              </span>
               <Button variant="outline" size="sm" className="border-red-300 text-red-600 hover:bg-red-50" onClick={handleDelete}>
                 Yes, delete
               </Button>

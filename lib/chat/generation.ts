@@ -13,6 +13,7 @@ import { resolveGeneration } from "./settings";
 import { fitHistoryToBudget } from "./tokenBudget";
 import { recordSentPrompt } from "./sentPrompts";
 import { createGate } from "./extractionGate";
+import { speakerIsMissing } from "./references";
 import { useMemorySettings } from "@/lib/store/memorySettings";
 import type { Chat, Character, MessageRole, MemoryTaskRequest } from "@/lib/types";
 import type { CoreMemoryGetResponse } from "@/lib/api/dto";
@@ -78,11 +79,15 @@ function degraded(reason: string): CoreMemoryGetResponse {
 
 // ─── Group helpers ────────────────────────────────────────────────────────────
 
-/** Present (non-absent) member ids of a group chat, [] for 1:1. */
-export function presentMemberIds(chat: Chat): string[] {
+/**
+ * Present (non-absent) member ids of a group chat, [] for 1:1. Pass `characters`
+ * where a speaker is being chosen: a deleted member cannot speak, and round-robin
+ * would otherwise land on them every time and refuse to continue.
+ */
+export function presentMemberIds(chat: Chat, characters?: Array<{ id: string }>): string[] {
   if (!chat.memberIds || chat.memberIds.length < 2) return [];
   const absent = new Set(chat.absentIds ?? []);
-  return chat.memberIds.filter((id) => !absent.has(id));
+  return chat.memberIds.filter((id) => !absent.has(id) && (!characters || characters.some((c) => c.id === id)));
 }
 
 /**
@@ -91,7 +96,7 @@ export function presentMemberIds(chat: Chat): string[] {
  * spoke last.
  */
 function pickSpeaker(chat: Chat, characters: Character[]): string {
-  const present = presentMemberIds(chat);
+  const present = presentMemberIds(chat, characters);
   const lastUser = [...chat.messages].reverse().find((m) => m.role === "user" && !m.error);
   if (lastUser) {
     const text = lastUser.content.toLowerCase();
@@ -115,7 +120,7 @@ function pickSpeaker(chat: Chat, characters: Character[]): string {
 
 /** Who would answer next, for a prompt preview. Same rule generation uses. */
 export function nextSpeakerId(chat: Chat, characters: Character[]): string | undefined {
-  return presentMemberIds(chat).length >= 2 ? pickSpeaker(chat, characters) : chat.characterId;
+  return presentMemberIds(chat, characters).length >= 2 ? pickSpeaker(chat, characters) : chat.characterId;
 }
 
 // ─── Prompt assembly ──────────────────────────────────────────────────────────
@@ -146,7 +151,7 @@ export async function assemblePrompt(chatId: string, speakerCharId: string | und
   const store = useFableStore.getState();
   const chat = store.chats.find((c) => c.id === chatId);
   if (!chat) return null;
-  const present = presentMemberIds(chat);
+  const present = presentMemberIds(chat, store.characters);
   const isGroup = present.length >= 2;
   const character = store.characters.find((c) => c.id === speakerCharId);
   const providerId = chat.providerId ?? "ollama";
@@ -252,7 +257,7 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
 
   const chat = store.chats.find((c) => c.id === chatId);
   if (!chat) return;
-  const present = presentMemberIds(chat);
+  const present = presentMemberIds(chat, store.characters);
   const isGroup = present.length >= 2;
   // Group: explicit speaker (if present in scene) > auto pick. 1:1: the character.
   const speakerCharId = isGroup
@@ -261,6 +266,20 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
   const character  = store.characters.find((c) => c.id === speakerCharId);
   const providerId = chat.providerId ?? "ollama";
   const modelId    = chat.modelId    ?? "llama3.2:latest";
+
+  // A chat whose character was deleted must say so. Carrying on would answer as a
+  // generic assistant with no memory and no persona, with nothing to tell the person
+  // why the character stopped being themselves.
+  if (speakerIsMissing(speakerCharId, store.characters)) {
+    store.addMessage(chatId, {
+      chatId,
+      role:    "assistant",
+      content: "⚠️ This chat's character has been deleted, so there is no one to reply. " +
+               "Restore them (if it was an agent, use Undo in the notice; otherwise from a backup), or start a new chat.",
+      error:   true,
+    });
+    return;
+  }
   const provider   = createChatProvider(providerId, store.providerSettings);
 
   if (!provider) {
@@ -470,7 +489,7 @@ function runExtraction(chatId: string, speakerId?: string, messageId?: string): 
 
   // Witness list for group scenes: everyone present right now (+ player).
   // 1:1 chats send no list, and their facts stay public.
-  const present = presentMemberIds(chat);
+  const present = presentMemberIds(chat, characters);
   const participants = present.length >= 2
     ? [
         ...present.map((id) => ({

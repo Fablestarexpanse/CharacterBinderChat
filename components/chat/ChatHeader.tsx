@@ -172,6 +172,10 @@ export function ChatHeader() {
                   Branched from {chat.branchOf.chatName}
                   {chat.branchOf.approximateMemory && " · memory approximate"}
                 </div>
+              ) : chat.characterId && !character ? (
+                <div className="text-[11px] text-red-500 truncate" title="This chat's character was deleted. The chat can be read but not continued.">
+                  character deleted
+                </div>
               ) : character && (
                 <div className="text-[11px] text-[var(--muted-fg)] truncate">
                   {character.tags.slice(0, 2).join(" · ")}

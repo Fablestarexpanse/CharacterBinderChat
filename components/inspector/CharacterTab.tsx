@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useFableStore } from "@/lib/store";
-import { useInspectedCharacter } from "@/lib/hooks/useInspectedCharacter";
+import { useInspectedCharacter, noCharacterText } from "@/lib/hooks/useInspectedCharacter";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -62,7 +62,7 @@ function StatBar({ name, value }: { name: StatName; value: number }) {
 export function CharacterTab() {
   const { activeChatId, extractionVersion, personas, activePersonaId, setActivePersona } = useFableStore();
   const { openCharacterEditor, setActiveSection } = useUiStore();
-  const { character } = useInspectedCharacter();
+  const { character, deleted } = useInspectedCharacter();
   const persona = personas.find((p) => p.id === activePersonaId);
   const [personaPickerOpen, setPersonaPickerOpen] = useState(false);
 
@@ -88,7 +88,7 @@ export function CharacterTab() {
   if (!character) {
     return (
       <div className="p-4 text-center text-sm text-[var(--muted-fg)]">
-        No character assigned to this chat.
+        {noCharacterText(deleted)}
       </div>
     );
   }

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { estimateTokens } from "@/lib/chat/promptBuilder";
 import { LORE_TOKEN_BUDGET } from "@/lib/chat/lorebook";
+import { charactersUsingLorebook, chatsListingLorebook, plural } from "@/lib/chat/references";
 import { BookOpen, Plus, Trash2, Zap, Pin, ChevronDown, ChevronRight } from "lucide-react";
 import type { LoreEntry } from "@/lib/types";
 import { ExportButtons } from "@/components/cards/ExportButtons";
@@ -20,6 +21,7 @@ function entryTokens(e: LoreEntry): number {
 
 export function LorebooksView() {
   const {
+    characters, chats,
     lorebooks,
     addLorebook, updateLorebook, deleteLorebook,
     addLoreEntry, updateLoreEntry, deleteLoreEntry,
@@ -152,6 +154,17 @@ export function LorebooksView() {
                     </Badge>
                     <ExportButtons png={false} run={(f) => exportLorebook(book, f)} />
                     {confirmDelete === book.id ? (
+                      <>
+                      {(() => {
+                        const owners = charactersUsingLorebook(characters, book.id);
+                        const listed = chatsListingLorebook(chats, book.id);
+                        if (owners.length === 0 && listed === 0) return null;
+                        const parts = [
+                          owners.length > 0 && `the lorebook of ${owners.map((c) => c.name).join(", ")}`,
+                          listed > 0 && `listed by ${plural(listed, "chat")}`,
+                        ].filter(Boolean);
+                        return <span className="text-[11px] text-red-600">It is {parts.join(" and ")}; those links are cleared.</span>;
+                      })()}
                       <Button
                         variant="outline"
                         size="sm"
@@ -160,6 +173,7 @@ export function LorebooksView() {
                       >
                         Delete {book.entries.length > 0 ? `${book.entries.length} entries?` : "book?"}
                       </Button>
+                      </>
                     ) : (
                       <Button
                         variant="ghost"

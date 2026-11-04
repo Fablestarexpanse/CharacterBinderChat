@@ -134,7 +134,7 @@ export function buildTools(call) {
     {
       name: "delete_card",
       title: "Delete a card",
-      description: "Delete a card. It is kept in history, so undo_change can bring it back." + WRITE_NOTE,
+      description: "Delete a card. The response says what depended on it (usedBy, and a warning): deleting a character leaves chats that can no longer continue, and deleting a lorebook clears its owner's link. It is kept in history, so undo_change brings it back, links included." + WRITE_NOTE,
       inputSchema: { type: cardType, id: z.string() },
       annotations: destructive,
       handler: async ({ type, id }) => call("DELETE", `/api/cards/${type}/${encodeURIComponent(id)}`),

@@ -14,6 +14,8 @@ export function useInspectedCharacter(): {
   chat:      Chat | undefined;
   character: Character | undefined;
   isGroup:   boolean;
+  /** The chat names a character that no longer exists (it was deleted) */
+  deleted:   boolean;
 } {
   const { activeChatId, chats, characters } = useFableStore();
   const { inspectorMemberId } = useUiStore();
@@ -25,5 +27,13 @@ export function useInspectedCharacter(): {
         ? inspectorMemberId
         : memberIds[0])
     : chat?.characterId;
-  return { chat, character: characters.find((c) => c.id === charId), isGroup };
+  const character = characters.find((c) => c.id === charId);
+  return { chat, character, isGroup, deleted: !!charId && !character };
+}
+
+/** What the inspector tabs say when there is no character to show. */
+export function noCharacterText(deleted: boolean): string {
+  return deleted
+    ? "This chat's character was deleted. Its memory is kept, and comes back if the character is restored."
+    : "No character assigned to this chat.";
 }

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useFableStore } from "@/lib/store";
-import { useInspectedCharacter } from "@/lib/hooks/useInspectedCharacter";
+import { useInspectedCharacter, noCharacterText } from "@/lib/hooks/useInspectedCharacter";
 import { Brain, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Section } from "./Section";
@@ -56,7 +56,7 @@ function Bar({
 
 export function CoreMemoryTab() {
   const { extractionVersion, providerSettings } = useFableStore();
-  const { chat, character } = useInspectedCharacter();
+  const { chat, character, deleted } = useInspectedCharacter();
 
   // `refreshTick` is part of the fetch key, so an LLM rewrite re-reads.
   const [refreshTick,  setRefreshTick]  = useState(0);
@@ -114,7 +114,7 @@ export function CoreMemoryTab() {
   if (!character) {
     return (
       <div className="p-4 text-[12px] text-[var(--muted-fg)] text-center">
-        No character assigned to this chat.
+        {noCharacterText(deleted)}
       </div>
     );
   }

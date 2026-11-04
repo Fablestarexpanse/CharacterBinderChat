@@ -280,12 +280,45 @@ export function updateCard(store: FableStore, type: CardType, id: string, change
 
 // ─── Delete / undo ────────────────────────────────────────────────────────────
 
+/** What depends on a card, so a delete can say so instead of leaving things pointing at nothing. */
+export interface UsedBy {
+  /** Chats that have this character, or list this lorebook */
+  chats: number;
+  /** For a lorebook: the characters whose own book it is (their link is cleared) */
+  characters?: string[];
+}
+
 export function deleteCard(store: FableStore, type: CardType, id: string, source: string) {
   const found = store.getRow(COLLECTION[type], id);
   if (!found) throw new CardError(`${type} "${id}" not found`, 404);
   const name = String((found.data as Row).name ?? id);
-  const r = commit(store, source, `${source} deleted ${type} “${name}”`, [{ collection: COLLECTION[type], id, row: null }]);
-  return { id, type, name, rev: r.rev, historyId: r.historyId };
+
+  const touches: Touch[] = [{ collection: COLLECTION[type], id, row: null }];
+  const usedBy: UsedBy = { chats: 0 };
+  if (type === "character") {
+    usedBy.chats = store.countChatsUsingCharacter(id);
+  } else if (type === "lorebook") {
+    usedBy.chats = store.countChatsListingLorebook(id);
+    // A character whose lorebook is deleted must not keep pointing at it. Changed in the
+    // same write as the delete, so one undo puts both back.
+    const owners = (store.listRows("characters") as Row[]).filter((c) => c.lorebookId === id);
+    usedBy.characters = owners.map((c) => c.name);
+    for (const owner of owners) {
+      const { lorebookId: _gone, ...rest } = owner;
+      void _gone;
+      touches.push({ collection: "characters", id: owner.id, row: { ...rest, updatedAt: nowIso() } as Row });
+    }
+  }
+
+  const note = usedBy.chats > 0 ? ` (${usedBy.chats} chat${usedBy.chats === 1 ? " uses" : "s use"} it)` : "";
+  const r = commit(store, source, `${source} deleted ${type} “${name}”${note}`, touches);
+  const warning =
+    type === "character" && usedBy.chats > 0
+      ? `${usedBy.chats} chat${usedBy.chats === 1 ? "" : "s"} use${usedBy.chats === 1 ? "s" : ""} this character and can no longer continue until it is restored (undo_change with historyId ${r.historyId}).`
+      : type === "lorebook" && (usedBy.characters?.length ?? 0) > 0
+        ? `The lorebook of ${usedBy.characters!.join(", ")} was deleted and their link cleared. undo_change restores both.`
+        : undefined;
+  return { id, type, name, rev: r.rev, historyId: r.historyId, usedBy, ...(warning ? { warning } : {}) };
 }
 
 /**

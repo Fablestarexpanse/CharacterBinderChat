@@ -29,8 +29,21 @@ export const createLoreSlice: StateCreator<FableStore, [], [], LoreSlice> = (set
     set((s) => ({
       lorebooks: s.lorebooks.map((b) => (b.id === id ? { ...b, ...updates } : b)),
     })),
+  // A deleted book must not stay linked: a character's `lorebookId` would point at
+  // nothing (the editor's dropdown then shows blank, and export silently embeds no
+  // book), and a chat that listed it would carry a dead id.
   deleteLorebook: (id) =>
-    set((s) => ({ lorebooks: s.lorebooks.filter((b) => b.id !== id) })),
+    set((s) => ({
+      lorebooks: s.lorebooks.filter((b) => b.id !== id),
+      characters: s.characters.map((c) => {
+        if (c.lorebookId !== id) return c;
+        const { lorebookId: _gone, ...rest } = c;
+        void _gone;
+        return { ...rest, updatedAt: new Date().toISOString() };
+      }),
+      chats: s.chats.map((c) =>
+        c.lorebookIds?.includes(id) ? { ...c, lorebookIds: c.lorebookIds.filter((x) => x !== id) } : c),
+    })),
   addLoreEntry: (lorebookId, entry) => {
     const id = `le-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const full: LoreEntry = { ...entry, id, lorebookId };
