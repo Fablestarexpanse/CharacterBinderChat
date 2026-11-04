@@ -25,8 +25,11 @@ interface SimLink {
   width: number; color: string; dashed?: boolean;
 }
 
+/** Resolved from the theme at draw time, so the character node follows the accent. */
+const ACCENT = "accent";
+
 const TYPE_COLORS: Record<string, string> = {
-  character: "#a78bfa",
+  character: ACCENT,
   place:     "#22c55e",
   object:    "#f97316",
   faction:   "#4f9cf8",
@@ -36,6 +39,23 @@ const TYPE_COLORS: Record<string, string> = {
   insight:   "#22d3ee",
   commitment:"#f43f5e",
 };
+
+/**
+ * Canvas can't use CSS variables, so the chrome colors (labels, hover card,
+ * focus ring) are read from the live theme each frame. Node hues stay fixed on
+ * purpose: they encode entity type, and recoloring them would change meaning.
+ */
+function readPalette() {
+  const cs = getComputedStyle(document.documentElement);
+  const v = (name: string, fallback: string) => cs.getPropertyValue(name).trim() || fallback;
+  return {
+    accent:     v("--purple", "#7c5cbf"),
+    text:       v("--foreground", "#1c1c28"),
+    textMuted:  v("--muted-fg", "#7c7c9a"),
+    card:       v("--card", "#ffffff"),
+    border:     v("--border", "#e8e8f0"),
+  };
+}
 
 /** trust −100..100 → red..grey..green for the bond edge */
 function bondColor(trust: number | null): string {
@@ -224,6 +244,7 @@ export function MemoryGraph({ chatId, characterId, extractionVersion, full = fal
     };
 
     const step = () => {
+      const pal = readPalette();
       // Forces: pairwise repulsion, spring links, weak centre gravity
       if (alpha > 0.005) {
         const springLen = full ? 90 : 62;
@@ -287,7 +308,7 @@ export function MemoryGraph({ chatId, characterId, extractionVersion, full = fal
         // Edge label on focus
         if (!dim && focus !== null && (l.a === focus || l.b === focus) && view.scale > 0.5) {
           ctx.globalAlpha = 0.9;
-          ctx.fillStyle = "#6b7280";
+          ctx.fillStyle = pal.textMuted;
           ctx.font = `${9 / view.scale ** 0.5}px system-ui`;
           ctx.textAlign = "center";
           ctx.fillText(l.label, (a.x + b.x) / 2, (a.y + b.y) / 2 - 3);
@@ -300,7 +321,7 @@ export function MemoryGraph({ chatId, characterId, extractionVersion, full = fal
         ctx.globalAlpha = dim ? 0.15 : 1;
         ctx.beginPath();
         ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-        ctx.fillStyle = n.color;
+        ctx.fillStyle = n.color === ACCENT ? pal.accent : n.color;
         ctx.fill();
         if (n.ring) {
           ctx.strokeStyle = n.ring;
@@ -310,7 +331,7 @@ export function MemoryGraph({ chatId, characterId, extractionVersion, full = fal
           ctx.stroke();
         }
         if (i === focus) {
-          ctx.strokeStyle = "#111827";
+          ctx.strokeStyle = pal.text;
           ctx.lineWidth = 1.5 / view.scale;
           ctx.beginPath();
           ctx.arc(n.x, n.y, n.r + 1.5, 0, Math.PI * 2);
@@ -318,7 +339,7 @@ export function MemoryGraph({ chatId, characterId, extractionVersion, full = fal
         }
         const showLabel = n.alwaysLabel || i === focus || (focus !== null && neighbours.get(focus)?.has(i)) || view.scale > 1.6;
         if (showLabel && !dim) {
-          ctx.fillStyle = "#374151";
+          ctx.fillStyle = pal.text;
           ctx.font = `${(n.alwaysLabel ? 11 : 9) / view.scale ** 0.4}px system-ui`;
           ctx.textAlign = "center";
           ctx.fillText(n.label, n.x, n.y + n.r + 11 / view.scale ** 0.4);
@@ -342,13 +363,13 @@ export function MemoryGraph({ chatId, characterId, extractionVersion, full = fal
         const bw = 260, bh = 18 + lines.length * 14;
         const bx = Math.min(w - bw - 8, Math.max(8, w / 2 + view.x + n.x * view.scale + 14));
         const by = Math.min(h - bh - 8, Math.max(8, h / 2 + view.y + n.y * view.scale + 14));
-        ctx.fillStyle = "rgba(255,255,255,0.96)";
-        ctx.strokeStyle = "#e5e7eb";
+        ctx.fillStyle = pal.card;
+        ctx.strokeStyle = pal.border;
         ctx.beginPath();
         ctx.roundRect(bx, by, bw, bh, 8);
         ctx.fill();
         ctx.stroke();
-        ctx.fillStyle = "#374151";
+        ctx.fillStyle = pal.text;
         ctx.textAlign = "left";
         lines.forEach((ln, k) => ctx.fillText(ln, bx + 10, by + 16 + k * 14));
       }
@@ -448,7 +469,7 @@ export function MemoryGraph({ chatId, characterId, extractionVersion, full = fal
           ["commitment", "Promise"],
         ].map(([k, label]) => (
           <span key={k} className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: TYPE_COLORS[k] }} />
+            <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: TYPE_COLORS[k] === ACCENT ? "var(--purple)" : TYPE_COLORS[k] }} />
             {label}
           </span>
         ))}

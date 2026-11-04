@@ -110,3 +110,73 @@ export async function PUT(req: NextRequest) {
     return routeError("[state PUT]", err);
   }
 }
+
+// ─── PATCH /api/state ─────────────────────────────────────────────────────────
+// Incremental sync: only the rows that changed since the client's last save.
+// Body: { upserts?, removals?, order?, defaultPresetId?, globalInstructions? },
+// each keyed by collection name (characters, chats, personas, lorebooks,
+// scenarios, presets). PUT stays for first-run seeding.
+
+const PATCH_NAMES = ["chats", ...APP_COLLECTIONS.map(([f]) => f)];
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = await req.json() as Record<string, unknown> | null;
+    if (!body || typeof body !== "object") return badRequest("patch body must be an object");
+
+    const isMap = (v: unknown): v is Record<string, unknown> =>
+      v === undefined || (typeof v === "object" && v !== null && !Array.isArray(v));
+    const { upserts, removals, order } = body;
+    if (!isMap(upserts) || !isMap(removals) || !isMap(order)) {
+      return badRequest("upserts, removals and order must be objects keyed by collection");
+    }
+    for (const map of [upserts, removals, order]) {
+      for (const [name, rows] of Object.entries(map ?? {})) {
+        if (!PATCH_NAMES.includes(name)) return badRequest(`unknown collection "${name}"`);
+        if (!Array.isArray(rows)) return badRequest(`${name} must be an array`);
+      }
+    }
+    for (const [name, rows] of Object.entries(upserts ?? {})) {
+      if ((rows as Array<{ id?: unknown }>).some((r) => !r || typeof r.id !== "string" || !r.id)) {
+        return badRequest(`every ${name} entry needs an id`);
+      }
+    }
+    for (const map of [removals, order]) {
+      for (const [name, ids] of Object.entries(map ?? {})) {
+        if ((ids as unknown[]).some((id) => typeof id !== "string")) return badRequest(`${name} ids must be strings`);
+      }
+    }
+
+    const patch = {
+      upserts, removals, order,
+      defaultPresetId:
+        body.defaultPresetId === undefined ? undefined
+        : typeof body.defaultPresetId === "string" ? body.defaultPresetId : null,
+      globalInstructions:
+        typeof body.globalInstructions === "object" && body.globalInstructions !== null
+          ? body.globalInstructions as PersistedAppState["globalInstructions"] : undefined,
+    } as Parameters<ReturnType<typeof getStore>["patchAppState"]>[0];
+
+    const store = getStore();
+
+    // Same wipe guard as PUT, applied to what the collection would become.
+    const { before, after } = store.countAfterPatch(patch);
+    const suspicious = PATCH_NAMES.find((n) => after[n] === 0 && before[n] >= 3);
+    if (suspicious) {
+      return Response.json(
+        {
+          ok: false,
+          error: `refusing to wipe all ${suspicious} in one sync — ` +
+                 `if this deletion is intentional, remove the last items individually`,
+        },
+        { status: 409 }
+      );
+    }
+
+    store.patchAppState(patch);
+    const purged = store.purgeOrphanedChatMemory();
+    return Response.json({ ok: true, ...(purged.length > 0 ? { purgedChatMemory: purged } : {}) });
+  } catch (err) {
+    return routeError("[state PATCH]", err);
+  }
+}

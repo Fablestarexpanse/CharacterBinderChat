@@ -4,6 +4,7 @@ import { Loader2, Heart, Shield, Flame, Link2, CloudSun } from "lucide-react";
 import { formatAgeFromUnixSeconds } from "./utils";
 import { useDrawerRead } from "@/lib/hooks/useDrawerRead";
 import type { DrawerStat } from "@/lib/api/dto";
+import { STAT_COLORS, STAT_FALLBACK_COLOR } from "@/lib/ui/statColors";
 
 const STAT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   affection:  Heart,
@@ -11,14 +12,6 @@ const STAT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
   desire:     Flame,
   connection: Link2,
   mood:       CloudSun,
-};
-
-const STAT_COLORS: Record<string, string> = {
-  affection:  "#e879a0",
-  trust:      "#4f9cf8",
-  desire:     "#f97316",
-  connection: "#8b5cf6",
-  mood:       "#22d3ee",
 };
 
 interface Props {
@@ -62,7 +55,7 @@ export function RelationshipsView({ chatId, characterId, extractionVersion }: Pr
     <div className="space-y-2.5">
       {stats.map((s) => {
         const Icon  = STAT_ICONS[s.name] ?? Heart;
-        const color = STAT_COLORS[s.name] ?? "#8b5cf6";
+        const color = STAT_COLORS[s.name] ?? STAT_FALLBACK_COLOR;
         // Stats are −100..100; map to 0..100% so negatives don't render empty
         // (same mapping as CharacterTab / SummaryTab).
         const pct   = s.value !== null ? Math.max(0, Math.min(100, ((s.value + 100) / 200) * 100)) : 0;

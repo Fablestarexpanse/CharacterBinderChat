@@ -171,3 +171,27 @@ after(async () => {
     await fetch(`${BASE}/api/drawer/facts?chatId=${CHAT}&factId=${f.id}`, { method: "DELETE" });
   }
 });
+
+test("state PATCH: malformed patches are refused before anything is written", { skip }, async () => {
+  const unknown = await send("PATCH", "/api/state", { upserts: { widgets: [{ id: "x" }] } });
+  assert.equal(unknown.status, 400);
+  assert.match(unknown.body.error, /unknown collection/);
+
+  const noId = await send("PATCH", "/api/state", { upserts: { chats: [{ messages: [] }] } });
+  assert.equal(noId.status, 400);
+
+  const notArray = await send("PATCH", "/api/state", { removals: { chats: "c1" } });
+  assert.equal(notArray.status, 400);
+
+  const badOrder = await send("PATCH", "/api/state", { order: { chats: [1, 2] } });
+  assert.equal(badOrder.status, 400);
+});
+
+test("state PATCH: an empty patch is accepted and changes nothing", { skip }, async () => {
+  const before = await get("/api/state");
+  const res = await send("PATCH", "/api/state", {});
+  assert.equal(res.status, 200);
+  assert.equal(res.body.ok, true);
+  const after = await get("/api/state");
+  assert.equal(after.body.chats.length, before.body.chats.length);
+});

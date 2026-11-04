@@ -33,6 +33,7 @@ The result: characters that remember, grow, and stay consistent over hundreds of
 | **Model Selector** | Live model list from every connected provider, grouped by provider. Any model ID can be entered by hand — see [Choosing a model](#choosing-a-model). |
 | **Persistence** | Chats, characters, and personas live in SQLite and survive clearing browser storage. One-click JSON export. |
 | **Chat management** | Rename, delete, clear. Relative timestamps and last-message previews in the sidebar. |
+| **Appearance** | Settings → Appearance: light / dark / match-system, nine accent presets or any custom color. Saved per browser. |
 | **System Status** | Sidebar shows real-time connection status + loaded model per provider. |
 | **Image Generation** | `/image <prompt>` renders real images through your local ComfyUI — no launch flags needed, FableChat proxies the connection server-side. Workflow templates live in `workflows/*.json` (API format with a `_meta.fablechat` node mapping). Per-chat generation settings (temperature / top-p / max tokens) live behind the gear icon in the chat header. |
 

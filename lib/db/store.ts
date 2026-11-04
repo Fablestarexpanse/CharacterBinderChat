@@ -13,7 +13,7 @@ import { isSingleValued, normPredicate, predicateFamily } from "./predicates";
 import { bufferToVec, cosine } from "@/lib/llm/embeddings";
 import { contentWords, jaccard, normalizeText } from "@/lib/text/overlap";
 import type { PersistedAppState } from "@/lib/types";
-import { getAppState, replaceAppState } from "./appState";
+import { getAppState, replaceAppState, patchAppState, countAfterPatch, type AppStatePatchInput } from "./appState";
 import { listMemorySources, transferMemory } from "./transfer";
 import type {
   DbEntity,
@@ -898,6 +898,14 @@ export class FableStore {
   // Durable mirror of the client store. Objects are stored as JSON blobs;
   // `seq` preserves array order. Full-replace semantics: the client sends its
   // complete state and the transaction rewrites the mirror atomically.
+
+  patchAppState(patch: AppStatePatchInput): void {
+    patchAppState(this.db, patch);
+  }
+
+  countAfterPatch(patch: AppStatePatchInput) {
+    return countAfterPatch(this.db, patch);
+  }
 
   getAppState(): PersistedAppState {
     return getAppState(this.db);

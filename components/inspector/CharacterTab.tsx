@@ -12,6 +12,7 @@ import { useUiStore } from "@/lib/store/ui";
 import { useDrawerRead } from "@/lib/hooks/useDrawerRead";
 import type { DrawerStat } from "@/lib/api/dto";
 import type { StatName } from "@/lib/db/models";
+import { STAT_COLORS, STAT_FALLBACK_COLOR } from "@/lib/ui/statColors";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,17 +32,9 @@ const STAT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
   mood:       CloudSun,
 };
 
-const STAT_COLORS: Record<string, string> = {
-  affection:  "#e879a0",
-  trust:      "#4f9cf8",
-  desire:     "#f97316",
-  connection: "#8b5cf6",
-  mood:       "#22d3ee",
-};
-
 function StatBar({ name, value }: { name: StatName; value: number }) {
   const Icon    = STAT_ICONS[name] ?? Heart;
-  const color   = STAT_COLORS[name] ?? "#7c5cbf";
+  const color   = STAT_COLORS[name] ?? STAT_FALLBACK_COLOR;
   const pct     = Math.min(100, Math.max(0, ((value + 100) / 200) * 100));
   const display = value >= 0 ? `+${value.toFixed(0)}` : value.toFixed(0);
 

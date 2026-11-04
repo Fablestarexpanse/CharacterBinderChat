@@ -7,9 +7,12 @@
 // On mount:  GET /api/state — if the server has data it wins (hydrate the
 //            store); if it's empty, push the local state up (first run /
 //            migration from localStorage).
-// After:     subscribe to the store and PUT the full state, debounced, so the
-//            durable copy trails edits by at most a few seconds. localStorage
-//            persist stays on as a same-browser cache.
+// After:     subscribe to the store and PATCH only the rows that changed since
+//            the last successful save (see lib/sync/stateDiff.ts), debounced, so
+//            the durable copy trails edits by at most a few seconds and a long
+//            history is not re-uploaded on every streamed token. The first-run
+//            seed is still a full PUT. localStorage persist stays on as a
+//            same-browser cache.
 //
 // Known limitation: last-write-wins. Two browsers editing simultaneously will
 // not merge — fine for a single-user local app.
@@ -17,6 +20,7 @@
 import { useEffect, useRef } from "react";
 import { useFableStore } from "@/lib/store";
 import type { PersistedAppState } from "@/lib/types";
+import { diffState, snapshot, type Baseline } from "@/lib/sync/stateDiff";
 
 const DEBOUNCE_MS = 800;   // trailing quiet-period before a save
 const MAX_WAIT_MS = 5000;  // during constant streaming, save at least this often
@@ -53,33 +57,77 @@ export function StateSync() {
     // would live on, saving state for a component that is gone.
     let disposed = false;
 
-    const save = async () => {
+    // What the server is known to hold. Only advanced after a save succeeds, so
+    // a failed save is simply retried with the same (larger) diff next time.
+    let baseline: Baseline = {};
+    let sentSingletons: Record<string, unknown> = {};
+    let saving = false;
+    let dirtyWhileSaving = false;
+
+    const noteSaved = (state: ReturnType<typeof useFableStore.getState>) => {
+      baseline = snapshot(state, SYNCED_COLLECTIONS);
+      sentSingletons = Object.fromEntries(SYNCED_SINGLETONS.map((k) => [k, state[k]]));
+    };
+
+    const report = async (res: Response) => {
+      const setSyncError = useFableStore.getState().setLastSyncError;
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        console.warn("[state-sync] save rejected:", data?.error ?? res.status);
+        setSyncError(String(data?.error ?? `HTTP ${res.status}`));
+        return false;
+      }
+      setSyncError(null);
+      return true;
+    };
+
+    /** Full replace: first-run seeding only. */
+    const saveFull = async () => {
       lastSaveAt = Date.now();
       const state = useFableStore.getState();
       const payload = Object.fromEntries([
         ...SYNCED_COLLECTIONS.map((key) => [key, state[key]]),
         ...SYNCED_SINGLETONS.map((key) => [key, state[key]]),
       ]);
-      // Deliberately not sendJson: a rejected save must not throw out of the
-      // debounce timer, and the 409 wipe guard is a normal outcome here — it
-      // is reported and the local state is kept, not treated as an error.
       try {
         const res = await fetch("/api/state", {
           method:  "PUT",
           headers: { "Content-Type": "application/json" },
           body:    JSON.stringify(payload),
         });
-        const setSyncError = useFableStore.getState().setLastSyncError;
-        if (!res.ok) {
-          const data = await res.json().catch(() => null);
-          console.warn("[state-sync] save rejected:", data?.error ?? res.status);
-          setSyncError(String(data?.error ?? `HTTP ${res.status}`));
-        } else {
-          setSyncError(null);
-        }
+        if (await report(res)) noteSaved(state);
       } catch (e) {
         console.warn("[state-sync] save failed:", e);
         useFableStore.getState().setLastSyncError(e instanceof Error ? e.message : String(e));
+      }
+    };
+
+    // Deliberately not sendJson: a rejected save must not throw out of the
+    // debounce timer, and the 409 wipe guard is a normal outcome here — it
+    // is reported and the local state is kept, not treated as an error.
+    const save = async () => {
+      if (saving) { dirtyWhileSaving = true; return; }
+      saving = true;
+      lastSaveAt = Date.now();
+      try {
+        const state = useFableStore.getState();
+        const patch = diffState(baseline, state, SYNCED_COLLECTIONS);
+        const singletons = Object.fromEntries(
+          SYNCED_SINGLETONS.filter((k) => state[k] !== sentSingletons[k]).map((k) => [k, state[k]]));
+        if (!patch && Object.keys(singletons).length === 0) return;
+
+        const res = await fetch("/api/state", {
+          method:  "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ ...(patch ?? { upserts: {}, removals: {}, order: {} }), ...singletons }),
+        });
+        if (await report(res)) noteSaved(state);
+      } catch (e) {
+        console.warn("[state-sync] save failed:", e);
+        useFableStore.getState().setLastSyncError(e instanceof Error ? e.message : String(e));
+      } finally {
+        saving = false;
+        if (dirtyWhileSaving) { dirtyWhileSaving = false; schedule(); }
       }
     };
 
@@ -136,9 +184,11 @@ export function StateSync() {
             defaultPresetId:    typeof data.defaultPresetId === "string" ? data.defaultPresetId : null,
             globalInstructions: data.globalInstructions ?? {},
           });
+          // The server now holds exactly what was just hydrated
+          noteSaved(useFableStore.getState());
         } else {
           // First run: seed the durable copy from local state
-          await save();
+          await saveFull();
         }
       } catch (e) {
         // A thrown read (network down, bad JSON) lands here rather than at the

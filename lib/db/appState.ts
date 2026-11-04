@@ -141,3 +141,91 @@ export function replaceAppState(
   });
   tx();
 }
+
+// ─── Incremental update ───────────────────────────────────────────────────────
+
+type PatchName = (typeof APP_COLLECTIONS)[number][0] | "chats";
+
+export interface AppStatePatchInput {
+  upserts?:  Partial<Record<PatchName, Array<{ id: string; messages?: Array<{ id: string }> }>>>;
+  removals?: Partial<Record<PatchName, string[]>>;
+  order?:    Partial<Record<PatchName, string[]>>;
+  defaultPresetId?: string | null;
+  globalInstructions?: PersistedAppState["globalInstructions"];
+}
+
+/** Table for each collection name, chats included. */
+const PATCH_TABLES: Record<PatchName, string> = {
+  ...Object.fromEntries(APP_COLLECTIONS.map(([f, t]) => [f, t])) as Record<string, string>,
+  chats: "app_chats",
+} as Record<PatchName, string>;
+
+/**
+ * Row counts per collection before and after `patch`, without writing. Lets the
+ * route apply its wipe guard to the result of an incremental update, reading
+ * ids only (not every message).
+ */
+export function countAfterPatch(
+  db: DB, patch: AppStatePatchInput,
+): { before: Record<string, number>; after: Record<string, number> } {
+  const before: Record<string, number> = {};
+  const after: Record<string, number> = {};
+  for (const name of Object.keys(PATCH_TABLES) as PatchName[]) {
+    const table = PATCH_TABLES[name];
+    const ids = new Set((db.prepare(`SELECT id FROM ${table}`).all() as Array<{ id: string }>).map((r) => r.id));
+    before[name] = ids.size;
+    for (const id of patch.removals?.[name] ?? []) ids.delete(id);
+    for (const r of patch.upserts?.[name] ?? []) ids.add(r.id);
+    after[name] = ids.size;
+  }
+  return { before, after };
+}
+
+/**
+ * Apply a diff instead of replacing everything. A chat that is upserted has
+ * its messages rewritten as a unit (a regenerate or edit can change any of
+ * them), but untouched chats cost nothing. New rows append; `order` renumbers
+ * a collection's seq so reordering and deletions stay faithful.
+ */
+export function patchAppState(db: DB, patch: AppStatePatchInput): void {
+  const tx = db.transaction(() => {
+    for (const name of Object.keys(PATCH_TABLES) as PatchName[]) {
+      const table = PATCH_TABLES[name];
+
+      for (const id of patch.removals?.[name] ?? []) {
+        db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+        if (name === "chats") db.prepare("DELETE FROM app_messages WHERE chat_id = ?").run(id);
+      }
+
+      const upsert = db.prepare(
+        `INSERT INTO ${table} (id, seq, data)
+         VALUES (?, (SELECT COALESCE(MAX(seq), -1) + 1 FROM ${table}), ?)
+         ON CONFLICT(id) DO UPDATE SET data = excluded.data`
+      );
+      for (const row of patch.upserts?.[name] ?? []) {
+        if (name === "chats") {
+          const { messages = [], ...meta } = row;
+          upsert.run(row.id, JSON.stringify(meta));
+          db.prepare("DELETE FROM app_messages WHERE chat_id = ?").run(row.id);
+          const insMsg = db.prepare(
+            "INSERT OR REPLACE INTO app_messages (id, chat_id, seq, data) VALUES (?, ?, ?, ?)"
+          );
+          messages.forEach((m, j) => insMsg.run(m.id, row.id, j, JSON.stringify(m)));
+        } else {
+          upsert.run(row.id, JSON.stringify(row));
+        }
+      }
+
+      const order = patch.order?.[name];
+      if (order) {
+        const setSeq = db.prepare(`UPDATE ${table} SET seq = ? WHERE id = ?`);
+        order.forEach((id, i) => setSeq.run(i, id));
+      }
+    }
+
+    const insKv = db.prepare("INSERT OR REPLACE INTO app_kv (key, value) VALUES (?, ?)");
+    if (patch.defaultPresetId !== undefined) insKv.run("defaultPresetId", JSON.stringify(patch.defaultPresetId));
+    if (patch.globalInstructions !== undefined) insKv.run("globalInstructions", JSON.stringify(patch.globalInstructions));
+  });
+  tx();
+}
