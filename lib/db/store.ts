@@ -13,6 +13,7 @@ import { isSingleValued, normPredicate, predicateFamily } from "./predicates";
 import { bufferToVec, cosine } from "@/lib/llm/embeddings";
 import { contentWords, jaccard, normalizeText } from "@/lib/text/overlap";
 import type { PersistedAppState } from "@/lib/types";
+import { saveHistory, getHistory, getHistoryGroup, deleteHistory, recordEvent } from "./appHistory";
 import {
   getAppState, replaceAppState, patchAppState, countAfterPatch, currentRev, getChangesSince,
   type AppStatePatchInput,
@@ -34,6 +35,11 @@ import type {
 } from "./models";
 import { DEFAULT_DECAY_RATES } from "./models";
 import { migrateToChatScoped } from "./migrate";
+
+const APP_TABLES: Record<string, string> = {
+  characters: "app_characters", chats: "app_chats", personas: "app_personas",
+  lorebooks: "app_lorebooks", scenarios: "app_scenarios", presets: "app_presets",
+};
 
 function now(): number {
   return Math.floor(Date.now() / 1000);
@@ -977,6 +983,37 @@ export class FableStore {
   patchAppState(patch: AppStatePatchInput, opts?: { baseRev?: number }): ReturnType<typeof patchAppState> {
     return patchAppState(this.db, patch, opts);
   }
+
+  /** Run `fn` as one atomic unit: everything it writes commits together or not at all. */
+  transaction<T>(fn: () => T): T {
+    return this.db.transaction(fn)();
+  }
+
+  /** One app row's JSON and position, or null. `name` is a collection name (characters, chats, …). */
+  getRow(name: string, id: string): { seq: number; data: Record<string, unknown> } | null {
+    const table = APP_TABLES[name];
+    if (!table) throw new Error(`unknown collection "${name}"`);
+    const r = this.db.prepare(`SELECT seq, data FROM ${table} WHERE id = ?`).get(id) as { seq: number; data: string } | undefined;
+    if (!r) return null;
+    try { return { seq: r.seq, data: JSON.parse(r.data) as Record<string, unknown> }; } catch { return null; }
+  }
+
+  /** Every row of a collection (not chats: those carry messages), in order. */
+  listRows(name: string): Array<Record<string, unknown>> {
+    const table = APP_TABLES[name];
+    if (!table || name === "chats") throw new Error(`cannot list collection "${name}"`);
+    const out: Array<Record<string, unknown>> = [];
+    for (const r of this.db.prepare(`SELECT data FROM ${table} ORDER BY seq`).all() as Array<{ data: string }>) {
+      try { out.push(JSON.parse(r.data) as Record<string, unknown>); } catch { /* unreadable row: skipped, as everywhere */ }
+    }
+    return out;
+  }
+
+  saveHistory(e: Parameters<typeof saveHistory>[1]) { return saveHistory(this.db, e); }
+  getHistory(id: number) { return getHistory(this.db, id); }
+  getHistoryGroup(rev: number) { return getHistoryGroup(this.db, rev); }
+  deleteHistory(id: number) { deleteHistory(this.db, id); }
+  recordEvent(e: Parameters<typeof recordEvent>[1]) { recordEvent(this.db, e); }
 
   /** Latest app-state revision */
   rev(): number {

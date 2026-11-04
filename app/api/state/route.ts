@@ -108,6 +108,7 @@ export async function PUT(req: NextRequest) {
     const purged = store.purgeOrphanedChatMemory();
     return Response.json({
       ok: true,
+      rev: store.rev(),
       ...Object.fromEntries(counts.map(([name, incoming]) => [name, incoming])),
       ...(purged.length > 0 ? { purgedChatMemory: purged } : {}),
     });
