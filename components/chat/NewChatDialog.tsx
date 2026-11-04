@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { Check, Globe, Clapperboard, MessageSquare, Sparkles } from "lucide-react";
 import { useUiStore } from "@/lib/store/ui";
+import { expandMacros } from "@/lib/cards/tavern";
 
 export function NewChatDialog() {
   const { chatBuilderOpen, setChatBuilderOpen } = useUiStore();
@@ -31,10 +32,19 @@ function BuilderForm() {
   const [personaId, setPersonaId] = useState<string | null>(activePersonaId);
   const [worldIds, setWorldIds] = useState<Set<string>>(() => new Set(lorebooks.map((b) => b.id)));
   const [scenarioId, setScenarioId] = useState<string | null>(null); // null = character's own
+  const [greetingIndex, setGreetingIndex] = useState(0);                // 0 = the card's main greeting
 
   const character = characters.find((c) => c.id === characterId);
   const scenario = scenarios.find((s) => s.id === scenarioId);
-  const opening = scenario?.firstMessage?.trim() || character?.firstMessage?.trim() || "";
+  // The main greeting and any alternates the card carried, empty ones dropped
+  const greetings = [character?.firstMessage, ...(character?.alternateGreetings ?? [])]
+    .map((g) => g?.trim() ?? "").filter(Boolean);
+  const chosenGreeting = greetings[Math.min(greetingIndex, Math.max(0, greetings.length - 1))] ?? "";
+  const persona = personas.find((p) => p.id === personaId);
+  const opening = expandMacros(
+    scenario?.firstMessage?.trim() || chosenGreeting,
+    { char: character?.name ?? "", user: persona?.name ?? "User" },
+  );
 
   const toggleWorld = (id: string) => {
     setWorldIds((prev) => {
@@ -53,7 +63,8 @@ function BuilderForm() {
       // All worlds selected = store undefined so future books auto-join
       lorebookIds: worldIds.size === lorebooks.length ? undefined : [...worldIds],
       scenarioText: scenario?.scenario,
-      firstMessage: scenario?.firstMessage?.trim() || undefined,
+      // A scenario's own opening wins; otherwise an alternate greeting if one was picked
+      firstMessage: scenario?.firstMessage?.trim() || (greetingIndex > 0 ? chosenGreeting : undefined),
     });
     setChatBuilderOpen(false);
     setActiveSection("chats");
@@ -89,7 +100,13 @@ function BuilderForm() {
                   return (
                     <button
                       key={c.id}
-                      onClick={() => setCharacterId(c.id)}
+                      onClick={() => {
+                        setCharacterId(c.id);
+                        setGreetingIndex(0);
+                        // A character's own world should be in the chat they start
+                        const own = c.lorebookId;
+                        if (own) setWorldIds((prev) => new Set(prev).add(own));
+                      }}
                       className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-left transition-colors cursor-pointer ${
                         active
                           ? "border-[var(--purple)] bg-[var(--purple-light)]"
@@ -229,6 +246,21 @@ function BuilderForm() {
               <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-fg)] mb-1">
                 Opens with
               </div>
+              {!scenario?.firstMessage?.trim() && greetings.length > 1 && (
+                <div className="flex flex-wrap gap-1 mb-1.5" role="radiogroup" aria-label="Opening greeting">
+                  {greetings.map((_, i) => (
+                    <button
+                      key={i} role="radio" aria-checked={greetingIndex === i}
+                      onClick={() => setGreetingIndex(i)}
+                      className={`rounded-full px-2 py-0.5 text-[10px] cursor-pointer transition-colors ${
+                        greetingIndex === i
+                          ? "bg-[var(--purple)] text-white"
+                          : "bg-[var(--card)] border border-[var(--border)] text-[var(--muted-fg)] hover:text-[var(--foreground)]"
+                      }`}
+                    >{i === 0 ? "Main" : `Alt ${i}`}</button>
+                  ))}
+                </div>
+              )}
               <p className="text-[11px] text-[var(--foreground)] leading-snug line-clamp-3">
                 {opening || <span className="italic text-[var(--muted-fg)]">No first message — you speak first.</span>}
               </p>

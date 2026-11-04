@@ -13,7 +13,7 @@ export function LoreTab() {
   const { setActiveSection } = useUiStore();
 
   const chat = chats.find((c) => c.id === activeChatId);
-  const recentText = (chat?.messages ?? []).slice(-6).map((m) => m.content).join("\n").toLowerCase();
+  const recentText = (chat?.messages ?? []).slice(-6).map((m) => m.content).join("\n");
 
   // Which worlds are in play for THIS chat (undefined selection = all)
   const activeBooks = booksForChat(lorebooks, chat);

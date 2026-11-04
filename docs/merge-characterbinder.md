@@ -35,11 +35,20 @@ CharacterBinder's job is split into three pieces and each goes where it belongs:
   `<USER>`. Before this, an imported card sent those placeholders to the model
   literally, and every field but five was discarded on import.
 
-**Phase 2 — lorebooks, personas, scenarios to parity.** Lorebook entries gain
-secondary keys, selective, case-sensitive and position (the import currently drops
-all four); character ↔ lorebook link so "export with lorebook" embeds a
-`character_book`; persona and scenario cards exported as PNG/JSON; alternate
-greetings offered in the new-chat dialog.
+**Phase 2 — done.** Lorebooks, personas and scenarios to parity.
+- Lorebook entries gain secondary keys, *selective* (primary AND secondary must
+  match), case sensitivity, a memo, and a stored position. The first three change
+  matching; `entryTriggered` stays the single rule shared by generation and the Lore
+  tab. SillyTavern world-info spellings (`keysecondary`, numeric `position`) import.
+- A character can own a lorebook (`Character.lorebookId`). Importing a card with an
+  embedded `character_book` creates and links it; exporting a character embeds it;
+  starting a chat with them includes their book.
+- Lorebooks, personas and scenarios export as JSON (lorebooks and scenarios have no
+  art, so no PNG; personas export a PNG with their avatar).
+- Alternate greetings are offered in the new-chat dialog, with `{{user}}` filled in.
+- **Position is stored, not applied.** All lore is injected as one `[World Lore]`
+  block, so `before_char` / `after_char` round-trips but does not move text. Applying
+  it would mean splitting that block around the character sheet.
 
 **Phase 3 — Quick Import and platforms.** Port `cardTextParser.ts` (pure, 664
 lines, with its tests) as "paste anything" in the character editor; port the
@@ -65,7 +74,6 @@ README pointing here.
   downscaled to 512px JPEG. Original full-resolution art is not kept, so an
   imported-then-exported card has smaller art than the source. The export says so
   when a character has no art at all.
-- Lorebooks do not yet export with a character (phase 2).
 - `fable_drawer2/` and the eval harness mirror `promptBuilder.ts` by hand
   (see its header); `tests/memory-eval/long-chat.mjs` does not yet know about the
   new card sections. They only matter for characters that use the new fields.

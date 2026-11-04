@@ -24,30 +24,45 @@ export function booksForChat(lorebooks: Lorebook[], chat: Pick<Chat, "lorebookId
   return lorebooks.filter((b) => ids.includes(b.id));
 }
 
-/** Split an entry's key field into individual keywords ("Kaspar, Kaspar Division"). */
+/** Split a comma-separated key field into individual keywords. */
+function splitKeys(field: string): string[] {
+  return field.split(",").map((k) => k.trim()).filter((k) => k.length > 0);
+}
+
+/** An entry's primary keywords ("Kaspar, Kaspar Division"). */
 function entryKeywords(entry: LoreEntry): string[] {
-  return entry.key
-    .split(",")
-    .map((k) => k.trim().toLowerCase())
-    .filter((k) => k.length > 0);
+  return splitKeys(entry.key);
 }
 
 /**
- * Whether an entry fires against (lowercased) recent conversation text —
- * THE single source of truth, shared by generation and the inspector so the
- * Lore tab never claims an entry is injected that generation would skip.
+ * Whether an entry fires against recent conversation text — THE single source
+ * of truth, shared by generation and the inspector so the Lore tab never claims
+ * an entry is injected that generation would skip.
+ *
+ * Takes the text as written, not lowercased: a case-sensitive entry has to see
+ * the original. Selective entries need a primary keyword AND a secondary one
+ * ("fire on 'Mira' only when the talk is also about 'sword'").
  */
-export function entryTriggered(entry: LoreEntry, haystackLower: string): boolean {
+export function entryTriggered(entry: LoreEntry, text: string): boolean {
   if (!entry.enabled || !entry.value.trim()) return false;
-  return entry.constant || entryKeywords(entry).some((k) => keywordMatches(k, haystackLower));
+  if (entry.constant) return true;
+
+  const sensitive = entry.caseSensitive === true;
+  const haystack = sensitive ? text : text.toLowerCase();
+  const matches = (keys: string[]) =>
+    keys.some((k) => keywordMatches(sensitive ? k : k.toLowerCase(), haystack, sensitive));
+
+  if (!matches(entryKeywords(entry))) return false;
+  const secondary = (entry.secondaryKeys ?? []).filter((k) => k.trim());
+  return entry.selective && secondary.length > 0 ? matches(secondary.map((k) => k.trim())) : true;
 }
 
-function keywordMatches(keyword: string, haystack: string): boolean {
+function keywordMatches(keyword: string, haystack: string, caseSensitive: boolean): boolean {
   // Word-boundary match when the keyword is plain word characters, so "art"
   // doesn't fire on "particle". Falls back to substring for keys with
   // punctuation/spaces where \b behaves badly.
   if (/^[\w][\w ]*[\w]$/.test(keyword) || /^\w$/.test(keyword)) {
-    return new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(haystack);
+    return new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, caseSensitive ? "" : "i").test(haystack);
   }
   return haystack.includes(keyword);
 }
@@ -66,12 +81,10 @@ export function matchLoreEntries(
   // conversation, and skipping them on the first turn of a new chat dropped
   // exactly the always-on world lore the chat was started with. Keyword
   // entries already fail to match an empty haystack.
-  const haystack = recentText.toLowerCase();
-
   const matched: LoreEntry[] = [];
   for (const book of lorebooks) {
     for (const entry of book.entries) {
-      if (entryTriggered(entry, haystack)) matched.push(entry);
+      if (entryTriggered(entry, recentText)) matched.push(entry);
     }
   }
 

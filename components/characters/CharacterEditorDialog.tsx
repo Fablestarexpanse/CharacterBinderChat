@@ -30,6 +30,7 @@ interface FormState {
   alternateGreetings:      string;  // one per block, separated by a line of ---
   creator:                 string;
   creatorNotes:            string;
+  lorebookId:              string;  // "" = none
 }
 
 const GREETING_SEPARATOR = "\n---\n";
@@ -49,6 +50,7 @@ function toFormState(source: Partial<Character> | null): FormState {
     alternateGreetings:      (source?.alternateGreetings ?? []).join(GREETING_SEPARATOR),
     creator:                 source?.creator ?? "",
     creatorNotes:            source?.creatorNotes ?? "",
+    lorebookId:              source?.lorebookId ?? "",
   };
 }
 
@@ -57,7 +59,7 @@ function toFormState(source: Partial<Character> | null): FormState {
 // seed the form without any set-state-in-effect.
 
 function EditorForm({ editing, draft }: { editing: Character | null; draft: Partial<Character> | null }) {
-  const { addCharacter, updateCharacter, deleteCharacter } = useFableStore();
+  const { addCharacter, updateCharacter, deleteCharacter, lorebooks } = useFableStore();
   const { closeCharacterEditor } = useUiStore();
 
   const [form, setForm]                   = useState<FormState>(() => toFormState(editing ?? draft));
@@ -83,6 +85,7 @@ function EditorForm({ editing, draft }: { editing: Character | null; draft: Part
       creatorNotes: form.creatorNotes.trim() || undefined,
       // Not editable here, but part of the card: carried through from what was
       // opened so importing then saving does not silently drop platform data.
+      lorebookId:   form.lorebookId || undefined,
       characterVersion: (editing ?? draft)?.characterVersion,
       cardExtensions:   (editing ?? draft)?.cardExtensions,
     };
@@ -139,6 +142,17 @@ function EditorForm({ editing, draft }: { editing: Character | null; draft: Part
         <Field label="First message" hint="optional — greets you when a chat starts">
           <Textarea value={form.firstMessage} onChange={set("firstMessage")} rows={3}
             placeholder="*looks up from cleaning a pistol* You're late." />
+        </Field>
+
+        <Field label="Lorebook" hint="this character's world — exported inside their card">
+          <select
+            value={form.lorebookId}
+            onChange={(e) => setForm((f) => ({ ...f, lorebookId: e.target.value }))}
+            className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--purple)]"
+          >
+            <option value="">None</option>
+            {lorebooks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
         </Field>
 
         <details className="rounded-lg border border-[var(--border)] px-3 py-2">

@@ -111,8 +111,12 @@ export function loreToCharacterBook(
         enabled:         e.enabled,
         insertion_order: e.priority ?? i,
         constant:        e.constant ?? false,
-        name:            keys[0] ?? "",
-        comment:         "",
+        name:            e.comment || keys[0] || "",
+        comment:         e.comment ?? "",
+        selective:       e.selective ?? false,
+        secondary_keys:  e.secondaryKeys ?? [],
+        case_sensitive:  e.caseSensitive ?? false,
+        position:        e.position ?? "before_char",
       };
     }),
   };
@@ -172,4 +176,72 @@ export function expandMacros(text: string, names: { char: string; user: string }
 /** `<START>` separates example conversations in mes_example. */
 export function formatExampleDialogue(text: string): string {
   return text.replace(/<START>/gi, "---").trim();
+}
+
+// ─── The other card kinds ─────────────────────────────────────────────────────
+// CharacterBinder's lorebook, persona and scenario payloads. Not Tavern V2, but
+// the same PNG container under their own keyword, and the same importer reads them.
+
+/** A lorebook in CharacterBinder's interchange shape (entries identified by position). */
+export function lorebookToCard(book: { name: string; description?: string; entries: LoreEntry[] }) {
+  return {
+    name: book.name,
+    description: book.description ?? "",
+    creator: "",
+    version: "1.0",
+    creator_notes: "",
+    scan_depth: 50,
+    token_budget: 512,
+    recursive_scanning: false,
+    extensions: {},
+    entries: book.entries.map((e, i) => {
+      const keys = e.key.split(",").map((k) => k.trim()).filter(Boolean);
+      return {
+        id: i,
+        keys,
+        secondary_keys: e.secondaryKeys ?? [],
+        comment: e.comment ?? "",
+        content: e.value,
+        constant: e.constant ?? false,
+        selective: e.selective ?? false,
+        insertion_order: e.priority ?? 100,
+        enabled: e.enabled,
+        position: e.position ?? "before_char",
+        case_sensitive: e.caseSensitive ?? false,
+        name: e.comment || keys[0] || "",
+        priority: e.priority ?? 10,
+        extensions: {},
+      };
+    }),
+  };
+}
+
+/** FableChat keeps one description for a persona; the card's other fields stay empty. */
+export function personaToCard(p: { name: string; description: string }) {
+  return {
+    spec: "persona_card_v1" as const,
+    name: p.name,
+    description: p.description,
+    personality: "",
+    appearance: "",
+    background: "",
+    tags: [] as string[],
+    creator: "",
+    version: "1.0",
+    creator_notes: "",
+  };
+}
+
+export function scenarioToCard(s: { name: string; scenario: string; firstMessage?: string }) {
+  return {
+    spec: "scenario_card_v1" as const,
+    name: s.name,
+    description: "",
+    scenario: s.scenario,
+    first_mes: s.firstMessage ?? "",
+    tags: [] as string[],
+    creator: "",
+    version: "1.0",
+    creator_notes: "",
+  };
 }

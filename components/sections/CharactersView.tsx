@@ -10,7 +10,8 @@ import { Card } from "@/components/ui/card";
 import { PersonaEditorDialog } from "@/components/characters/PersonaEditorDialog";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Plus, MessageSquare, UserCircle2, Check, Sparkles, History, Download } from "lucide-react";
-import { exportCharacter } from "@/lib/cards/export";
+import { exportCharacter, exportPersona } from "@/lib/cards/export";
+import { ExportButtons } from "@/components/cards/ExportButtons";
 import type { Character } from "@/lib/types";
 import { useUiStore } from "@/lib/store/ui";
 import { getJson, sendJson } from "@/lib/api/client";
@@ -27,7 +28,7 @@ interface MemorySource {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CharactersView() {
-  const { characters, createChat, setActiveChatId, personas, activePersonaId, setActivePersona } = useFableStore();
+  const { characters, createChat, setActiveChatId, personas, activePersonaId, setActivePersona, lorebooks } = useFableStore();
   const { setActiveSection, openCharacterEditor } = useUiStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -62,7 +63,8 @@ export function CharactersView() {
   const handleExport = async (character: Character, format: "png" | "json") => {
     setImportError(null);
     try {
-      const { usedAvatar } = await exportCharacter(character, { format });
+      const book = lorebooks.find((b) => b.id === character.lorebookId);
+      const { usedAvatar } = await exportCharacter(character, { format, book });
       if (format === "png" && !usedAvatar) {
         setImportError(`Exported ${character.name} with a blank image — this character has no uploaded art to embed.`);
       }
@@ -250,17 +252,19 @@ export function CharactersView() {
                           {p.description || <em>No description</em>}
                         </p>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-shrink-0"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setPersonaEditor({ open: true, id: p.id });
-                        }}
-                      >
-                        Edit
-                      </Button>
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPersonaEditor({ open: true, id: p.id });
+                          }}
+                        >
+                          Edit
+                        </Button>
+                        <ExportButtons run={(f) => exportPersona(p, f)} />
+                      </div>
                     </div>
                   </Card>
                 );

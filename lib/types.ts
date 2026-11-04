@@ -29,6 +29,9 @@ export interface Character {
   characterVersion?: string;
   /** Platform-specific data the card carried, kept verbatim so export gives it back */
   cardExtensions?: Record<string, unknown>;
+  /** The lorebook that belongs to this character. Embedded in their exported card,
+   *  and auto-created from the `character_book` an imported card carries. */
+  lorebookId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -143,6 +146,16 @@ export interface LoreEntry {
   priority?: number;
   /** Always inject, regardless of keywords — used for scenarios / standing context */
   constant?: boolean;
+  // ─── Card-format fields ──────────────────────────────────────────────────
+  /** With `selective`, the entry fires only if one of these ALSO matches */
+  secondaryKeys?: string[];
+  selective?: boolean;
+  caseSensitive?: boolean;
+  /** Where the source tool placed it. Kept so export gives it back; the prompt
+   *  currently injects all lore as one block, so it does not move the text. */
+  position?: "before_char" | "after_char";
+  /** The entry's memo / name in the source tool */
+  comment?: string;
 }
 
 export interface Lorebook {

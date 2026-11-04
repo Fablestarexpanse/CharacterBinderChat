@@ -56,8 +56,20 @@ function convertLoreEntry(e: Obj): Omit<LoreEntry, "id" | "lorebookId"> | null {
     .map((k) => k.trim());
   const constant = e.constant === true;
   if (keywords.length === 0 && !constant) return null;
+  // SillyTavern world-info spells these differently from card books
+  const secondary = (Array.isArray(e.secondary_keys) ? e.secondary_keys : Array.isArray(e.keysecondary) ? e.keysecondary : [])
+    .filter((k): k is string => typeof k === "string" && k.trim().length > 0)
+    .map((k) => k.trim());
+  const memo = str(e, "comment") ?? str(e, "name");
   return {
     key: keywords.join(", ") || (str(e, "name") ?? str(e, "comment") ?? "always"),
+    ...(secondary.length > 0 ? { secondaryKeys: secondary } : {}),
+    ...(e.selective === true ? { selective: true } : {}),
+    ...((e.case_sensitive ?? e.caseSensitive) === true ? { caseSensitive: true } : {}),
+    // ST stores position as a number (0 before the character, 1 after); cards use names
+    ...(e.position === "after_char" || e.position === 1 ? { position: "after_char" as const }
+      : e.position === "before_char" || e.position === 0 ? { position: "before_char" as const } : {}),
+    ...(memo?.trim() ? { comment: memo.trim() } : {}),
     value: content.trim(),
     enabled: e.enabled !== false && e.disable !== true,
     priority:

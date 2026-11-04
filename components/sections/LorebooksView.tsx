@@ -11,6 +11,8 @@ import { estimateTokens } from "@/lib/chat/promptBuilder";
 import { LORE_TOKEN_BUDGET } from "@/lib/chat/lorebook";
 import { BookOpen, Plus, Trash2, Zap, Pin, ChevronDown, ChevronRight } from "lucide-react";
 import type { LoreEntry } from "@/lib/types";
+import { ExportButtons } from "@/components/cards/ExportButtons";
+import { exportLorebook } from "@/lib/cards/export";
 
 function entryTokens(e: LoreEntry): number {
   return estimateTokens(`${e.key.split(",")[0]?.trim() ?? ""}: ${e.value.trim()}`);
@@ -148,6 +150,7 @@ export function LorebooksView() {
                     <Badge variant={enabled.length > 0 ? "green" : "default"}>
                       {enabled.length}/{book.entries.length} on
                     </Badge>
+                    <ExportButtons png={false} run={(f) => exportLorebook(book, f)} />
                     {confirmDelete === book.id ? (
                       <Button
                         variant="outline"
@@ -242,6 +245,46 @@ export function LorebooksView() {
                         rows={2}
                         className="text-xs"
                       />
+                      <details className="text-[11px] text-[var(--muted-fg)]">
+                        <summary className="cursor-pointer select-none hover:text-[var(--foreground)]">
+                          More — secondary keys, case, memo
+                          {(entry.selective || entry.caseSensitive) && " · set"}
+                        </summary>
+                        <div className="mt-2 space-y-2">
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="checkbox" checked={entry.selective ?? false}
+                              onChange={(e) => updateLoreEntry(book.id, entry.id, { selective: e.target.checked })}
+                              className="h-3.5 w-3.5 accent-[var(--purple)]"
+                            />
+                            <span>Also require a secondary keyword</span>
+                          </label>
+                          {entry.selective && (
+                            <Input
+                              value={(entry.secondaryKeys ?? []).join(", ")}
+                              onChange={(e) => updateLoreEntry(book.id, entry.id, {
+                                secondaryKeys: e.target.value.split(",").map((k) => k.trim()).filter(Boolean),
+                              })}
+                              placeholder="Secondary keywords, comma, separated — one must also appear"
+                              className="h-8 text-xs"
+                            />
+                          )}
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="checkbox" checked={entry.caseSensitive ?? false}
+                              onChange={(e) => updateLoreEntry(book.id, entry.id, { caseSensitive: e.target.checked })}
+                              className="h-3.5 w-3.5 accent-[var(--purple)]"
+                            />
+                            <span>Case sensitive</span>
+                          </label>
+                          <Input
+                            value={entry.comment ?? ""}
+                            onChange={(e) => updateLoreEntry(book.id, entry.id, { comment: e.target.value })}
+                            placeholder="Memo — a note for you, never sent to the model"
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                      </details>
                     </div>
                   ))}
 

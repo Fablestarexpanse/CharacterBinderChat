@@ -5,6 +5,8 @@
 // the chat builder to override a character sheet's own scenario/greeting —
 // one character, many stories.
 
+import { ExportButtons } from "@/components/cards/ExportButtons";
+import { exportScenario } from "@/lib/cards/export";
 import { useState } from "react";
 import { useFableStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
@@ -71,6 +73,7 @@ export function ScenariosView() {
                   placeholder="Scenario name"
                   className="flex-1 font-medium"
                 />
+                <ExportButtons png={false} run={(f) => exportScenario(sc, f)} />
                 <Button
                   variant="ghost"
                   size="icon"

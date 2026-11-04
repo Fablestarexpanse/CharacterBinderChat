@@ -58,14 +58,14 @@ async function decodeFile(file: File): Promise<ImportedCard | null> {
   return convertPayload(payload.json, payload.key);
 }
 
-function importBook(book: ImportedLorebook): number {
+function importBook(book: ImportedLorebook): { id: string; count: number } {
   const store = useFableStore.getState();
   const bookId = store.addLorebook(book.name);
   if (book.description) store.updateLorebook(bookId, { description: book.description });
   for (const entry of book.entries) {
     useFableStore.getState().addLoreEntry(bookId, entry);
   }
-  return book.entries.length;
+  return { id: bookId, count: book.entries.length };
 }
 
 async function applyCard(
@@ -95,8 +95,10 @@ async function applyCard(
       }
       let extra = "";
       if (card.embeddedBook) {
-        const n = importBook(card.embeddedBook);
-        extra = ` Embedded lorebook "${card.embeddedBook.name}" imported (${n} entries).`;
+        const { id, count } = importBook(card.embeddedBook);
+        // Linked, so the character's own world travels with it when exported again
+        draft.lorebookId = id;
+        extra = ` Embedded lorebook "${card.embeddedBook.name}" imported and linked (${count} entries).`;
       }
       ui.openCharacterEditor(null, draft);
       ui.setActiveSection("characters");
@@ -108,9 +110,9 @@ async function applyCard(
     }
 
     case "lorebook": {
-      const n = importBook(card.book);
+      const { count } = importBook(card.book);
       ui.setActiveSection("lorebooks");
-      return { file: file.name, ok: true, message: `lorebook "${card.book.name}" imported (${n} entries).` };
+      return { file: file.name, ok: true, message: `lorebook "${card.book.name}" imported (${count} entries).` };
     }
 
     case "persona": {

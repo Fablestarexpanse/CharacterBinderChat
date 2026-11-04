@@ -3,9 +3,9 @@
 // pure parts (card shape, PNG bytes) are in tavern.ts and png.ts; this adds the
 // image handling and the download, which need a DOM.
 
-import type { Character, Lorebook } from "@/lib/types";
+import type { Character, Lorebook, Persona, Scenario } from "@/lib/types";
 import { BLANK_PNG, encodeCardPng, isPng } from "./png";
-import { characterToCard, loreToCharacterBook } from "./tavern";
+import { characterToCard, loreToCharacterBook, lorebookToCard, personaToCard, scenarioToCard } from "./tavern";
 
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
@@ -68,22 +68,36 @@ export interface ExportOptions {
   book?: Lorebook;
 }
 
-/** Returns whether the character's own art made it into the file (always true for JSON). */
-export async function exportCharacter(character: Character, { format, book }: ExportOptions): Promise<{ usedAvatar: boolean }> {
+/** One file out: JSON as-is, or the same JSON embedded in a PNG under `key`. */
+async function emit(
+  payload: unknown, key: string, baseName: string, avatar: string | undefined, format: "png" | "json",
+): Promise<{ usedAvatar: boolean }> {
+  const base = safeName(baseName);
+  if (format === "json") {
+    download(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }), `${base}.json`);
+    return { usedAvatar: true };
+  }
+  const { bytes, usedAvatar } = await carrier(avatar);
+  const png = encodeCardPng(bytes, JSON.stringify(payload), key);
+  download(new Blob([png as BlobPart], { type: "image/png" }), `${base}.png`);
+  return { usedAvatar };
+}
+
+/** Returns whether the card's own art made it into the file (always true for JSON). */
+export function exportCharacter(character: Character, { format, book }: ExportOptions): Promise<{ usedAvatar: boolean }> {
   const card = characterToCard(
     character,
     book ? loreToCharacterBook(book.name, book.description, book.entries) : undefined,
   );
-  const json = JSON.stringify(card, null, format === "json" ? 2 : 0);
-  const base = safeName(character.name);
-
-  if (format === "json") {
-    download(new Blob([json], { type: "application/json" }), `${base}.json`);
-    return { usedAvatar: true };
-  }
-  const { bytes, usedAvatar } = await carrier(character.avatar);
   // "chara" is the keyword SillyTavern, Chub and most platforms read
-  const png = encodeCardPng(bytes, json, "chara");
-  download(new Blob([png as BlobPart], { type: "image/png" }), `${base}.png`);
-  return { usedAvatar };
+  return emit(card, "chara", character.name, character.avatar, format);
 }
+
+export const exportLorebook = (book: Lorebook, format: "png" | "json") =>
+  emit(lorebookToCard(book), "lorebook", book.name, undefined, format);
+
+export const exportPersona = (persona: Persona, format: "png" | "json") =>
+  emit(personaToCard(persona), "persona", persona.name, persona.avatar, format);
+
+export const exportScenario = (scenario: Scenario, format: "png" | "json") =>
+  emit(scenarioToCard(scenario), "scenario", scenario.name, undefined, format);
