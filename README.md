@@ -109,6 +109,16 @@ FABLE_PASSWORD=choose-one                   # required to use FableChat from ano
 FABLE_SECRET_KEY=<64 hex characters>        # keep the API-key encryption key off disk
 ```
 
+### Letting an AI agent build your characters
+
+FableChat ships an [MCP](https://modelcontextprotocol.io) server so Claude Code, Claude Desktop or any MCP client can create and edit characters, lorebooks, personas and scenarios directly: *"a stoic dwarven blacksmith with a lorebook for his forge"*.
+
+```bash
+claude mcp add fablechat -- node /absolute/path/to/CharacterBinderChat/mcp/server.mjs
+```
+
+FableChat must be running. Set `FABLE_URL` if it is not on `http://127.0.0.1:3000`, and `FABLE_PASSWORD` if you started it with one. There is nothing to pair: changes are written to FableChat's server and appear in any open tab within a few seconds, announced in a banner that says who changed what and offers **Undo**. Every change an agent makes is reversible, including deletes, and a character's lorebook is removed with it if you undo its creation. If you edit the same character in the app at the same moment, the agent's version is kept and you are told.
+
 ### Using it from another device
 
 `npm run dev` / `npm start` listen on `127.0.0.1` only, and anything addressed to another hostname is refused. To reach it from your phone or another computer, set `FABLE_PASSWORD` (any username, that password — the browser will prompt) and bind the network interface yourself:

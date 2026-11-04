@@ -83,7 +83,28 @@ CharacterBinder's job is split into three pieces and each goes where it belongs:
   JSON export of any card shows the same), and script cards (no home in a chat
   app). Each is a small addition if wanted.
 
-**Phase 5 — MCP server: needs a decision, not built.** See "Open question" below.
+**Phase 5 — done, with server-authoritative edits.** The MCP server is a thin stdio
+proxy (`mcp/`) over a new card API, and the sync layer changed underneath it:
+- Every write bumps a global **revision**; rows remember the revision that wrote them
+  and deletions leave tombstones. `GET /api/state/changes?since=N` returns what
+  changed after N.
+- `PATCH /api/state` carries the tab's **base revision**. A write over a shared row
+  (characters, lorebooks, personas, scenarios, presets) that changed on the server
+  since is skipped and reported: the **server's copy wins**. Chats are the opposite:
+  only the generating tab writes them, so **the browser's copy wins** if it has
+  unsaved changes (a streaming reply is never overwritten).
+- An open tab **polls** (3 s, and on focus), **pulls before every save**, and merges
+  with a pure, tested policy (`lib/sync/remote.ts`). A conflicting local edit is
+  dropped with a warning that names it.
+- `/api/cards/<type>` creates, changes and deletes cards **in SQLite, in card
+  format**. Unknown or mistyped fields are refused with the allowed list. Every
+  change keeps the previous version and an event naming who made it; the tab shows it
+  with **Undo**, and agents can undo too (`undo_change`).
+- Because the server is now the authority, nothing about the agent path requires the
+  app tab to be open, and a second device would see the same changes the same way.
+
+Not synced between tabs: list order (a reorder is not a content change), the default
+preset and global instructions. Neither is something an agent edits.
 
 ## What is deliberately not ported
 - **The in-browser WebLLM sorter** (a 2.2 GB WebGPU model download). FableChat has
@@ -99,28 +120,6 @@ CharacterBinder's job is split into three pieces and each goes where it belongs:
 - `fable_drawer2/` and the eval harness mirror `promptBuilder.ts` by hand
   (see its header); `tests/memory-eval/long-chat.mjs` does not yet know about the
   new card sections. They only matter for characters that use the new fields.
-
-## Open question: the MCP server
-
-CharacterBinder's MCP server lets a coding agent create and edit cards. It works
-because the *browser* holds the library and the server just relays to it.
-FableChat is the reverse: the browser holds a working copy and SQLite holds the
-durable one, and `StateSync` sends only what changed in the browser (a diff against
-what it last saved). An MCP server that wrote cards straight to SQLite would be
-invisible to an open tab until reload, and the tab's next save could overwrite or
-remove what the agent wrote. That is a correctness problem, not a detail.
-
-Two honest options:
-1. **Server-authoritative edits.** Add card routes that write SQLite, and make the
-   open tab pick up server changes (poll or push) before it syncs. Correct, but it
-   changes StateSync from "the browser is the editor" to a two-writer model.
-2. **Keep the bridge idea.** The MCP server talks to the open tab over a local
-   WebSocket, as CharacterBinder does, and the tab applies changes through its own
-   store (so StateSync stays the only writer). Needs the pairing-token handshake
-   that CharacterBinder already solved; only works while the app is open.
-
-Option 2 is smaller and safe now; option 1 is the better long-term shape and is
-also what any future multi-device use would need.
 
 ## Retiring CharacterBinder
 Once the above is settled: publish a final CharacterBinder release whose README

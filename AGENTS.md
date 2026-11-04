@@ -75,6 +75,10 @@ Two memory layers, both per-character:
 
 **Card text has placeholders.** `{{char}}` / `{{user}}` are expanded once, over the whole assembled system prompt (`buildSystemPrompt`) and in opening messages (`fillGreeting`). Never send card-sourced text to a model another way.
 
+**The server is authoritative; the tab is a cache that syncs.** Every write to app state bumps a revision (`bumpRev` in `lib/db/appState.ts`) and stamps its rows; deletions leave tombstones. Never write `app_*` tables except through `patchAppState` / `replaceAppState`, or the revision, tombstones and every open tab's view go stale. `SERVER_WINS` collections (characters, lorebooks, personas, scenarios, presets) keep the server's copy when a stale write arrives; **chats are browser-wins** — do not make chats server-wins, a streaming reply dirties its row on every token. The tab's merge policy is `lib/sync/remote.ts`; change it only with its tests. `StateSync` must pull before it saves and must re-baseline rows it took from the server, or the next diff sends them straight back.
+
+**Outside writers go through `lib/server/cards.ts`**, never straight to SQLite: it validates, converts card formats, keeps the previous version (`app_history`) and records an event (`app_events`) in the same transaction as the write, so the change is atomic, attributable and undoable. A new card field must be added to `CHARACTER_FIELDS` there as well as to the editor, or `update_card` will refuse it. `mcp/tools.mjs` holds no card logic on purpose; keep it that way.
+
 ## Before you finish
 
 `npm run lint` and `npx tsc --noEmit` are both expected to be clean. Verify UI changes in the running app rather than assuming.
