@@ -11,7 +11,7 @@ import {
   isPng,
   type ImportedCard,
 } from "./cardFile";
-import { downscaleImage } from "@/lib/image/downscale";
+import { imageToAvatar } from "@/lib/chat/assets";
 import { useUiStore } from "@/lib/store/ui";
 import { importBook } from "./storeWrites";
 import { importArchive } from "./archive";
@@ -89,7 +89,7 @@ async function applyCard(
       // avatar path recorded inside the card JSON.
       const draft = { ...card.draft };
       if (file.size > 8 && isPng(new Uint8Array(await file.slice(0, 8).arrayBuffer()))) {
-        const avatar = await downscaleImage(file);
+        const avatar = await imageToAvatar(file);
         if (avatar) draft.avatar = avatar;
       }
       let extra = "";

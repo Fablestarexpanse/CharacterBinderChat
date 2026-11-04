@@ -14,6 +14,7 @@ import { uniqueSlugId } from "@/lib/store/defaults";
 import { convertPayload, parseLorebook, type ImportedLorebook } from "@/lib/import/cardFile";
 import { characterToCard, loreToCharacterBook, lorebookToCard, personaToCard, scenarioToCard } from "@/lib/cards/tavern";
 import { validateTavernCardV2 } from "@/lib/cards/validate";
+import { assetUrl } from "@/lib/db/assets";
 
 export const CARD_TYPES = ["character", "lorebook", "persona", "scenario"] as const;
 export type CardType = (typeof CARD_TYPES)[number];
@@ -279,6 +280,23 @@ export function updateCard(store: FableStore, type: CardType, id: string, change
 }
 
 // ─── Delete / undo ────────────────────────────────────────────────────────────
+
+/**
+ * Give a character or persona a picture. The bytes go to the asset store (checked
+ * there to be a real image) and the row gets the reference, as one recorded,
+ * undoable change like any other.
+ */
+export function setAvatar(store: FableStore, type: CardType, id: string, bytes: Uint8Array, source: string) {
+  if (type !== "character" && type !== "persona") throw new CardError(`only characters and personas have a picture, not a ${type}`);
+  const found = store.getRow(COLLECTION[type], id);
+  if (!found) throw new CardError(`${type} "${id}" not found`, 404);
+  let hash: string;
+  try { hash = store.putAsset(bytes).hash; }
+  catch (e) { throw new CardError(e instanceof Error ? e.message : String(e)); }
+  const row = { ...(found.data as Row), avatar: assetUrl(hash), updatedAt: nowIso() };
+  const r = commit(store, source, `${source} set the picture of ${type} “${row.name}”`, [{ collection: COLLECTION[type], id, row }]);
+  return { id, type, name: row.name, avatar: row.avatar, rev: r.rev, historyId: r.historyId };
+}
 
 /** What depends on a card, so a delete can say so instead of leaving things pointing at nothing. */
 export interface UsedBy {

@@ -255,3 +255,26 @@ test("state: responses carry an epoch, and it is stable between calls", { skip }
   assert.equal(a.body.epoch, b.body.epoch);
   assert.equal((await get("/api/state/changes?since=0")).body.epoch, a.body.epoch);
 });
+
+// ─── Assets ──────────────────────────────────────────────────────────────────
+const TINY_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64");
+
+test("assets: an image uploads, dedupes, and is served with safe headers; junk is refused", { skip }, async () => {
+  const up = async (body) => { const r = await fetch(`${BASE}/api/assets`, { method: "POST", body }); return { status: r.status, body: await r.json() }; };
+  const a = await up(TINY_PNG), b = await up(TINY_PNG);
+  assert.equal(a.status, 200);
+  assert.match(a.body.url, /^\/api\/assets\/[0-9a-f]{64}$/);
+  assert.equal(a.body.url, b.body.url, "same bytes, same asset");
+
+  const svg = await up(Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>"));
+  assert.equal(svg.status, 400);
+  assert.match(svg.body.error, /not an image/);
+
+  const got = await fetch(`${BASE}${a.body.url}`);
+  assert.equal(got.status, 200);
+  assert.equal(got.headers.get("content-type"), "image/png");
+  assert.equal(got.headers.get("x-content-type-options"), "nosniff");
+  assert.match(got.headers.get("cache-control"), /immutable/);
+  assert.equal((await fetch(`${BASE}/api/assets/${"0".repeat(64)}`)).status, 404);
+  assert.equal((await fetch(`${BASE}${a.body.url}?w=64`)).status, 200, "a sized copy (or the original) is served");
+});

@@ -81,6 +81,28 @@ test("failures come back as tool errors an agent can read, not protocol errors",
   assert.match(typo.text, /not found/);
 });
 
+test("set_avatar gives a character a picture from a file, and it can be undone", { skip }, async () => {
+  const fs = await import("node:fs"), os = await import("node:os"), path = await import("node:path");
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "mcp-avatar-")), "a.png");
+  fs.writeFileSync(file, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64"));
+  const made = await run("create_character", { name: "MCP Avatar Probe", description: "Gets a picture." });
+  created.push(["character", made.json.id]);
+
+  const set = await run("set_avatar", { type: "character", id: made.json.id, path: file });
+  assert.equal(set.isError, false, set.text);
+  assert.match(set.json.avatar, /^\/api\/assets\//);
+  assert.equal((await fetch(`${BASE}${set.json.avatar}`)).status, 200);
+
+  const relative = await run("set_avatar", { type: "character", id: made.json.id, path: "a.png" });
+  assert.equal(relative.isError, true, "relative paths are refused");
+  const missing = await run("set_avatar", { type: "character", id: made.json.id, path: "/no/such/file.png" });
+  assert.match(missing.text, /Could not read/);
+
+  await run("undo_change", { historyId: set.json.historyId });
+  const st = await (await fetch(`${BASE}/api/state`)).json();
+  assert.equal(st.characters.find((c) => c.id === made.json.id).avatar, undefined);
+});
+
 test("a lorebook created with a character is linked, and parse_card_text sorts pasted text", { skip }, async () => {
   const made = await run("create_character", {
     name: "MCP Lore Probe", description: "Has a world.",

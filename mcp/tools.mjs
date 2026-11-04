@@ -6,6 +6,8 @@
 // what a valid card is.
 
 import { z } from "zod";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 const CARD_TYPES = ["character", "lorebook", "persona", "scenario"];
 const cardType = z.enum(CARD_TYPES).describe("character, lorebook, persona or scenario");
@@ -140,6 +142,24 @@ export function buildTools(call) {
       handler: async ({ type, id }) => call("DELETE", `/api/cards/${type}/${encodeURIComponent(id)}`),
     },
     {
+      name: "set_avatar",
+      title: "Set a picture",
+      description: "Give a character or persona a picture from an image file on this computer (PNG, JPEG, GIF or WebP, up to 25 MB). The original is kept, so exported cards carry it at full resolution." + WRITE_NOTE,
+      inputSchema: {
+        type: z.enum(["character", "persona"]),
+        id: z.string(),
+        path: z.string().describe("Absolute path to the image file"),
+      },
+      annotations: destructive,
+      handler: async ({ type, id, path: file }) => {
+        // Read here, in the MCP server, with the agent's own permissions; the app
+        // only ever receives bytes and never opens a path it was handed.
+        if (!path.isAbsolute(file)) throw new Error("path must be absolute");
+        const bytes = await fs.readFile(file).catch((e) => { throw new Error(`Could not read ${file}: ${e.code ?? e.message}`); });
+        return call("PUT", `/api/cards/${type}/${encodeURIComponent(id)}/avatar`, bytes);
+      },
+    },
+    {
       name: "undo_change",
       title: "Undo a change",
       description: "Reverse a create, update or delete, using the historyId its response returned. A created character's lorebook is removed with it. Each change can be undone once.",
@@ -163,12 +183,13 @@ export function makeCall({ baseUrl, password, source, fetchImpl = fetch }) {
   const base = baseUrl.replace(/\/+$/, "");
   return async (method, path, body) => {
     const headers = { "X-Fable-Source": source() };
-    if (body !== undefined) headers["Content-Type"] = "application/json";
+    const raw = body instanceof Uint8Array;
+    if (body !== undefined) headers["Content-Type"] = raw ? "application/octet-stream" : "application/json";
     if (password) headers.Authorization = `Basic ${Buffer.from(`fable:${password}`).toString("base64")}`;
 
     let res;
     try {
-      res = await fetchImpl(base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+      res = await fetchImpl(base + path, { method, headers, body: body === undefined ? undefined : raw ? body : JSON.stringify(body) });
     } catch (e) {
       throw new Error(`Could not reach FableChat at ${base}. Is it running? Start it with \`npm run dev\` or \`npm start\`. (${e.cause?.code ?? e.message})`);
     }

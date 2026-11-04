@@ -36,6 +36,15 @@ export function getStore(): FableStore {
 
   cached?.store?.close();
   const store = new FableStore(dbFilePath());
+  // Housekeeping on open: move any inline images into the asset table (older
+  // databases, or a save made while uploads were failing), then sweep assets
+  // nothing refers to. Both are cheap when there is nothing to do.
+  try {
+    store.migrateInlineAvatars();
+    store.gcAssets();
+  } catch (e) {
+    console.error("[assets] housekeeping failed; carrying on", e);
+  }
   globalForStore._fableStoreCache = { store, builtBy: FableStore };
   return store;
 }

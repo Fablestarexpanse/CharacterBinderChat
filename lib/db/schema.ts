@@ -214,5 +214,19 @@ CREATE TABLE IF NOT EXISTS app_history (
   at         INTEGER NOT NULL
 );
 
+-- ─── Assets ──────────────────────────────────────────────────────────────────
+-- Images, stored once by the SHA-256 of their bytes and referenced from rows as
+-- /api/assets/<hash>. Inside the database rather than as files so a backup and a
+-- restore stay one file. Immutable, so they need no revision: a changed image is a
+-- different hash. Unreferenced assets are swept by gcAssets.
+
+CREATE TABLE IF NOT EXISTS app_assets (
+  hash       TEXT    PRIMARY KEY,
+  mime       TEXT    NOT NULL,
+  bytes      BLOB    NOT NULL,
+  size       INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_app_messages_chat ON app_messages(chat_id, seq);
 `;

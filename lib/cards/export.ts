@@ -16,7 +16,7 @@ function base64ToBytes(b64: string): Uint8Array {
 }
 
 /** Re-encode any browser-decodable image as PNG: metadata chunks only exist in PNGs. */
-function toPngBytes(dataUrl: string): Promise<Uint8Array> {
+function toPngBytes(src: string): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -32,7 +32,7 @@ function toPngBytes(dataUrl: string): Promise<Uint8Array> {
       }, "image/png");
     };
     img.onerror = () => reject(new Error("Could not read the image"));
-    img.src = dataUrl;
+    img.src = src;
   });
 }
 
@@ -43,7 +43,16 @@ function toPngBytes(dataUrl: string): Promise<Uint8Array> {
  * user their art did not make it in rather than silently exporting without it.
  */
 async function carrier(avatar: string | undefined): Promise<{ bytes: Uint8Array; usedAvatar: boolean }> {
-  if (avatar?.startsWith("data:image/png")) {
+  if (avatar?.startsWith("/api/assets/")) {
+    // The original upload, at full resolution (no ?w=)
+    const res = await fetch(avatar.split("?")[0]);
+    if (res.ok) {
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (isPng(bytes)) return { bytes, usedAvatar: true };
+      const url = URL.createObjectURL(new Blob([bytes as BlobPart]));
+      try { return { bytes: await toPngBytes(url), usedAvatar: true }; } finally { URL.revokeObjectURL(url); }
+    }
+  } else if (avatar?.startsWith("data:image/png")) {
     const bytes = base64ToBytes(avatar.split(",")[1] ?? "");
     if (isPng(bytes)) return { bytes, usedAvatar: true };
   } else if (avatar?.startsWith("data:image/")) {

@@ -11,7 +11,7 @@
 
 import { useFableStore } from "@/lib/store";
 import { readZip } from "@/lib/cards/zip";
-import { downscaleImage } from "@/lib/image/downscale";
+import { imageToAvatar } from "@/lib/chat/assets";
 import { decodePngPayload, convertPayload, isPng, type ImportedCard } from "./cardFile";
 import { importBook } from "./storeWrites";
 import type { ImportResult } from "./applyCards";
@@ -134,6 +134,6 @@ export function describeTally(t: ArchiveTally): string {
 /** Entry point from the importer: a .zip File in, a summary out. */
 export async function importArchive(file: File): Promise<ImportResult> {
   const entries = await readZip(new Uint8Array(await file.arrayBuffer()));
-  const tally = await applyArchive(planArchive(entries), (png) => downscaleImage(new Blob([png as BlobPart], { type: "image/png" })));
+  const tally = await applyArchive(planArchive(entries), (png) => imageToAvatar(new Blob([png as BlobPart], { type: "image/png" })));
   return { file: file.name, ok: true, archive: true, message: describeTally(tally) };
 }

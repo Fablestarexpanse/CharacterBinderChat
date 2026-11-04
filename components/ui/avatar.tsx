@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { cn, getInitials } from "@/lib/utils";
+import { sizedSrc } from "@/lib/chat/assets";
 
 interface AvatarProps {
   name: string;
@@ -9,6 +10,9 @@ interface AvatarProps {
   size?: "xs" | "sm" | "md" | "lg";
   className?: string;
 }
+
+/** CSS pixel size of each avatar, for asking the server for a copy no bigger than needed */
+const pixelMap = { xs: 24, sm: 32, md: 40, lg: 64 } as const;
 
 const sizeMap = {
   xs: "h-6 w-6 text-[10px]",
@@ -27,7 +31,7 @@ export function Avatar({ name, src, size = "md", className }: AvatarProps) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={src}
+        src={sizedSrc(src, pixelMap[size])}
         alt={name}
         className={cn("rounded-full object-cover flex-shrink-0", sizeClass, className)}
         onError={() => setFailed(true)}

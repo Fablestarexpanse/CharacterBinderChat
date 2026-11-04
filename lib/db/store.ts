@@ -36,6 +36,7 @@ import type {
 import { DEFAULT_DECAY_RATES } from "./models";
 import { migrateToChatScoped } from "./migrate";
 import { writeBackup } from "./backup";
+import { putAsset, getAsset, gcAssets, referencedAssets, decodeDataUrl, assetUrl } from "./assets";
 
 const APP_TABLES: Record<string, string> = {
   characters: "app_characters", chats: "app_chats", personas: "app_personas",
@@ -1091,6 +1092,41 @@ export class FableStore {
 
   transferMemory(fromChatId: string, toChatId: string): ReturnType<typeof transferMemory> {
     return transferMemory(this, this.db, fromChatId, toChatId);
+  }
+
+  // ── Assets ────────────────────────────────────────────────────────────────
+
+  putAsset(bytes: Uint8Array) { return putAsset(this.db, bytes); }
+  getAsset(hash: string) { return getAsset(this.db, hash); }
+  gcAssets(graceSeconds?: number) { return gcAssets(this.db, graceSeconds); }
+  referencedAssets() { return referencedAssets(this.db); }
+
+  /**
+   * Move inline data: URL avatars out of character and persona rows into assets.
+   * Goes through patchAppState, so the revision moves and open tabs take the new
+   * rows on their next poll. Safe to run every start: rows without one are skipped.
+   * An avatar that is not a decodable image is left alone rather than lost.
+   */
+  migrateInlineAvatars(): number {
+    let moved = 0;
+    this.transaction(() => {
+      const upserts: Record<string, Array<{ id: string }>> = {};
+      for (const name of ["characters", "personas"]) {
+        for (const row of this.listRows(name) as Array<Record<string, unknown> & { id: string }>) {
+          const avatar = row.avatar;
+          if (typeof avatar !== "string" || !avatar.startsWith("data:image/")) continue;
+          const bytes = decodeDataUrl(avatar);
+          if (!bytes) continue;
+          try {
+            const { hash } = this.putAsset(bytes);
+            (upserts[name] ??= []).push({ ...row, avatar: assetUrl(hash) } as { id: string });
+            moved++;
+          } catch { /* not an image we accept: keep it inline */ }
+        }
+      }
+      if (moved > 0) this.patchAppState({ upserts });
+    });
+    return moved;
   }
 
   // ── References between app rows ──────────────────────────────────────────

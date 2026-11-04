@@ -279,8 +279,6 @@ Not yet built:
 
 - **Some image-studio controls are decorative**: the LoRA stack, ControlNet, refiner, aspect-ratio and character-reference controls don't reach the workflow yet — prompt, dimensions, steps, CFG, sampler, seed and batch do.
 - **Narrow screens**: below about 768 px the layout does not adapt yet (the sidebar and inspector do not collapse).
-- **Images are stored inside the database rows** (as data URLs), which makes edits of characters with large avatars
-  heavy and exports carry the 512 px copy rather than the original. An asset store is planned.
 
 See `docs/audit-2026-11.md` for the full list and `docs/plan-2026-11.md` for the order of work.
 
@@ -303,7 +301,7 @@ See `docs/audit-2026-11.md` for the full list and `docs/plan-2026-11.md` for the
 - [x] Fact editing, pinning and locks; Peek Prompt
 - [x] Agents via MCP, with server-authoritative sync and undo
 - [x] Full backup and restore; one-click launcher; local access control and encrypted keys
-- [ ] Asset store for images (originals kept, smaller database)
+- [x] Asset store for images (originals kept, resized on request, smaller database)
 - [ ] Library page: search, tags, bulk actions, archive export
 - [ ] Mobile layout
 - [ ] GPU / VRAM monitoring

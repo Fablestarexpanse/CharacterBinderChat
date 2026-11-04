@@ -17,7 +17,7 @@ test("every tool has a name, description, schema and annotations", () => {
   const { tools } = harness();
   assert.deepEqual(Object.keys(tools).sort(), [
     "app_status", "create_character", "create_lorebook", "create_persona", "create_scenario",
-    "delete_card", "get_card", "list_cards", "parse_card_text", "undo_change", "update_card",
+    "delete_card", "get_card", "list_cards", "parse_card_text", "set_avatar", "undo_change", "update_card",
   ]);
   for (const t of Object.values(tools)) {
     assert.ok(t.description.length > 20, t.name);
@@ -28,7 +28,7 @@ test("every tool has a name, description, schema and annotations", () => {
 test("read tools are marked read-only; delete, update and undo are marked destructive", () => {
   const { tools } = harness();
   for (const n of ["app_status", "list_cards", "get_card", "parse_card_text"]) assert.equal(tools[n].annotations.readOnlyHint, true, n);
-  for (const n of ["update_card", "delete_card", "undo_change"]) assert.equal(tools[n].annotations.destructiveHint, true, n);
+  for (const n of ["update_card", "delete_card", "undo_change", "set_avatar"]) assert.equal(tools[n].annotations.destructiveHint, true, n);
   for (const n of ["create_character", "create_lorebook"]) assert.equal(tools[n].annotations.destructiveHint, false, n);
 });
 

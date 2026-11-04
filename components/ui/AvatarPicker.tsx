@@ -1,16 +1,16 @@
 "use client";
 
 // ─── Avatar picker ────────────────────────────────────────────────────────────
-// Click the portrait to choose an image file. Picked images run through the
-// same downscale-to-data-URI path as CharacterBinder PNG imports, so a chosen
-// avatar is stored exactly like an imported one (≤512px JPEG) and survives a
-// cache clear via the SQLite mirror. Pasting a URL still works underneath.
+// Click the portrait to choose an image file. The ORIGINAL is uploaded to the asset
+// store and the avatar becomes a short /api/assets/<hash> reference, so exports keep
+// full-resolution art and rows stay small; display asks for a resized copy. Pasting
+// a URL still works underneath.
 
 import { useRef, useState } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { downscaleImage } from "@/lib/image/downscale";
+import { imageToAvatar, isAssetUrl } from "@/lib/chat/assets";
 import { Upload, X, Loader2 } from "lucide-react";
 
 export function AvatarPicker({
@@ -35,8 +35,8 @@ export function AvatarPicker({
     setBusy(true);
     setError(null);
     try {
-      const dataUri = await downscaleImage(file);
-      if (dataUri) onChange(dataUri);
+      const avatar = await imageToAvatar(file);
+      if (avatar) onChange(avatar);
       else setError("Couldn't read that image — try a PNG, JPEG or WebP.");
     } finally {
       setBusy(false);
@@ -87,10 +87,10 @@ export function AvatarPicker({
             )}
           </div>
           <Input
-            value={value.startsWith("data:") ? "" : value}
+            value={value.startsWith("data:") || isAssetUrl(value) ? "" : value}
             onChange={(e) => onChange(e.target.value)}
-            placeholder={value.startsWith("data:") ? "Uploaded image" : "…or paste a URL"}
-            disabled={value.startsWith("data:")}
+            placeholder={value.startsWith("data:") || isAssetUrl(value) ? "Uploaded image" : "…or paste a URL"}
+            disabled={value.startsWith("data:") || isAssetUrl(value)}
             className="text-xs h-8"
           />
         </div>
