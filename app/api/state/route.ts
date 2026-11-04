@@ -12,7 +12,12 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const state = getStore().getAppState();
+    const store = getStore();
+    // Revision first: if a write lands between the two reads the client ends up
+    // with data newer than its revision, and the next pull merely re-applies it.
+    // The other order would let it claim a revision whose data it never received.
+    const rev = store.rev();
+    const state = store.getAppState();
 
     if (req.nextUrl.searchParams.get("download") === "1") {
       const stamp = new Date().toISOString().slice(0, 10);
@@ -24,7 +29,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    return Response.json(state);
+    return Response.json({ ...state, rev });
   } catch (err) {
     return routeError("[state GET]", err);
   }
@@ -173,9 +178,19 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    store.patchAppState(patch);
+    // baseRev: the revision this client last synced to. Present, it turns a write
+    // over a row someone else changed into a reported conflict (server wins for
+    // shared content) instead of a silent overwrite.
+    const baseRev = typeof body.baseRev === "number" && Number.isInteger(body.baseRev) ? body.baseRev : undefined;
+    const result = store.patchAppState(patch, { baseRev });
     const purged = store.purgeOrphanedChatMemory();
-    return Response.json({ ok: true, ...(purged.length > 0 ? { purgedChatMemory: purged } : {}) });
+    return Response.json({
+      ok: true,
+      rev: result.rev,
+      prevRev: result.prevRev,
+      conflicts: result.conflicts,
+      ...(purged.length > 0 ? { purgedChatMemory: purged } : {}),
+    });
   } catch (err) {
     return routeError("[state PATCH]", err);
   }

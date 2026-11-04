@@ -124,13 +124,15 @@ CREATE TABLE IF NOT EXISTS memory_snapshots (
 CREATE TABLE IF NOT EXISTS app_characters (
   id   TEXT    PRIMARY KEY,
   seq  INTEGER NOT NULL,
-  data TEXT    NOT NULL
+  data TEXT    NOT NULL,
+  rev  INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS app_chats (
   id   TEXT    PRIMARY KEY,
   seq  INTEGER NOT NULL,
-  data TEXT    NOT NULL
+  data TEXT    NOT NULL,
+  rev  INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS app_messages (
@@ -143,30 +145,73 @@ CREATE TABLE IF NOT EXISTS app_messages (
 CREATE TABLE IF NOT EXISTS app_personas (
   id   TEXT    PRIMARY KEY,
   seq  INTEGER NOT NULL,
-  data TEXT    NOT NULL
+  data TEXT    NOT NULL,
+  rev  INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS app_lorebooks (
   id   TEXT    PRIMARY KEY,
   seq  INTEGER NOT NULL,
-  data TEXT    NOT NULL
+  data TEXT    NOT NULL,
+  rev  INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS app_scenarios (
   id   TEXT    PRIMARY KEY,
   seq  INTEGER NOT NULL,
-  data TEXT    NOT NULL
+  data TEXT    NOT NULL,
+  rev  INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS app_presets (
   id   TEXT    PRIMARY KEY,
   seq  INTEGER NOT NULL,
-  data TEXT    NOT NULL
+  data TEXT    NOT NULL,
+  rev  INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS app_kv (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+
+-- ─── Change tracking ───────────────────────────────────────────────────────
+-- One global revision, bumped by every write transaction. Each row remembers the
+-- revision that last wrote it, so a client can ask what changed since the one it
+-- last saw, and the server can tell a write built on stale state from a fresh one.
+-- Deletions leave a tombstone, or a client could never learn a row was removed.
+
+CREATE TABLE IF NOT EXISTS app_tombstones (
+  collection TEXT    NOT NULL,
+  id         TEXT    NOT NULL,
+  rev        INTEGER NOT NULL,
+  PRIMARY KEY (collection, id)
+);
+
+-- What writers other than the browser did, for the tab to announce. history_id
+-- points at the app_history row that can undo it.
+
+CREATE TABLE IF NOT EXISTS app_events (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  rev        INTEGER NOT NULL,
+  source     TEXT    NOT NULL,
+  summary    TEXT    NOT NULL,
+  history_id INTEGER,
+  at         INTEGER NOT NULL
+);
+
+-- The row as it was BEFORE an outside write, so that write can be undone. A NULL
+-- data column means the row did not exist: undoing a create deletes it.
+
+CREATE TABLE IF NOT EXISTS app_history (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  collection TEXT    NOT NULL,
+  row_id     TEXT    NOT NULL,
+  data       TEXT,
+  seq        INTEGER,
+  rev        INTEGER NOT NULL,
+  source     TEXT    NOT NULL,
+  at         INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_app_messages_chat ON app_messages(chat_id, seq);

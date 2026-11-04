@@ -13,7 +13,10 @@ import { isSingleValued, normPredicate, predicateFamily } from "./predicates";
 import { bufferToVec, cosine } from "@/lib/llm/embeddings";
 import { contentWords, jaccard, normalizeText } from "@/lib/text/overlap";
 import type { PersistedAppState } from "@/lib/types";
-import { getAppState, replaceAppState, patchAppState, countAfterPatch, type AppStatePatchInput } from "./appState";
+import {
+  getAppState, replaceAppState, patchAppState, countAfterPatch, currentRev, getChangesSince,
+  type AppStatePatchInput,
+} from "./appState";
 import { listMemorySources, transferMemory } from "./transfer";
 import { saveMemorySnapshot, branchMemory, type BranchMemoryInput } from "./branch";
 import type {
@@ -89,6 +92,10 @@ export class FableStore {
     // extraction cannot supersede it
     addCol("facts", "pinned", "pinned INTEGER NOT NULL DEFAULT 0");
     addCol("facts", "locked", "locked INTEGER NOT NULL DEFAULT 0");
+    // Revision that last wrote each app row (see app_tombstones in the schema)
+    for (const t of ["app_characters", "app_chats", "app_personas", "app_lorebooks", "app_scenarios", "app_presets"]) {
+      addCol(t, "rev", "rev INTEGER NOT NULL DEFAULT 0");
+    }
   }
 
   private _initSchema(): void {
@@ -967,8 +974,17 @@ export class FableStore {
   // `seq` preserves array order. Full-replace semantics: the client sends its
   // complete state and the transaction rewrites the mirror atomically.
 
-  patchAppState(patch: AppStatePatchInput): void {
-    patchAppState(this.db, patch);
+  patchAppState(patch: AppStatePatchInput, opts?: { baseRev?: number }): ReturnType<typeof patchAppState> {
+    return patchAppState(this.db, patch, opts);
+  }
+
+  /** Latest app-state revision */
+  rev(): number {
+    return currentRev(this.db);
+  }
+
+  getChangesSince(since: number): ReturnType<typeof getChangesSince> {
+    return getChangesSince(this.db, since);
   }
 
   countAfterPatch(patch: AppStatePatchInput) {

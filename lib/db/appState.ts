@@ -99,6 +99,22 @@ export function getAppState(db: DB): PersistedAppState {
   };
 }
 
+// ─── Revisions ────────────────────────────────────────────────────────────────
+
+const REV_KEY = "rev";
+
+/** The latest revision written. 0 for a database nothing has written to yet. */
+export function currentRev(db: DB): number {
+  return getKv<number>(db, REV_KEY, 0);
+}
+
+/** Start a new revision. Only call inside the write transaction that uses it. */
+function bumpRev(db: DB): number {
+  const next = currentRev(db) + 1;
+  db.prepare("INSERT OR REPLACE INTO app_kv (key, value) VALUES (?, ?)").run(REV_KEY, JSON.stringify(next));
+  return next;
+}
+
 /** `defaultPresetId`/`globalInstructions` omitted (undefined) means "leave as-is". */
 export function replaceAppState(
   db: DB,
@@ -107,12 +123,24 @@ export function replaceAppState(
   const { chats, defaultPresetId, globalInstructions } = state;
 
   const tx = db.transaction(() => {
+    const rev = bumpRev(db);
+    const tombstone = db.prepare("INSERT OR REPLACE INTO app_tombstones (collection, id, rev) VALUES (?, ?, ?)");
+    const forget = db.prepare("DELETE FROM app_tombstones WHERE collection = ? AND id = ?");
+    /** Rows about to be wiped that are not coming back leave a tombstone. */
+    const tombstoneMissing = (name: string, table: string, keep: Set<string>) => {
+      for (const r of db.prepare(`SELECT id FROM ${table}`).all() as Array<{ id: string }>) {
+        if (!keep.has(r.id)) tombstone.run(name, r.id, rev);
+      }
+    };
+
     for (const [field, table] of APP_COLLECTIONS) {
+      const rows = state[field] ?? [];
+      tombstoneMissing(field, table, new Set(rows.map((r) => r.id)));
       db.prepare(`DELETE FROM ${table}`).run();
       const ins = db.prepare(
-        `INSERT OR REPLACE INTO ${table} (id, seq, data) VALUES (?, ?, ?)`
+        `INSERT OR REPLACE INTO ${table} (id, seq, data, rev) VALUES (?, ?, ?, ?)`
       );
-      (state[field] ?? []).forEach((row, i) => ins.run(row.id, i, JSON.stringify(row)));
+      rows.forEach((row, i) => { ins.run(row.id, i, JSON.stringify(row), rev); forget.run(field, row.id); });
     }
 
     // app_kv is upserted, never cleared — an older client that doesn't send
@@ -125,17 +153,19 @@ export function replaceAppState(
 
     // Chats are the one collection that isn't flat: messages live in their
     // own table, keyed by chat, so they are cleared and written together.
+    tombstoneMissing("chats", "app_chats", new Set(chats.map((c) => c.id)));
     db.prepare("DELETE FROM app_chats").run();
     db.prepare("DELETE FROM app_messages").run();
     const insChat = db.prepare(
-      "INSERT OR REPLACE INTO app_chats (id, seq, data) VALUES (?, ?, ?)"
+      "INSERT OR REPLACE INTO app_chats (id, seq, data, rev) VALUES (?, ?, ?, ?)"
     );
     const insMsg = db.prepare(
       "INSERT OR REPLACE INTO app_messages (id, chat_id, seq, data) VALUES (?, ?, ?, ?)"
     );
     chats.forEach((chat, i) => {
       const { messages = [], ...meta } = chat;
-      insChat.run(chat.id, i, JSON.stringify(meta));
+      insChat.run(chat.id, i, JSON.stringify(meta), rev);
+      forget.run("chats", chat.id);
       messages.forEach((m, j) => insMsg.run(m.id, chat.id, j, JSON.stringify(m)));
     });
   });
@@ -182,38 +212,107 @@ export function countAfterPatch(
 }
 
 /**
+ * Collections whose content other writers (an agent, another device) edit. When a
+ * client's write touches a row that changed on the server after the client last
+ * synced, the SERVER's copy wins for these and the client is told, so it can take
+ * it. Chats are the opposite: only the browser that is generating writes them, so
+ * its copy always wins.
+ */
+export const SERVER_WINS: readonly PatchName[] = ["characters", "lorebooks", "personas", "scenarios", "presets"];
+
+export interface PatchConflict {
+  collection: PatchName;
+  id: string;
+  /** The row was edited elsewhere, or deleted elsewhere, since the client's base revision */
+  reason: "changed" | "deleted";
+}
+
+export interface PatchResult {
+  /** Revision after this write (equal to `prevRev` when nothing was written) */
+  rev: number;
+  /** Revision just before it. If it equals the client's base, nothing else intervened. */
+  prevRev: number;
+  /** Rows left unwritten because the server's copy won */
+  conflicts: PatchConflict[];
+}
+
+/**
  * Apply a diff instead of replacing everything. A chat that is upserted has
  * its messages rewritten as a unit (a regenerate or edit can change any of
  * them), but untouched chats cost nothing. New rows append; `order` renumbers
  * a collection's seq so reordering and deletions stay faithful.
+ *
+ * With `baseRev` (the revision the writer last synced to) a write that would
+ * overwrite or delete a SERVER_WINS row changed since then is skipped and
+ * reported instead. Without it the write is unconditional, as before.
  */
-export function patchAppState(db: DB, patch: AppStatePatchInput): void {
+export function patchAppState(db: DB, patch: AppStatePatchInput, opts: { baseRev?: number } = {}): PatchResult {
+  const prevRev = currentRev(db);
+  let result: PatchResult = { rev: prevRev, prevRev, conflicts: [] };
+
   const tx = db.transaction(() => {
+    const conflicts: PatchConflict[] = [];
+    const skip = new Set<string>();           // "collection:id" rows not to touch
+
+    if (opts.baseRev !== undefined) {
+      for (const name of SERVER_WINS) {
+        const table = PATCH_TABLES[name];
+        const touched = [
+          ...(patch.upserts?.[name] ?? []).map((r) => r.id),
+          ...(patch.removals?.[name] ?? []),
+        ];
+        for (const id of touched) {
+          const row = db.prepare(`SELECT rev FROM ${table} WHERE id = ?`).get(id) as { rev: number } | undefined;
+          const tomb = db.prepare("SELECT rev FROM app_tombstones WHERE collection = ? AND id = ?").get(name, id) as { rev: number } | undefined;
+          if (row && row.rev > opts.baseRev) conflicts.push({ collection: name, id, reason: "changed" });
+          else if (!row && tomb && tomb.rev > opts.baseRev) conflicts.push({ collection: name, id, reason: "deleted" });
+          else continue;
+          skip.add(`${name}:${id}`);
+        }
+      }
+    }
+
+    const wanted = (name: PatchName, id: string) => !skip.has(`${name}:${id}`);
+    const hasWork =
+      Object.keys(PATCH_TABLES).some((n) => {
+        const name = n as PatchName;
+        return (patch.upserts?.[name] ?? []).some((r) => wanted(name, r.id)) ||
+               (patch.removals?.[name] ?? []).some((id) => wanted(name, id));
+      }) || patch.defaultPresetId !== undefined || patch.globalInstructions !== undefined;
+    const rev = hasWork ? bumpRev(db) : prevRev;
+
+    const tombstone = db.prepare("INSERT OR REPLACE INTO app_tombstones (collection, id, rev) VALUES (?, ?, ?)");
+    const forget = db.prepare("DELETE FROM app_tombstones WHERE collection = ? AND id = ?");
+
     for (const name of Object.keys(PATCH_TABLES) as PatchName[]) {
       const table = PATCH_TABLES[name];
 
       for (const id of patch.removals?.[name] ?? []) {
-        db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+        if (!wanted(name, id)) continue;
+        const existed = db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id).changes > 0;
         if (name === "chats") db.prepare("DELETE FROM app_messages WHERE chat_id = ?").run(id);
+        if (existed) tombstone.run(name, id, rev);
       }
 
       const upsert = db.prepare(
-        `INSERT INTO ${table} (id, seq, data)
-         VALUES (?, (SELECT COALESCE(MAX(seq), -1) + 1 FROM ${table}), ?)
-         ON CONFLICT(id) DO UPDATE SET data = excluded.data`
+        `INSERT INTO ${table} (id, seq, data, rev)
+         VALUES (?, (SELECT COALESCE(MAX(seq), -1) + 1 FROM ${table}), ?, ?)
+         ON CONFLICT(id) DO UPDATE SET data = excluded.data, rev = excluded.rev`
       );
       for (const row of patch.upserts?.[name] ?? []) {
+        if (!wanted(name, row.id)) continue;
         if (name === "chats") {
           const { messages = [], ...meta } = row;
-          upsert.run(row.id, JSON.stringify(meta));
+          upsert.run(row.id, JSON.stringify(meta), rev);
           db.prepare("DELETE FROM app_messages WHERE chat_id = ?").run(row.id);
           const insMsg = db.prepare(
             "INSERT OR REPLACE INTO app_messages (id, chat_id, seq, data) VALUES (?, ?, ?, ?)"
           );
           messages.forEach((m, j) => insMsg.run(m.id, row.id, j, JSON.stringify(m)));
         } else {
-          upsert.run(row.id, JSON.stringify(row));
+          upsert.run(row.id, JSON.stringify(row), rev);
         }
+        forget.run(name, row.id);
       }
 
       const order = patch.order?.[name];
@@ -226,6 +325,57 @@ export function patchAppState(db: DB, patch: AppStatePatchInput): void {
     const insKv = db.prepare("INSERT OR REPLACE INTO app_kv (key, value) VALUES (?, ?)");
     if (patch.defaultPresetId !== undefined) insKv.run("defaultPresetId", JSON.stringify(patch.defaultPresetId));
     if (patch.globalInstructions !== undefined) insKv.run("globalInstructions", JSON.stringify(patch.globalInstructions));
+
+    result = { rev, prevRev, conflicts };
   });
   tx();
+  return result;
+}
+
+// ─── Reading changes ──────────────────────────────────────────────────────────
+
+export interface ChangedRow {
+  /** Position in its collection, so a new row lands where the server has it */
+  seq: number;
+  /** The row's full JSON (a chat with its messages) */
+  data: unknown;
+}
+
+export interface ChangesSince {
+  /** Latest revision. A client that has applied this response is current up to it. */
+  rev: number;
+  upserts:  Partial<Record<PatchName, ChangedRow[]>>;
+  removals: Partial<Record<PatchName, string[]>>;
+  /** Announcements for writes by something other than the browser */
+  events:   Array<{ id: number; rev: number; source: string; summary: string; historyId: number | null }>;
+}
+
+/** Every row written, and every row deleted, after revision `since`. */
+export function getChangesSince(db: DB, since: number): ChangesSince {
+  const out: ChangesSince = { rev: currentRev(db), upserts: {}, removals: {}, events: [] };
+  const msgs = db.prepare("SELECT data FROM app_messages WHERE chat_id = ? ORDER BY seq");
+
+  for (const name of Object.keys(PATCH_TABLES) as PatchName[]) {
+    const table = PATCH_TABLES[name];
+    const rows = db.prepare(`SELECT id, seq, data FROM ${table} WHERE rev > ? ORDER BY seq`).all(since) as Array<{ id: string; seq: number; data: string }>;
+    const changed: ChangedRow[] = [];
+    for (const r of rows) {
+      try {
+        const data = JSON.parse(r.data) as Record<string, unknown>;
+        if (name === "chats") data.messages = parseRows(msgs.all(r.id) as Array<{ data: string }>, "app_messages");
+        changed.push({ seq: r.seq, data });
+      } catch {
+        console.error(`[FableStore] skipping unreadable ${table} row in changes`);
+      }
+    }
+    if (changed.length) out.upserts[name] = changed;
+
+    const gone = db.prepare("SELECT id FROM app_tombstones WHERE collection = ? AND rev > ?").all(name, since) as Array<{ id: string }>;
+    if (gone.length) out.removals[name] = gone.map((g) => g.id);
+  }
+
+  out.events = (db.prepare(
+    "SELECT id, rev, source, summary, history_id AS historyId FROM app_events WHERE rev > ? ORDER BY id"
+  ).all(since)) as ChangesSince["events"];
+  return out;
 }
