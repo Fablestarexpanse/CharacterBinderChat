@@ -1,4 +1,4 @@
-// Ported from CharacterBinder (src/shared/platforms/converters.test.ts) via the vitest shim.
+// Ported from CharacterBinder (src/shared/platforms/converters.test.ts) via the vitest shim. License: see THIRD_PARTY_NOTICES.md (MIT).
 import { describe, it, expect } from "./_vitest.mjs";
 import { convertCardTo, convertCardFrom } from "../../lib/cards/convert.ts";
 import { PLATFORMS, detectPlatform } from "../../lib/cards/platforms.ts";

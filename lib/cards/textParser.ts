@@ -1,5 +1,6 @@
 // ─── Quick Import text parser ─────────────────────────────────────────────────
 // Ported unchanged from CharacterBinder (src/shared/cardTextParser.ts, MIT). Pure
+// License notice: see THIRD_PARTY_NOTICES.md (MIT).
 // and self-contained: no DOM, no imports. FableChat uses it for "paste anything"
 // in the character editor. Its tests came across too (tests/unit/cardsTextParser).
 // Keep behaviour changes out of this file unless the tests move with them.

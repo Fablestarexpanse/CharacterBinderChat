@@ -1,5 +1,6 @@
 // ─── Card validation ──────────────────────────────────────────────────────────
 // Checks a card against the Tavern Card v2 spec. Ported from CharacterBinder (MIT).
+// License notice: see THIRD_PARTY_NOTICES.md (MIT).
 // Takes `unknown` because what it exists to catch arrives from outside the type
 // system: a decoded PNG, a pasted JSON blob, a hand-edited file.
 

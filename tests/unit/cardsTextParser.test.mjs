@@ -1,4 +1,4 @@
-// Ported from CharacterBinder (src/shared/cardTextParser.test.ts) via the vitest shim.
+// Ported from CharacterBinder (src/shared/cardTextParser.test.ts) via the vitest shim. License: see THIRD_PARTY_NOTICES.md (MIT).
 import { describe, it, expect } from "./_vitest.mjs";
 import { parseCardText, isSeparatorLine, toCharacterFields } from "../../lib/cards/textParser.ts";
 

@@ -4,6 +4,7 @@
 // tests load it directly and the server could use it too.
 //
 // Ported from CharacterBinder's pngMetadata.ts, which is the codec the card
+// License notice: see THIRD_PARTY_NOTICES.md (MIT).
 // format was built against. FableChat previously had its own read-only copy;
 // this replaces it so there is one implementation, and adds the write side.
 

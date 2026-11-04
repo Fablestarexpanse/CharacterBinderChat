@@ -1,6 +1,7 @@
 // ─── Platform registry ────────────────────────────────────────────────────────
 // What each card site accepts, which fields it drops or renames, and how to
 // recognise its JSON. Ported from CharacterBinder (MIT) without its UI styling.
+// License notice: see THIRD_PARTY_NOTICES.md (MIT).
 // The field table is what powers "this platform will drop X" warnings on export.
 
 import type { TavernCardV2 } from "./tavern";

@@ -3,6 +3,10 @@
 // it and FableChat's Character. Pure: no DOM, no store. The import side lives in
 // lib/import/cardFile.ts (which also handles lorebooks, personas, scenarios);
 // this module owns the shape and the character mappings both directions use.
+//
+// Parts derive from CharacterBinder (MIT): the V2 types, createBlankCard,
+// coerceCardData, and the lorebook/persona/scenario card shapes. The mappings to
+// and from Character are original. License notice: THIRD_PARTY_NOTICES.md.
 
 import type { Character, LoreEntry } from "@/lib/types";
 

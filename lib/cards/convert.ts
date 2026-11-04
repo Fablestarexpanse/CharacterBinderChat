@@ -1,5 +1,6 @@
 // ─── Platform converters ──────────────────────────────────────────────────────
 // Master (Tavern V2) card <-> each platform's own JSON. Ported from CharacterBinder
+// License notice: see THIRD_PARTY_NOTICES.md (MIT).
 // (MIT). Export is lossy by design for platforms with fewer fields; the registry's
 // field table says which, so the UI can warn before the file is written.
 
