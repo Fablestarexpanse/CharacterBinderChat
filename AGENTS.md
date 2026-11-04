@@ -57,6 +57,20 @@ Two memory layers, both per-character:
 
 **LLM output is untrusted.** `parseLLMJson` returns a fallback on unparseable input, so callers must distinguish "parse failed" from "nothing found" and report it rather than returning `ok: true` with empty arrays. Route bodies are validated explicitly; `PATCH /api/chat/core-memory` whitelists keys because the patch is spread into the stored document.
 
+**Access control is `proxy.ts` + `lib/security/access.ts`.** The npm scripts bind `127.0.0.1`; the proxy refuses any non-localhost `Host` unless `FABLE_PASSWORD` is set (then HTTP Basic auth covers everything), and refuses cross-origin writes, because routes parse JSON whatever the Content-Type. A new route needs nothing — it is covered — but never read `req.json()` from a path that skips the proxy matcher. Limit: `Host` is client-supplied, so the loopback bind is the real protection when no password is set.
+
+**API keys are encrypted at rest.** `lib/server/secrets.ts` (AES-256-GCM, key in `data/.fable-secret` or `FABLE_SECRET_KEY`); `/api/secrets` whitelists names; `SecretsSync` keeps the OpenRouter key out of localStorage once the server has confirmed it holds it. Never add a secret to `app_kv` outside that whitelist, and never to the state export.
+
+**Branching is point-in-time.** `lib/db/branch.ts` filters timestamped memory by a cutoff and reopens facts whose superseder had not happened yet. Stats and core memory are current-state only, so they come from `memory_snapshots` (saved when a message's extraction finishes); without one the branch is flagged `approximate` — never silently exact. The branch route writes the chat row and the memory in one request because `purgeOrphanedChatMemory` deletes memory for chats not in `app_chats`.
+
+**Facts can be pinned and locked.** Pin: always injected ahead of ranking, capped at half the window. Lock: `assertFact` returns `duplicate: true, blockedByLock: true` for a conflicting extracted value, and `supersedeFact` skips locked rows unless forced. Hand-entered facts pass `respectLocks: false`. New write paths that supersede must go through `supersedeFact`.
+
+**State sync is incremental.** `StateSync` PATCHes a diff (`lib/sync/stateDiff.ts`) by object identity; PUT is first-run seeding only. A new synced collection needs a row in `APP_COLLECTIONS`, the client's `SYNCED_COLLECTIONS`, and the diff's `SyncedName`.
+
+**Prompt assembly is `assemblePrompt`.** Peek Prompt previews through the same function generation uses; keep it free of side effects (the context meter is set by the caller).
+
+**The extraction gate is deliberately dumb.** See `docs/extraction-gate.md` before changing it: content-based skipping was measured and rejected. Run `npm run eval:gate` after touching it.
+
 ## Before you finish
 
 `npm run lint` and `npx tsc --noEmit` are both expected to be clean. Verify UI changes in the running app rather than assuming.

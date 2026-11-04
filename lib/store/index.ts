@@ -44,6 +44,11 @@ export type FableStore =
   & ProvidersSlice
   & MemorySlice;
 
+// Set by SecretsSync once the server holds the current key. Module-level rather
+// than store state: it must not itself be persisted or synced.
+let serverHoldsSecrets = false;
+export const markSecretsOnServer = (v: boolean) => { serverHoldsSecrets = v; };
+
 // ─── Store Implementation ─────────────────────────────────────────────────────
 
 export const useFableStore = create<FableStore>()(
@@ -64,7 +69,12 @@ export const useFableStore = create<FableStore>()(
       // and rendering an empty app until then reads as data loss. Transient UI
       // state lives in ./ui.ts and is deliberately absent.
       partialize: (state) => ({
-        providerSettings: state.providerSettings,
+        // The OpenRouter key lives encrypted on the server (see SecretsSync).
+        // It is blanked here only once the server has confirmed it holds it —
+        // before that, localStorage is the only copy and must keep it.
+        providerSettings: serverHoldsSecrets
+          ? { ...state.providerSettings, openrouter: { ...state.providerSettings.openrouter, apiKey: "" } }
+          : state.providerSettings,
         characters: state.characters,
         chats: state.chats,
         personas: state.personas,

@@ -33,6 +33,10 @@ The result: characters that remember, grow, and stay consistent over hundreds of
 | **Model Selector** | Live model list from every connected provider, grouped by provider. Any model ID can be entered by hand — see [Choosing a model](#choosing-a-model). |
 | **Persistence** | Chats, characters, and personas live in SQLite and survive clearing browser storage. One-click JSON export. |
 | **Chat management** | Rename, delete, clear. Relative timestamps and last-message previews in the sidebar. |
+| **Peek Prompt** | The eye icon in the chat header shows exactly what the model receives: the last prompt actually sent, or a live preview built by the same code. Answers "was that fact in the prompt?" directly. |
+| **Branching** | "Branch from here" on any message copies the chat up to it, plus the memory the story had at that point (not today's). Each reply records a memory snapshot, so branches from new messages are exact; older ones are flagged approximate. |
+| **Memory curation** | Edit a fact's wording, **pin** it (always in the prompt) or **lock** it (extraction can't replace it) from Memory → Facts. Editing locks automatically. |
+| **Local access control** | Binds `127.0.0.1`. Other devices are refused unless you set `FABLE_PASSWORD`. Cross-site writes are refused. The OpenRouter key is stored encrypted on the server, not in the browser. |
 | **Appearance** | Settings → Appearance: light / dark / match-system, nine accent presets or any custom color. Saved per browser. |
 | **System Status** | Sidebar shows real-time connection status + loaded model per provider. |
 | **Image Generation** | `/image <prompt>` renders real images through your local ComfyUI — no launch flags needed, FableChat proxies the connection server-side. Workflow templates live in `workflows/*.json` (API format with a `_meta.fablechat` node mapping). Per-chat generation settings (temperature / top-p / max tokens) live behind the gear icon in the chat header. |
@@ -100,7 +104,19 @@ Optional env vars:
 
 ```env
 FABLE_DB_PATH=/path/to/your/fablestore.db   # custom DB location
+FABLE_PASSWORD=choose-one                   # required to use FableChat from another device
+FABLE_SECRET_KEY=<64 hex characters>        # keep the API-key encryption key off disk
 ```
+
+### Using it from another device
+
+`npm run dev` / `npm start` listen on `127.0.0.1` only, and anything addressed to another hostname is refused. To reach it from your phone or another computer, set `FABLE_PASSWORD` (any username, that password — the browser will prompt) and bind the network interface yourself:
+
+```bash
+FABLE_PASSWORD=choose-one npx next start -H 0.0.0.0
+```
+
+This is HTTP Basic auth over plain HTTP, which is fine on a home network and not on an untrusted one. Put it behind HTTPS (a reverse proxy or Tailscale) before exposing it further. API keys you enter are encrypted on the server with a key in `data/.fable-secret` (keep it out of backups, or set `FABLE_SECRET_KEY` instead); a copied database alone does not reveal them.
 
 ---
 

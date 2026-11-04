@@ -1029,6 +1029,19 @@ export class FableStore {
     return transferMemory(this, this.db, fromChatId, toChatId);
   }
 
+  // ── Key/value ─────────────────────────────────────────────────────────────
+
+  getKv(key: string): string | null {
+    const row = this.db.prepare("SELECT value FROM app_kv WHERE key = ?").get(key) as { value: string } | undefined;
+    return row?.value ?? null;
+  }
+
+  /** null deletes the key. */
+  setKv(key: string, value: string | null): void {
+    if (value === null) this.db.prepare("DELETE FROM app_kv WHERE key = ?").run(key);
+    else this.db.prepare("INSERT OR REPLACE INTO app_kv (key, value) VALUES (?, ?)").run(key, value);
+  }
+
   // ── Branching ─────────────────────────────────────────────────────────────
 
   chatExists(chatId: string): boolean {

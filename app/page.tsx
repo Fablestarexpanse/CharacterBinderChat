@@ -18,6 +18,7 @@ import { GroupsView } from "@/components/sections/GroupsView";
 import { CharacterEditorDialog } from "@/components/characters/CharacterEditorDialog";
 import { NewChatDialog } from "@/components/chat/NewChatDialog";
 import { StateSync } from "@/components/StateSync";
+import { SecretsSync } from "@/components/SecretsSync";
 import { DropImport } from "@/components/DropImport";
 import { useHydrated } from "@/lib/hooks/useHydrated";
 import { useUiStore } from "@/lib/store/ui";
@@ -68,6 +69,8 @@ export default function Home() {
     <div className="flex h-screen w-screen overflow-hidden">
       {/* Hydrates from SQLite on load, then mirrors edits back (debounced) */}
       <StateSync />
+      {/* Keeps the OpenRouter key encrypted on the server, out of localStorage */}
+      <SecretsSync />
       {/* Fixed rather than in-flow: the root here is a flex row, so a block
           banner would become a flex child and squeeze the sidebar. */}
       {lastSyncError && (

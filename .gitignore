@@ -45,6 +45,9 @@ next-env.d.ts
 /data/fablestore.db-shm
 /data/fablestore.db-wal
 
+# encryption key for stored API keys - never commit
+/data/.fable-secret
+
 # memory eval harness: isolated DB and per-run result snapshots
 /tests/memory-eval/.eval-db/
 /tests/memory-eval/results/
