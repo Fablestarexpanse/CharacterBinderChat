@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
-import { routeError, badRequest } from "@/lib/api/server";
+import { routeError, badRequest, guard } from "@/lib/api/server";
 import { isCardType, getCard, updateCard, deleteCard, cleanSource, CardError, CARD_TYPES } from "@/lib/server/cards";
 
 export const dynamic = "force-dynamic";
@@ -11,8 +11,10 @@ const fail = (err: unknown, label: string) =>
   err instanceof CardError ? Response.json({ ok: false, error: err.message }, { status: err.status }) : routeError(label, err);
 
 // GET /api/cards/<type>/<id>  → the card in its interchange format
-export async function GET(_req: NextRequest, { params }: Ctx) {
+export async function GET(req: NextRequest, { params }: Ctx) {
   try {
+    const denied = guard(req);
+    if (denied) return denied;
     const { type, id } = await params;
     if (!isCardType(type)) return badRequest(`type must be one of: ${CARD_TYPES.join(", ")}`);
     return Response.json({ card: getCard(getStore(), type, id) });
@@ -24,6 +26,8 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 // allowed ones. The previous version is kept so the change can be undone.
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   try {
+    const denied = guard(req);
+    if (denied) return denied;
     const { type, id } = await params;
     if (!isCardType(type)) return badRequest(`type must be one of: ${CARD_TYPES.join(", ")}`);
     const body = await req.json().catch(() => null) as { changes?: unknown } | null;
@@ -36,6 +40,8 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 // DELETE /api/cards/<type>/<id>  — reversible: the card is kept in history
 export async function DELETE(req: NextRequest, { params }: Ctx) {
   try {
+    const denied = guard(req);
+    if (denied) return denied;
     const { type, id } = await params;
     if (!isCardType(type)) return badRequest(`type must be one of: ${CARD_TYPES.join(", ")}`);
     const removed = deleteCard(getStore(), type, id, cleanSource(req.headers.get("x-fable-source")));

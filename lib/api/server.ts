@@ -3,6 +3,35 @@
 // client.ts next to it — the directory says which runtime each belongs to,
 // the way lib/server and lib/chat do.
 
+// ─── Access check ─────────────────────────────────────────────────────────────
+
+import { checkAccess } from "@/lib/security/access";
+
+/**
+ * Refuse a request the access rules do not allow, from inside the route itself.
+ *
+ * proxy.ts already applies the same rules to every request. This is the second
+ * lock, on the routes that expose or change the most (state, secrets, cards,
+ * backup): if a bug in the framework ever lets a request skip the proxy — one
+ * advisory against this exact mechanism has been published — those routes still
+ * refuse it. Returns the response to send, or null to carry on.
+ */
+export function guard(req: Request): Response | null {
+  const d = checkAccess({
+    method:        req.method,
+    host:          req.headers.get("host"),
+    origin:        req.headers.get("origin"),
+    secFetchSite:  req.headers.get("sec-fetch-site"),
+    authorization: req.headers.get("authorization"),
+    password:      process.env.FABLE_PASSWORD || undefined,
+  });
+  if (d.allow) return null;
+  return Response.json(
+    { ok: false, error: d.message },
+    { status: d.status, headers: d.challenge ? { "WWW-Authenticate": 'Basic realm="FableChat", charset="UTF-8"' } : undefined },
+  );
+}
+
 // ─── Route error handling ─────────────────────────────────────────────────────
 
 /**

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
-import { routeError, badRequest } from "@/lib/api/server";
+import { routeError, badRequest, guard } from "@/lib/api/server";
 import { isCardType, createCard, cleanSource, CardError, CARD_TYPES } from "@/lib/server/cards";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +11,8 @@ export const dynamic = "force-dynamic";
 // to the server; open tabs pick it up on their next poll.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ type: string }> }) {
   try {
+    const denied = guard(req);
+    if (denied) return denied;
     const { type } = await params;
     if (!isCardType(type)) return badRequest(`type must be one of: ${CARD_TYPES.join(", ")}`);
     const body = await req.json().catch(() => null) as { card?: unknown } | null;

@@ -28,6 +28,15 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+      # The production build is what users run. It was never built in CI, so a
+      # breaking dependency bump (or a Next advisory fix) could only be found by a
+      # person running it.
+      - run: npm run build
+
+      # High and critical advisories in what ships. Dev-tooling advisories do not
+      # block: they are not in the running app.
+      - run: npm run audit:prod
+
   # The route contracts need a server, so they get one. FABLE_DB_PATH points at
   # a scratch file, so the suite writes nothing a developer would miss — and
   # unlike a local run, it starts from an empty database, which is the case the

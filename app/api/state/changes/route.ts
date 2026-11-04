@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
-import { routeError, badRequest } from "@/lib/api/server";
+import { routeError, badRequest, guard } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +12,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
+    const denied = guard(req);
+    if (denied) return denied;
     const raw = req.nextUrl.searchParams.get("since");
     const since = raw === null ? NaN : Number(raw);
     if (!Number.isInteger(since) || since < 0) return badRequest("since must be a non-negative integer revision");

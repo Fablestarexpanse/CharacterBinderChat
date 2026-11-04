@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
-import { routeError, badRequest } from "@/lib/api/server";
+import { routeError, badRequest, guard } from "@/lib/api/server";
 import type { PersistedAppState } from "@/lib/types";
 import { APP_COLLECTIONS } from "@/lib/db/appState";
 
@@ -12,6 +12,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
+    const denied = guard(req);
+    if (denied) return denied;
     const store = getStore();
     // Revision first: if a write lands between the two reads the client ends up
     // with data newer than its revision, and the next pull merely re-applies it.
@@ -44,6 +46,8 @@ export async function GET(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
+    const denied = guard(req);
+    if (denied) return denied;
     const body = await req.json() as Record<string, unknown>;
 
     // Only the ids are checked — the client is the only writer and the durable
@@ -127,6 +131,8 @@ const PATCH_NAMES = ["chats", ...APP_COLLECTIONS.map(([f]) => f)];
 
 export async function PATCH(req: NextRequest) {
   try {
+    const denied = guard(req);
+    if (denied) return denied;
     const body = await req.json() as Record<string, unknown> | null;
     if (!body || typeof body !== "object") return badRequest("patch body must be an object");
 

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import path from "node:path";
 import { getStore } from "@/lib/db";
-import { routeError, badRequest } from "@/lib/api/server";
+import { routeError, badRequest, guard } from "@/lib/api/server";
 import { decryptSecret, encryptSecret, loadKey } from "@/lib/server/secrets";
 
 export const dynamic = "force-dynamic";
@@ -20,8 +20,10 @@ type Name = (typeof NAMES)[number];
 const keyDir = () => path.dirname(process.env.FABLE_DB_PATH ?? path.join(process.cwd(), "data", "x"));
 const kvKey = (n: Name) => `secret:${n}`;
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const denied = guard(req);
+    if (denied) return denied;
     const store = getStore();
     const key = loadKey(keyDir());
     const out: Record<Name, string | null> = { openrouterApiKey: null };
@@ -38,6 +40,8 @@ export async function GET() {
 // Body: { openrouterApiKey: string } — an empty string removes it.
 export async function PUT(req: NextRequest) {
   try {
+    const denied = guard(req);
+    if (denied) return denied;
     const body = await req.json() as Record<string, unknown>;
     const names = NAMES.filter((n) => body[n] !== undefined);
     if (names.length === 0) return badRequest(`one of ${NAMES.join(", ")} is required`);

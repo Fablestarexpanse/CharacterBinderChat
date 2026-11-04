@@ -127,7 +127,7 @@ export function buildTools(call) {
         "Character fields: name, description, personality, scenario, first_mes, mes_example, system_prompt, post_history_instructions, alternate_greetings, tags, creator, creator_notes. " +
         "Lorebook: name, description, entries (replaces all entries). Persona: name, description. Scenario: name, scenario, first_mes. " +
         "An unknown field is an error that lists the allowed ones." + WRITE_NOTE,
-      inputSchema: { type: cardType, id: z.string(), changes: z.record(z.unknown()).describe("Field names to new values") },
+      inputSchema: { type: cardType, id: z.string(), changes: z.record(z.string(), z.unknown()).describe("Field names to new values") },
       annotations: destructive,
       handler: async ({ type, id, changes }) => call("PATCH", `/api/cards/${type}/${encodeURIComponent(id)}`, { changes }),
     },

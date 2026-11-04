@@ -2,6 +2,9 @@
   "name": "fablechat",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.18.0"
+  },
   "scripts": {
     "dev": "next dev -H 127.0.0.1",
     "build": "next build",
@@ -14,7 +17,8 @@
     "eval:gate": "node --import ./tests/unit/loader.mjs tests/memory-eval/gate-offline.mjs",
     "test": "node --import ./tests/unit/loader.mjs --test \"tests/unit/*.test.mjs\"",
     "test:api": "node --test \"tests/api/*.test.mjs\"",
-    "mcp": "node mcp/server.mjs"
+    "mcp": "node mcp/server.mjs",
+    "audit:prod": "npm audit --omit=dev --audit-level=high"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
@@ -22,11 +26,11 @@
     "better-sqlite3": "^12.10.0",
     "clsx": "^2.1.1",
     "lucide-react": "^1.16.0",
-    "next": "16.2.6",
+    "next": "^16.4.5",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "tailwind-merge": "^3.6.0",
-    "zod": "^3.25.76",
+    "zod": "^4.6.7",
     "zustand": "^5.0.13"
   },
   "devDependencies": {

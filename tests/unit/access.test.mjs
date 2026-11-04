@@ -99,3 +99,31 @@ test("safeEqual compares whole strings, including different lengths", () => {
   assert.equal(safeEqual("abc", "abcd"), false);
   assert.equal(safeEqual("", ""), true);
 });
+
+// ─── The second lock: guard() inside the routes ─────────────────────────────
+const { guard } = await import("../../lib/api/server.ts");
+const rq = (headers = {}, method = "GET") => new Request("http://localhost:3000/api/state", { method, headers });
+
+test("guard lets a normal local request through and refuses a foreign Host", async () => {
+  assert.equal(guard(rq({ host: "localhost:3000" })), null);
+  const denied = guard(rq({ host: "attacker.example" }));
+  assert.equal(denied.status, 403);
+  assert.equal((await denied.json()).ok, false, "in the standard error envelope");
+});
+
+test("guard refuses a cross-origin write", () => {
+  assert.equal(guard(rq({ host: "localhost:3000", origin: "https://evil.example" }, "PUT")).status, 403);
+  assert.equal(guard(rq({ host: "localhost:3000", origin: "http://localhost:3000" }, "PUT")), null);
+});
+
+test("guard asks for a password when one is configured, with the browser prompt header", () => {
+  process.env.FABLE_PASSWORD = "pw";
+  try {
+    const denied = guard(rq({ host: "localhost:3000" }));
+    assert.equal(denied.status, 401);
+    assert.match(denied.headers.get("www-authenticate"), /Basic/);
+    assert.equal(guard(rq({ host: "localhost:3000", authorization: `Basic ${Buffer.from("x:pw").toString("base64")}` })), null);
+  } finally {
+    delete process.env.FABLE_PASSWORD;
+  }
+});

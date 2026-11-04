@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
-import { routeError, badRequest } from "@/lib/api/server";
+import { routeError, badRequest, guard } from "@/lib/api/server";
 import { isCardType, listCards, CARD_TYPES } from "@/lib/server/cards";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +10,8 @@ export const dynamic = "force-dynamic";
 // time from /api/cards/<type>/<id>.
 export async function GET(req: NextRequest) {
   try {
+    const denied = guard(req);
+    if (denied) return denied;
     const type = req.nextUrl.searchParams.get("type");
     if (!isCardType(type)) return badRequest(`type must be one of: ${CARD_TYPES.join(", ")}`);
     return Response.json({ cards: listCards(getStore(), type) });
