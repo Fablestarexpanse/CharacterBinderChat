@@ -7,7 +7,8 @@
 
 import { ExportButtons } from "@/components/cards/ExportButtons";
 import { exportScenario } from "@/lib/cards/export";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useUiStore } from "@/lib/store/ui";
 import { useFableStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
@@ -16,6 +17,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Clapperboard, Plus, Trash2 } from "lucide-react";
 
 export function ScenariosView() {
+  // Opened from the Library: scroll to that scenario
+  const focusCardId = useUiStore((st) => st.focusCardId);
+  useEffect(() => {
+    if (!focusCardId) return;
+    document.getElementById(`card-${focusCardId}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    useUiStore.getState().setFocusCardId(null);
+  }, [focusCardId]);
   const { scenarios, addScenario, updateScenario, deleteScenario } = useFableStore();
 
   // Destructive click needs a second, explicit confirmation click
@@ -64,7 +72,7 @@ export function ScenariosView() {
 
         <div className="space-y-6">
           {scenarios.map((sc) => (
-            <Card key={sc.id}>
+            <Card key={sc.id} id={`card-${sc.id}`}>
               <CardHeader className="flex items-center gap-3">
                 <Clapperboard className="h-4 w-4 text-[var(--purple-fg)] flex-shrink-0" />
                 <Input

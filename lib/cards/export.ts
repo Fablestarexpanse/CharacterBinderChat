@@ -9,6 +9,7 @@ import { characterToCard, loreToCharacterBook, lorebookToCard, personaToCard, sc
 import { PLATFORMS, type PlatformId } from "./platforms";
 import { convertCardTo, lossyFields } from "./convert";
 import { validateTavernCardV2 } from "./validate";
+import { buildArchive, type ArchiveItem } from "./archive";
 
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
@@ -82,19 +83,25 @@ export interface ExportOptions {
   platform?: PlatformId;
 }
 
-/** One file out: JSON as-is, or the same JSON embedded in a PNG under `key`. */
-async function emit(
-  payload: unknown, key: string, baseName: string, avatar: string | undefined, format: "png" | "json",
-): Promise<{ usedAvatar: boolean }> {
-  const base = safeName(baseName);
+/** A card file built but not yet saved: what a single export downloads and an archive holds. */
+export interface CardFile {
+  bytes: Uint8Array;
+  ext: "png" | "json";
+  /** Whether the card's own art made it in (always true for JSON) */
+  usedAvatar: boolean;
+}
+
+/** Build one file: JSON as-is, or the same JSON embedded in a PNG under `key`. */
+async function build(payload: unknown, key: string, avatar: string | undefined, format: "png" | "json"): Promise<CardFile> {
   if (format === "json") {
-    download(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }), `${base}.json`);
-    return { usedAvatar: true };
+    return { bytes: new TextEncoder().encode(JSON.stringify(payload, null, 2)), ext: "json", usedAvatar: true };
   }
   const { bytes, usedAvatar } = await carrier(avatar);
-  const png = encodeCardPng(bytes, JSON.stringify(payload), key);
-  download(new Blob([png as BlobPart], { type: "image/png" }), `${base}.png`);
-  return { usedAvatar };
+  return { bytes: encodeCardPng(bytes, JSON.stringify(payload), key), ext: "png", usedAvatar };
+}
+
+function save(file: CardFile, baseName: string): void {
+  download(new Blob([file.bytes as BlobPart], { type: file.ext === "png" ? "image/png" : "application/json" }), `${safeName(baseName)}.${file.ext}`);
 }
 
 export interface CharacterExportResult {
@@ -105,32 +112,75 @@ export interface CharacterExportResult {
 }
 
 /**
- * Export a character for a platform. Refuses a card the spec would reject (no
+ * A character's card file for a platform. Refuses a card the spec would reject (no
  * name or description) with the reason, and reports which of the character's own
  * fields the platform will drop, so the caller can say so before it is a surprise.
  */
-export async function exportCharacter(
+export async function buildCharacterFile(
   character: Character, { format, book, platform = "sillytavern" }: ExportOptions,
-): Promise<CharacterExportResult> {
+): Promise<CardFile & { lossy: string[] }> {
   const card = characterToCard(
     character,
     book ? loreToCharacterBook(book.name, book.description, book.entries) : undefined,
   );
   const check = validateTavernCardV2(card);
   if (!check.valid) throw new Error(check.errors.join("; "));
-
-  const lossy = lossyFields(card, platform);
-
-  const converted = convertCardTo(card, platform);
-  const { usedAvatar } = await emit(converted, PLATFORMS[platform].metadataKey, character.name, character.avatar, format);
-  return { usedAvatar, lossy };
+  const file = await build(convertCardTo(card, platform), PLATFORMS[platform].metadataKey, character.avatar, format);
+  return { ...file, lossy: lossyFields(card, platform) };
 }
 
-export const exportLorebook = (book: Lorebook, format: "png" | "json") =>
-  emit(lorebookToCard(book), "lorebook", book.name, undefined, format);
+export async function exportCharacter(character: Character, options: ExportOptions): Promise<CharacterExportResult> {
+  const file = await buildCharacterFile(character, options);
+  save(file, character.name);
+  return { usedAvatar: file.usedAvatar, lossy: file.lossy };
+}
 
-export const exportPersona = (persona: Persona, format: "png" | "json") =>
-  emit(personaToCard(persona), "persona", persona.name, persona.avatar, format);
+export const buildLorebookFile = (book: Lorebook, format: "png" | "json") => build(lorebookToCard(book), "lorebook", undefined, format);
+export const buildPersonaFile = (persona: Persona, format: "png" | "json") => build(personaToCard(persona), "persona", persona.avatar, format);
+export const buildScenarioFile = (scenario: Scenario, format: "png" | "json") => build(scenarioToCard(scenario), "scenario", undefined, format);
 
-export const exportScenario = (scenario: Scenario, format: "png" | "json") =>
-  emit(scenarioToCard(scenario), "scenario", scenario.name, undefined, format);
+export const exportLorebook = async (book: Lorebook, format: "png" | "json") => { const f = await buildLorebookFile(book, format); save(f, book.name); return f; };
+export const exportPersona = async (persona: Persona, format: "png" | "json") => { const f = await buildPersonaFile(persona, format); save(f, persona.name); return f; };
+export const exportScenario = async (scenario: Scenario, format: "png" | "json") => { const f = await buildScenarioFile(scenario, format); save(f, scenario.name); return f; };
+
+export interface LibrarySelection {
+  characters: Character[];
+  personas: Persona[];
+  lorebooks: Lorebook[];
+  scenarios: Scenario[];
+}
+
+/**
+ * Download cards as one archive (CharacterBinder's layout, which this app's own
+ * import reads back). Characters and personas with art go in as PNG cards so the art
+ * travels; everything else as JSON. A character that fails the spec is skipped and
+ * named in `skipped` rather than failing the whole archive.
+ */
+export async function exportArchive(sel: LibrarySelection, allLorebooks: Lorebook[]): Promise<{ count: number; skipped: string[] }> {
+  const items: ArchiveItem[] = [];
+  const skipped: string[] = [];
+  for (const c of sel.characters) {
+    try {
+      const book = allLorebooks.find((b) => b.id === c.lorebookId);
+      const f = await buildCharacterFile(c, { format: c.avatar ? "png" : "json", book });
+      items.push({ id: c.id, kind: "character", name: c.name, tags: c.tags, createdAt: c.createdAt, updatedAt: c.updatedAt, bytes: f.bytes, ext: f.ext });
+    } catch (e) {
+      skipped.push(`${c.name} (${e instanceof Error ? e.message : String(e)})`);
+    }
+  }
+  for (const p of sel.personas) {
+    const f = await buildPersonaFile(p, p.avatar ? "png" : "json");
+    items.push({ id: p.id, kind: "persona", name: p.name, createdAt: p.createdAt, updatedAt: p.updatedAt, bytes: f.bytes, ext: f.ext });
+  }
+  for (const b of sel.lorebooks) {
+    const f = await buildLorebookFile(b, "json");
+    items.push({ id: b.id, kind: "lorebook", name: b.name, createdAt: b.createdAt, bytes: f.bytes, ext: f.ext });
+  }
+  for (const sc of sel.scenarios) {
+    const f = await buildScenarioFile(sc, "json");
+    items.push({ id: sc.id, kind: "scenario", name: sc.name, createdAt: sc.createdAt, updatedAt: sc.updatedAt, bytes: f.bytes, ext: f.ext });
+  }
+  const zip = buildArchive(items);
+  download(new Blob([zip as BlobPart], { type: "application/zip" }), `FableChat_Library_${new Date().toISOString().slice(0, 10)}.zip`);
+  return { count: items.length, skipped };
+}

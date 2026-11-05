@@ -23,7 +23,8 @@ The result: characters that remember, grow, and stay consistent over hundreds of
 |------|-------------|
 | **Chat** | Real streaming from Ollama, LM Studio, or OpenRouter. Stop mid-generation, regenerate, retry after a failure. |
 | **Characters** | Full CRUD — create, edit, delete. Import SillyTavern v1/v2 JSON cards or **CharacterBinder PNG cards** — drop a PNG anywhere in the window and it routes by embedded type (character, lorebook, persona, scenario). The card art becomes the avatar. |
-| **Card export & Quick Import** | Paste any character text (headed sections, W++, JSON, plain paragraphs) and review how it is sorted before applying. Download any character as a Tavern-format **PNG card** (your art embedded) or JSON, for SillyTavern, JanitorAI, Chub, Agnai, Venus, Backyard, RisuAI or generic JSON — and it tells you which of your fields the chosen site will drop. JanitorAI/Agnai/Backyard JSON imports too. Coming from CharacterBinder? Drop its "Archive All" .zip on the Characters screen and your whole collection comes across (safe to run twice). A character's lorebook is embedded in their card; lorebooks, personas and scenarios export too. Full card fields — example dialogue, system prompt, post-history instructions, alternate greetings, creator notes — are kept on import and written back on export. |
+| **Card export & Quick Import** | Paste any character text (headed sections, W++, JSON, plain paragraphs) and review how it is sorted before applying. Download any character as a Tavern-format **PNG card** (your art embedded) or JSON, for SillyTavern, JanitorAI, Chub, Agnai, Venus, Backyard, RisuAI or generic JSON — and it tells you which of your fields the chosen site will drop. JanitorAI/Agnai/Backyard JSON imports too. Coming from CharacterBinder? Drop its "Archive All" .zip on the Library screen and your whole collection comes across (safe to run twice). A character's lorebook is embedded in their card; lorebooks, personas and scenarios export too. Full card fields — example dialogue, system prompt, post-history instructions, alternate greetings, creator notes — are kept on import and written back on export. |
+| **Library** | One screen for every card: characters, personas, lorebooks and scenarios in tabs, with search, sort, a tag filter and multi-select. Export a selection (or the whole library) as one .zip that imports back into any FableChat — or CharacterBinder's — and delete in bulk with a warning that names the chats a deletion affects. Editors ask before throwing away unsaved changes. |
 | **Personas** | Your identity in the roleplay. The active persona is injected into the prompt, labels your turns during extraction, and names the `player` entity in the graph. |
 | **Groups + witness memory** | Multi-character scenes. Pick who replies (or auto by name-mention/round-robin), toggle who is present from the header — and each character only remembers what happened while they were in the scene. Talk about someone while they're away, and they genuinely don't know. Per-member memory inspector. |
 | **Core Memory (Drawer 1)** | Per-character JSON document: mood (valence/arousal/dominance), 5-axis relationship stats, commitments, emotional events, internal thoughts, narrative summary. |
@@ -302,7 +303,7 @@ See `docs/audit-2026-11.md` for the full list and `docs/plan-2026-11.md` for the
 - [x] Agents via MCP, with server-authoritative sync and undo
 - [x] Full backup and restore; one-click launcher; local access control and encrypted keys
 - [x] Asset store for images (originals kept, resized on request, smaller database)
-- [ ] Library page: search, tags, bulk actions, archive export
+- [x] Library page: search, tags, bulk actions, archive export; editors ask before discarding changes
 - [ ] Mobile layout
 - [ ] GPU / VRAM monitoring
 - [ ] Export chat as story document
@@ -316,7 +317,7 @@ npm run dev        # Turbopack dev server
 npm run build      # production build
 npm run lint       # ESLint
 npm run typecheck  # tsc --noEmit
-npm test           # ~430 unit tests (node --test, no server, no API key)
+npm test           # ~450 unit tests (node --test, no server, no API key)
 npm run audit:prod # high/critical advisories in what ships
 npm run eval:gate  # offline check of the extraction gate against recorded soaks
 ```

@@ -41,7 +41,7 @@ interface UiStore {
   chatBuilderOpen: boolean;
   setChatBuilderOpen: (v: boolean) => void;
 
-  // Character editor dialog (global — opened from CharactersView or the inspector)
+  // Character editor dialog (global — opened from the Library or the inspector)
   characterEditorOpen: boolean;
   /** id of the character being edited, or null when creating a new one */
   characterEditorId: string | null;
@@ -49,6 +49,10 @@ interface UiStore {
   characterEditorDraft: Partial<Character> | null;
   openCharacterEditor: (id?: string | null, draft?: Partial<Character> | null) => void;
   closeCharacterEditor: () => void;
+
+  // A card the Library asked another screen to open (expand and scroll to)
+  focusCardId: string | null;
+  setFocusCardId: (id: string | null) => void;
 
   // Changes made by something other than this tab (an agent, another device)
   remoteNotices: RemoteNotice[];
@@ -81,6 +85,9 @@ export const useUiStore = create<UiStore>()((set) => ({
     set({ characterEditorOpen: true, characterEditorId: id, characterEditorDraft: draft }),
   closeCharacterEditor: () =>
     set({ characterEditorOpen: false, characterEditorId: null, characterEditorDraft: null }),
+
+  focusCardId: null,
+  setFocusCardId: (id) => set({ focusCardId: id }),
 
   remoteNotices: [],
   pushRemoteNotices: (notices) =>

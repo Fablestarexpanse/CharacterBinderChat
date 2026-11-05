@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useDiscardGuard, DiscardBar, type CloseRelay } from "@/components/ui/discardGuard";
 import { useFableStore } from "@/lib/store";
 import type { Character } from "@/lib/types";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -60,12 +61,16 @@ function toFormState(source: Partial<Character> | null): FormState {
 // Mounted fresh per dialog open (keyed by target id), so useState initialisers
 // seed the form without any set-state-in-effect.
 
-function EditorForm({ editing, draft }: { editing: Character | null; draft: Partial<Character> | null }) {
+function EditorForm({ editing, draft, closeRef }: { editing: Character | null; draft: Partial<Character> | null; closeRef: CloseRelay }) {
   const { addCharacter, updateCharacter, deleteCharacter, lorebooks, chats } = useFableStore();
   const usedByChats = editing ? chatsUsingCharacter(chats, editing.id) : 0;
   const { closeCharacterEditor } = useUiStore();
 
-  const [form, setForm]                   = useState<FormState>(() => toFormState(editing ?? draft));
+  const [initial]                         = useState<FormState>(() => toFormState(editing ?? draft));
+  const [form, setForm]                   = useState<FormState>(initial);
+  // An imported draft is unsaved by definition: closing it would lose the import
+  const dirty = !!draft && !editing ? true : JSON.stringify(form) !== JSON.stringify(initial);
+  const guard = useDiscardGuard(dirty, closeCharacterEditor, closeRef);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const set = (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
@@ -219,6 +224,7 @@ function EditorForm({ editing, draft }: { editing: Character | null; draft: Part
 
       {/* Footer */}
       <div className="flex items-center gap-2 border-t border-[var(--border)] px-5 py-3">
+        {guard.confirming ? <DiscardBar onDiscard={guard.discard} onKeep={guard.keepEditing} /> : <>
         {editing && (
           confirmDelete ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -244,12 +250,13 @@ function EditorForm({ editing, draft }: { editing: Character | null; draft: Part
           )
         )}
         <div className="flex-1" />
-        <Button variant="outline" size="sm" onClick={closeCharacterEditor}>
+        <Button variant="outline" size="sm" onClick={guard.attemptClose}>
           Cancel
         </Button>
         <Button variant="purple" size="sm" onClick={handleSave} disabled={!form.name.trim()}>
           {editing ? "Save changes" : "Create character"}
         </Button>
+        </>}
       </div>
     </>
   );
@@ -262,9 +269,11 @@ export function CharacterEditorDialog() {
   const { characterEditorOpen, characterEditorId, characterEditorDraft, closeCharacterEditor } = useUiStore();
 
   const editing = characters.find((c) => c.id === characterEditorId) ?? null;
+  // Escape / outside-click ask the form, which knows whether there is anything to lose
+  const closeRef = useRef<(() => void) | null>(null);
 
   return (
-    <Dialog open={characterEditorOpen} onOpenChange={(open) => { if (!open) closeCharacterEditor(); }}>
+    <Dialog open={characterEditorOpen} onOpenChange={(open) => { if (!open) (closeRef.current ?? closeCharacterEditor)(); }}>
       <DialogContent aria-describedby={undefined}>
         <EditorForm
           // Draft identity must be part of the key: dropping card B while
@@ -273,6 +282,7 @@ export function CharacterEditorDialog() {
           key={characterEditorId ?? `new-${characterEditorDraft?.name ?? ""}-${characterEditorDraft?.description?.length ?? 0}`}
           editing={editing}
           draft={characterEditorDraft}
+          closeRef={closeRef}
         />
       </DialogContent>
     </Dialog>

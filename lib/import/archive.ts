@@ -13,7 +13,7 @@ import { useFableStore } from "@/lib/store";
 import { readZip } from "@/lib/cards/zip";
 import { imageToAvatar } from "@/lib/chat/assets";
 import { decodePngPayload, convertPayload, isPng, type ImportedCard } from "./cardFile";
-import { importBook } from "./storeWrites";
+import { findSameBook, importBook, linkOrImportBook } from "./storeWrites";
 import type { ImportResult } from "./applyCards";
 
 export interface PlannedCard {
@@ -81,13 +81,13 @@ export async function applyArchive(
         if (store.characters.some((c) => same(c.name, d.name) && same(c.description, d.description))) { tally.duplicates++; break; }
         const avatar = png ? (await makeAvatar(png)) ?? d.avatar : d.avatar;
         let lorebookId: string | undefined;
-        if (card.embeddedBook) lorebookId = importBook(card.embeddedBook).id;
+        if (card.embeddedBook) lorebookId = linkOrImportBook(card.embeddedBook).id;
         store.addCharacter({ ...d, name: d.name ?? "Unnamed", description: d.description ?? "", tags: d.tags ?? [], avatar, lorebookId });
         tally.characters++;
         break;
       }
       case "lorebook": {
-        if (store.lorebooks.some((b) => same(b.name, card.book.name) && b.entries.length === card.book.entries.length)) { tally.duplicates++; break; }
+        if (findSameBook(card.book)) { tally.duplicates++; break; }
         importBook(card.book);
         tally.lorebooks++;
         break;

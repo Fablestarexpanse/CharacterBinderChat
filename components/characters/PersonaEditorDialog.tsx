@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useDiscardGuard, DiscardBar, type CloseRelay } from "@/components/ui/discardGuard";
 import { useFableStore } from "@/lib/store";
 import type { Persona } from "@/lib/types";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -17,9 +18,11 @@ import { Field } from "@/components/ui/field";
 function EditorForm({
   editing,
   onClose,
+  closeRef,
 }: {
   editing: Persona | null;
   onClose: () => void;
+  closeRef: CloseRelay;
 }) {
   const { addPersona, updatePersona, deletePersona } = useFableStore();
 
@@ -27,6 +30,8 @@ function EditorForm({
   const [avatar,      setAvatar]      = useState(editing?.avatar ?? "");
   const [description, setDescription] = useState(editing?.description ?? "");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const dirty = name !== (editing?.name ?? "") || avatar !== (editing?.avatar ?? "") || description !== (editing?.description ?? "");
+  const guard = useDiscardGuard(dirty, onClose, closeRef);
 
   const handleSave = () => {
     const data = {
@@ -73,6 +78,7 @@ function EditorForm({
 
       {/* Footer */}
       <div className="flex items-center gap-2 border-t border-[var(--border)] px-5 py-3">
+        {guard.confirming ? <DiscardBar onDiscard={guard.discard} onKeep={guard.keepEditing} /> : <>
         {editing && (
           confirmDelete ? (
             <div className="flex items-center gap-2">
@@ -92,12 +98,13 @@ function EditorForm({
           )
         )}
         <div className="flex-1" />
-        <Button variant="outline" size="sm" onClick={onClose}>
+        <Button variant="outline" size="sm" onClick={guard.attemptClose}>
           Cancel
         </Button>
         <Button variant="purple" size="sm" onClick={handleSave} disabled={!name.trim()}>
           {editing ? "Save changes" : "Create persona"}
         </Button>
+        </>}
       </div>
     </>
   );
@@ -116,11 +123,12 @@ export function PersonaEditorDialog({
 }) {
   const { personas } = useFableStore();
   const editing = personas.find((p) => p.id === personaId) ?? null;
+  const closeRef = useRef<(() => void) | null>(null);
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) (closeRef.current ?? onClose)(); }}>
       <DialogContent aria-describedby={undefined}>
-        <EditorForm key={personaId ?? "new"} editing={editing} onClose={onClose} />
+        <EditorForm key={personaId ?? "new"} editing={editing} onClose={onClose} closeRef={closeRef} />
       </DialogContent>
     </Dialog>
   );

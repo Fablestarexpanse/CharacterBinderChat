@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useUiStore } from "@/lib/store/ui";
 import { useFableStore } from "@/lib/store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,14 @@ export function LorebooksView() {
 
   // Books start collapsed — a handful of worlds with a dozen entries each
   // buries the page otherwise. Open one to edit it.
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Opened from the Library: start with that book expanded, then scroll to it
+  const focusCardId = useUiStore((s) => s.focusCardId);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(focusCardId ? [focusCardId] : []));
+  useEffect(() => {
+    if (!focusCardId) return;
+    document.getElementById(`card-${focusCardId}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    useUiStore.getState().setFocusCardId(null);
+  }, [focusCardId]);
   const toggleBook = (id: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -111,7 +119,7 @@ export function LorebooksView() {
               .filter(Boolean)
               .join(" · ");
             return (
-              <Card key={book.id}>
+              <Card key={book.id} id={`card-${book.id}`}>
                 <CardHeader className="flex items-center gap-3">
                   <button
                     onClick={() => toggleBook(book.id)}

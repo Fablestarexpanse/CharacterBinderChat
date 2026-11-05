@@ -46,7 +46,13 @@ test("a character with no description is refused with the actual reason", () => 
 test("the wrong kind of card for the type is refused, not stored as something else", () => {
   throws(() => createCard(store(), "persona", { spec: "chara_card_v2", spec_version: "2.0", data: { name: "A", description: "d" } }, "agent"), /not a persona/);
   throws(() => createCard(store(), "lorebook", "a string", "agent"), /must be a JSON object/);
-  throws(() => createCard(store(), "lorebook", { name: "Empty", entries: [] }, "agent"), /no usable entries/);
+  throws(() => createCard(store(), "lorebook", { name: "Junk", entries: [{ comment: "no keys, no content" }] }, "agent"), /no usable entries/);
+});
+
+test("an empty, named lorebook is a lorebook (the editor makes them; entries come later)", () => {
+  const s = store();
+  createCard(s, "lorebook", { name: "Empty", entries: [] }, "agent");
+  assert.equal(listCards(s, "lorebook").length, 1);
 });
 
 test("every kind can be created and listed", () => {

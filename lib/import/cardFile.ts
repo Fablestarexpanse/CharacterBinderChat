@@ -87,7 +87,9 @@ function convertLoreEntry(e: Obj): Omit<LoreEntry, "id" | "lorebookId"> | null {
  * LoreBook (CharacterBinder), CharacterBook (embedded in v2 cards), or
  * SillyTavern world-info ({entries: {0: {...}}}) → ImportedLorebook.
  */
-export function parseLorebook(json: unknown, fallbackName = "Imported Lorebook"): ImportedLorebook | null {
+export function parseLorebook(
+  json: unknown, fallbackName = "Imported Lorebook", { allowEmpty = false }: { allowEmpty?: boolean } = {},
+): ImportedLorebook | null {
   if (!json || typeof json !== "object") return null;
   const obj = json as Obj;
   const rawEntries: Obj[] = Array.isArray(obj.entries)
@@ -95,7 +97,12 @@ export function parseLorebook(json: unknown, fallbackName = "Imported Lorebook")
     : obj.entries && typeof obj.entries === "object"
       ? (Object.values(obj.entries) as Obj[])
       : [];
-  if (rawEntries.length === 0) return null;
+  // A named book file with no entries yet is still a book (this app exports empty
+  // ones); an empty book embedded in a character is just absent.
+  if (rawEntries.length === 0) {
+    const name = str(obj, "name");
+    return allowEmpty && name?.trim() ? { name, description: str(obj, "description"), entries: [] } : null;
+  }
 
   const entries = rawEntries
     .map(convertLoreEntry)
@@ -178,7 +185,7 @@ export function convertPayload(json: unknown, key: string | null): ImportedCard 
   }
 
   if (key === "lorebook" || (!spec && obj.entries && !str(obj, "first_mes") && !str(obj, "personality") && !obj.data)) {
-    const book = parseLorebook(json);
+    const book = parseLorebook(json, undefined, { allowEmpty: true });
     return book
       ? { kind: "lorebook", book }
       : { kind: "unsupported", reason: "Lorebook has no usable entries (keywords + content)." };

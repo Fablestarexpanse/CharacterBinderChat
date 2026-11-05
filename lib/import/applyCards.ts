@@ -13,7 +13,7 @@ import {
 } from "./cardFile";
 import { imageToAvatar } from "@/lib/chat/assets";
 import { useUiStore } from "@/lib/store/ui";
-import { importBook } from "./storeWrites";
+import { importBook, linkOrImportBook } from "./storeWrites";
 import { importArchive } from "./archive";
 import { isZip } from "@/lib/cards/zip";
 
@@ -94,10 +94,12 @@ async function applyCard(
       }
       let extra = "";
       if (card.embeddedBook) {
-        const { id, count } = importBook(card.embeddedBook);
+        const { id, count, reused } = linkOrImportBook(card.embeddedBook);
         // Linked, so the character's own world travels with it when exported again
         draft.lorebookId = id;
-        extra = ` Embedded lorebook "${card.embeddedBook.name}" imported and linked (${count} entries).`;
+        extra = reused
+          ? ` Linked to the lorebook "${card.embeddedBook.name}" already in your library.`
+          : ` Embedded lorebook "${card.embeddedBook.name}" imported and linked (${count} entries).`;
       }
       ui.openCharacterEditor(null, draft);
       ui.setActiveSection("characters");

@@ -7,7 +7,7 @@ import { ChatArea } from "@/components/chat/ChatArea";
 import { ChatsView } from "@/components/sections/ChatsView";
 import { InspectorPanel } from "@/components/inspector/InspectorPanel";
 import { SettingsView } from "@/components/sections/SettingsView";
-import { CharactersView } from "@/components/sections/CharactersView";
+import { LibraryView } from "@/components/sections/LibraryView";
 import { LorebooksView } from "@/components/sections/LorebooksView";
 import { ScenariosView } from "@/components/sections/ScenariosView";
 import { ImageStudioView } from "@/components/sections/ImageStudioView";
@@ -86,7 +86,7 @@ export default function Home() {
 
       <main className="flex flex-1 min-w-0 overflow-hidden">
         {activeSection === "chats" && (activeChatId ? <ChatArea /> : <ChatsView />)}
-        {activeSection === "characters" && <CharactersView />}
+        {activeSection === "characters" && <LibraryView />}
         {activeSection === "settings" && <SettingsView />}
         {activeSection === "groups" && <GroupsView />}
         {activeSection === "lorebooks" && <LorebooksView />}
@@ -99,7 +99,7 @@ export default function Home() {
         {showInspector && <InspectorPanel />}
       </main>
 
-      {/* Global — openable from CharactersView and the inspector */}
+      {/* Global — openable from the Library and the inspector */}
       <CharacterEditorDialog />
 
       {/* New-chat builder — opened by the sidebar's New Chat button */}

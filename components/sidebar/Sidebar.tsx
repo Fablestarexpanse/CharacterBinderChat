@@ -11,7 +11,6 @@ import { useHydrated } from "@/lib/hooks/useHydrated";
 import { truncate, formatAgeFromIso } from "@/lib/utils";
 import type { Chat, Character } from "@/lib/types";
 import {
-  Users,
   MessageSquare,
   Group,
   BookOpen,
@@ -25,11 +24,12 @@ import {
   Pencil,
   Trash2,
   Clapperboard,
+  Library,
 } from "lucide-react";
 import { useUiStore } from "@/lib/store/ui";
 
 const NAV_ITEMS: { id: SidebarSection; label: string; icon: React.ElementType }[] = [
-  { id: "characters", label: "Characters", icon: Users },
+  { id: "characters", label: "Library", icon: Library },
   { id: "chats", label: "Chats", icon: MessageSquare },
   { id: "groups", label: "Groups", icon: Group },
   { id: "lorebooks", label: "Lorebooks", icon: BookOpen },
