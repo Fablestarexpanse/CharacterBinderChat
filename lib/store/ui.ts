@@ -71,6 +71,10 @@ interface UiStore {
   dismissRemoteNotice: (key: number) => void;
 
   // Composer
+  /** Chats with messages a character sent on their own while you were elsewhere */
+  unreadChats: Record<string, number>;
+  markUnread: (chatId: string) => void;
+  clearUnread: (chatId: string) => void;
   /** Chats whose composer sends texts (phone messages in the story) rather than in-person lines */
   textModeChats: Record<string, boolean>;
   setTextMode: (chatId: string, on: boolean) => void;
@@ -114,6 +118,12 @@ export const useUiStore = create<UiStore>()((set) => ({
       remoteNotices: [...s.remoteNotices, ...notices.map((n) => ({ ...n, key: ++noticeKey }))].slice(-5),
     })),
   dismissRemoteNotice: (key) => set((s) => ({ remoteNotices: s.remoteNotices.filter((n) => n.key !== key) })),
+
+  unreadChats: {},
+
+  markUnread: (chatId) => set((s) => ({ unreadChats: { ...s.unreadChats, [chatId]: (s.unreadChats[chatId] ?? 0) + 1 } })),
+
+  clearUnread: (chatId) => set((s) => { if (!s.unreadChats[chatId]) return s; const next = { ...s.unreadChats }; delete next[chatId]; return { unreadChats: next }; }),
 
   textModeChats: {},
 

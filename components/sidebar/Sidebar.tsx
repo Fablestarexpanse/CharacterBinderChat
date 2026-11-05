@@ -7,6 +7,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { NavItem } from "./NavItem";
 import { SystemStatus } from "./SystemStatus";
+import { ContactPill } from "./ContactPill";
 import { useHydrated } from "@/lib/hooks/useHydrated";
 import { truncate, formatAgeFromIso } from "@/lib/utils";
 import type { Chat, Character } from "@/lib/types";
@@ -114,6 +115,9 @@ export function Sidebar() {
         </div>
       </div>
 
+      {/* Your status and Pause all, while Contact & media is on */}
+      <ContactPill />
+
       {/* System Status */}
       <SystemStatus />
     </aside>
@@ -134,6 +138,7 @@ function ChatRow({
 }) {
   const { setActiveChatId, renameChat, deleteChat } = useFableStore();
   const { setActiveSection } = useUiStore();
+  const unread = useUiStore((s) => s.unreadChats[chat.id] ?? 0);
 
   const [renaming,      setRenaming]      = useState(false);
   const [draft,         setDraft]         = useState(chat.name);
@@ -185,7 +190,10 @@ function ChatRow({
           />
         ) : (
           <>
-            <div className="text-xs font-medium truncate">{chat.name}</div>
+            <div className="flex items-center gap-1.5">
+              <span className={`text-xs truncate ${unread ? "font-bold" : "font-medium"}`}>{chat.name}</span>
+              {unread > 0 && <span className="flex-shrink-0 rounded-full bg-[var(--purple)] px-1.5 text-[9px] font-semibold text-white" aria-label={`${unread} new`}>{unread}</span>}
+            </div>
             {lastMsg && (
               <div className="text-[10px] text-[var(--muted-fg)] truncate">
                 {truncate(lastMsg.content, 30)}

@@ -5,6 +5,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useFableStore } from "@/lib/store";
+import { useUiStore } from "@/lib/store/ui";
 import { branchChat } from "@/lib/chat/branch";
 import { regenerateLastReply } from "@/lib/chat/generation";
 import { generateSceneImage } from "@/lib/chat/imageGen";
@@ -57,6 +58,7 @@ export function MessageItem({ message }: MessageItemProps) {
 
   const isUser = message.role === "user";
   const isText = message.channel === "text";
+  const openCharacterEditor = useUiStore((s) => s.openCharacterEditor);
   const character = characters.find((c) => c.id === message.characterId);
   // The user speaks AS their persona — show its name and portrait, not "You"
   const persona = isUser ? personas.find((p) => p.id === activePersonaId) : undefined;
@@ -174,6 +176,16 @@ export function MessageItem({ message }: MessageItemProps) {
         )}
         {message.attachments && message.attachments.length > 0 && <Attachments message={message} />}
         </>
+        )}
+
+        {message.outreach && (
+          <div className="text-[10px] text-[var(--muted-fg)]">
+            {displayName} reached out because {message.outreach.reason}.{" "}
+            {message.characterId && (
+              <button className="underline cursor-pointer hover:text-[var(--foreground)]" onClick={() => openCharacterEditor(message.characterId!)}
+                title="Change whether and when they may contact you">Change</button>
+            )}
+          </div>
         )}
 
         {/* Action buttons — visible on hover */}

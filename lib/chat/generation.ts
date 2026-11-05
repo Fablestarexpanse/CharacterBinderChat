@@ -152,7 +152,10 @@ export interface AssembledPrompt {
   lore:        ReturnType<typeof matchLoreEntries>;
 }
 
-export async function assemblePrompt(chatId: string, speakerCharId: string | undefined): Promise<AssembledPrompt | null> {
+/** A message the character sends on their own (lib/outreach/runner.ts decides when) */
+export interface OutreachRequest { trigger: string; reason: string; silence: string; userNote?: string }
+
+export async function assemblePrompt(chatId: string, speakerCharId: string | undefined, outreach?: OutreachRequest): Promise<AssembledPrompt | null> {
   const store = useFableStore.getState();
   const chat = store.chats.find((c) => c.id === chatId);
   if (!chat) return null;
@@ -206,7 +209,7 @@ export async function assemblePrompt(chatId: string, speakerCharId: string | und
   }
 
   // Answering a text: say so, in the user's editable words (Settings → Prompts)
-  if (replyChannel(chat.messages) === "text" && character) {
+  if ((replyChannel(chat.messages) === "text" || outreach) && character) {
     systemPrompt += "\n\n" + renderTemplate(await clientPromptTemplate("chat.text-message"), {
       character_name: character.name, user_label: persona?.name ?? "User",
     });
@@ -253,6 +256,14 @@ export async function assemblePrompt(chatId: string, speakerCharId: string | und
   // from this" — the reply comes back as the continuation, not a fresh turn.
   // It goes in BEFORE the fit so it counts against the budget, and the fit's
   // "newest is always kept" rule then protects it from being trimmed.
+  // Reaching out: the last turn says why they are writing now (editable: Settings → Prompts)
+  if (outreach && character) {
+    fullHistory.push({ role: "user", content: renderTemplate(await clientPromptTemplate("chat.outreach"), {
+      character_name: character.name, user_label: persona?.name ?? "User",
+      silence: outreach.silence, reason: outreach.reason,
+      user_note: outreach.userNote ? ` (they said: ${outreach.userNote})` : "",
+    }) });
+  }
   const prefill = resolved.prefill;
   if (prefill) fullHistory.push({ role: "assistant", content: prefill });
 
@@ -274,7 +285,7 @@ export async function assemblePrompt(chatId: string, speakerCharId: string | und
 
 // ─── Generate a reply to the chat's current history ──────────────────────────
 
-export async function generateAssistantReply(chatId: string, speakerId?: string): Promise<void> {
+export async function generateAssistantReply(chatId: string, speakerId?: string, outreach?: OutreachRequest): Promise<void> {
   const store = useFableStore.getState();
   if (store.isGenerating) return;
 
@@ -328,7 +339,7 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
   let produced = false;
 
   try {
-    const assembled = await assemblePrompt(chatId, speakerCharId);
+    const assembled = await assemblePrompt(chatId, speakerCharId, outreach);
     if (!assembled) return;
     const { history, fit, prefill, coreMemory, knownFacts, episodes, insights, sharedLanguage, lore } = assembled;
     accumulated = prefill;
@@ -344,7 +355,9 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
       role:        "assistant",
       content:     prefill,
       characterId: character?.id,
-      ...(channel === "text" ? { channel } : {}),
+      // Reaching out happens apart, so it is always a text, and it says why
+      ...(channel === "text" || outreach ? { channel: "text" as const } : {}),
+      ...(outreach ? { outreach: { trigger: outreach.trigger, reason: outreach.reason } } : {}),
     });
     // Provenance: record exactly which memory was injected into this reply's
     // prompt, so the message can answer "why did you say that?"

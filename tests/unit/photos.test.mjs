@@ -7,8 +7,15 @@ const { takePhotoMarkers } = await import("../../lib/chat/photos.ts");
 const { mayOfferPhotos, cleanContactSettings, DEFAULT_CONTACT } = await import("../../lib/media/contact.ts");
 
 test("everything is off by default; both switches must be on to offer photos", () => {
-  assert.deepEqual(DEFAULT_CONTACT, { enabled: false, reviewMedia: true });
-  assert.deepEqual(cleanContactSettings({ enabled: "yes", reviewMedia: false, extra: 1 }), { enabled: false, reviewMedia: false }, "only a real true turns it on");
+  assert.deepEqual(DEFAULT_CONTACT, { enabled: false, reviewMedia: true, paused: false, userStatus: "available", userNote: "", quietStart: 1380, quietEnd: 480, dailyLimit: 3, notifications: false });
+  const c = cleanContactSettings({ enabled: "yes", reviewMedia: false, notifications: 1, userStatus: "busy", dailyLimit: 99, quietStart: 9999, extra: 1 });
+  assert.equal(c.enabled, false, "only a real true turns it on");
+  assert.equal(c.notifications, false);
+  assert.equal(c.reviewMedia, false);
+  assert.equal(c.userStatus, "available", "an unknown status is not stored");
+  assert.equal(c.dailyLimit, 3, "an out-of-range limit falls back");
+  assert.equal(c.quietStart, 1380);
+  assert.equal("extra" in c, false);
   const on = { enabled: true, reviewMedia: true };
   assert.equal(mayOfferPhotos(on, { contact: { photos: true } }), true);
   assert.equal(mayOfferPhotos(on, { contact: {} }), false, "the character was not allowed");

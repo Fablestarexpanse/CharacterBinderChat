@@ -22,6 +22,7 @@ export type PromptId =
   | "image.scene-request"
   | "chat.text-message"
   | "chat.photo-offer"
+  | "chat.outreach"
   | "image.photo";
 
 export interface PromptVariable {
@@ -65,6 +66,19 @@ export const PROMPTS: readonly PromptDef[] = [
     template: `[Texting]
 {{character_name}} and {{user_label}} are not together right now: this exchange is by phone text message. Reply as {{character_name}} would text: short and in their own voice, a few lines at most. No narration of actions or surroundings and no *asterisks*, only what they would type.`,
     variables: [characterNameVar, userLabelVar],
+  },
+  {
+    id: "chat.outreach",
+    title: "Reaching out",
+    group: "Chat",
+    usedFor: "When a character you allowed to contact you sends a message on their own (Settings → Contact & media).",
+    template: `({{user_label}} has not written for {{silence}}{{user_note}}. {{character_name}} decides to text them now, on their own, because {{reason}}. Write only that text: short, in their own voice, no narration.)`,
+    variables: [
+      characterNameVar, userLabelVar,
+      { name: "silence", description: "How long since you last wrote, in words.", sample: "3 hours" },
+      { name: "reason", required: true, description: "Why they are reaching out, from the story or the time of day.", sample: "of the promise they made you: get you onto the shuttle" },
+      { name: "user_note", description: "Your status note, with its lead-in (\" (they said: at work until six)\"), or empty.", sample: " (they said: at work until six)" },
+    ],
   },
   {
     id: "chat.photo-offer",

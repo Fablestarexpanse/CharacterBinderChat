@@ -109,6 +109,8 @@ export interface Message {
   characterId?: string;
   /** Omitted for in-person messages, so older chats read unchanged */
   channel?: MessageChannel;
+  /** Sent by the character on their own: what prompted it (shown under the message) */
+  outreach?: { trigger: string; reason: string };
   attachments?: Attachment[];
   imageJobId?: string;
   timestamp: string;
