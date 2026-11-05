@@ -66,3 +66,25 @@ test("injecting: each picture is uploaded into the next image input; extras are 
   assert.equal(wf2["4"].inputs.image, "start.png", "no pictures: the workflow's own image stays");
   assert.equal(await injectReferences(wf2, undefined, ["/api/assets/a"], async () => { throw new Error("must not upload"); }), 0, "a workflow without image inputs ignores references");
 });
+
+test("the likeness switch: your own photo workflow with an image input first, else the bundled one, else unchanged", async () => {
+  const { likenessWorkflow, settingsForPerson, BUNDLED_LIKENESS, cleanImageLook } = await import("../../lib/media/imageLook.ts");
+  const wf = (slug, source, purpose, controls) => ({ slug, source, purpose, controls });
+  const bundled = wf(BUNDLED_LIKENESS, "bundled", "photo", ["prompt", "referenceImage"]);
+  const mine = wf("my-faces", "imported", "portrait", ["prompt", "referenceImage"]);
+  const noInput = wf("my-scenes", "imported", "photo", ["prompt"]);
+  assert.equal(likenessWorkflow([noInput, bundled, mine]), "my-faces");
+  assert.equal(likenessWorkflow([noInput, bundled]), BUNDLED_LIKENESS);
+  assert.equal(likenessWorkflow([noInput]), null);
+  assert.equal(cleanImageLook({ likeness: "yes" }), undefined, "only a real true turns it on");
+
+  const ref = "/api/assets/" + "a".repeat(64);
+  const who = { image: { tags: "grey coat", likeness: true }, referenceImages: [ref] };
+  const s = settingsForPerson(base, who, [bundled]);
+  assert.equal(s.workflow, BUNDLED_LIKENESS);
+  assert.deepEqual(s.referenceImages, [ref]);
+  assert.match(s.prompt, /^grey coat, /);
+  assert.equal(settingsForPerson(base, { image: { likeness: true } }, [bundled]).workflow, "w", "no pictures to keep a face from: the usual workflow");
+  assert.equal(settingsForPerson(base, { ...who, image: { tags: "grey coat" } }, [bundled]).workflow, "w", "switch off: the usual workflow");
+  assert.equal(settingsForPerson(base, undefined, [bundled]), base);
+});

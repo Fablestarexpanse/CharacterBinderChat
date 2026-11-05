@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 
-export interface LookDraft { tags: string; avoid: string; loraName: string; loraTrigger: string; loraWeight: string; seed: string }
+export interface LookDraft { tags: string; avoid: string; loraName: string; loraTrigger: string; loraWeight: string; seed: string; likeness: boolean }
 
 export function toLookDraft(look: ImageLook | undefined): LookDraft {
   return {
@@ -19,6 +19,7 @@ export function toLookDraft(look: ImageLook | undefined): LookDraft {
     loraName: look?.lora?.name ?? "", loraTrigger: look?.lora?.trigger ?? "",
     loraWeight: look?.lora?.weight !== undefined ? String(look.lora.weight) : "",
     seed: look?.seed !== undefined ? String(look.seed) : "",
+    likeness: look?.likeness ?? false,
   };
 }
 
@@ -27,12 +28,13 @@ export function fromLookDraft(d: LookDraft): ImageLook | undefined {
     tags: d.tags, avoid: d.avoid,
     lora: d.loraName.trim() ? { name: d.loraName, trigger: d.loraTrigger, weight: d.loraWeight.trim() ? Number(d.loraWeight) : undefined } : undefined,
     seed: d.seed.trim() ? Number(d.seed) : undefined,
+    likeness: d.likeness,
   });
 }
 
 export function ImageLookFields({ value, onChange, who, open, children }: { value: LookDraft; onChange: (d: LookDraft) => void; who: string; open?: boolean; children?: React.ReactNode }) {
-  const set = (k: keyof LookDraft) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange({ ...value, [k]: e.target.value });
-  const anySet = Object.values(value).some((v) => v.trim());
+  const set = (k: Exclude<keyof LookDraft, "likeness">) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange({ ...value, [k]: e.target.value });
+  const anySet = value.likeness || Object.values(value).some((v) => typeof v === "string" && v.trim());
   const seedBad = value.seed.trim() !== "" && !(Number.isInteger(Number(value.seed)) && Number(value.seed) >= 0 && Number(value.seed) <= 0xffffffff);
   const weightBad = value.loraWeight.trim() !== "" && !Number.isFinite(Number(value.loraWeight));
   return (
@@ -41,6 +43,17 @@ export function ImageLookFields({ value, onChange, who, open, children }: { valu
         How images draw {who} <span className="font-normal text-[var(--muted-fg)]">— used in every picture of {who}</span>
       </summary>
       <div className="mt-3 space-y-4">
+        <label className="flex items-start gap-3 cursor-pointer rounded-lg bg-[var(--purple-light)] px-3 py-2">
+          <input type="checkbox" checked={value.likeness} onChange={(e) => onChange({ ...value, likeness: e.target.checked })}
+            className="mt-0.5 h-4 w-4 accent-[var(--purple)] cursor-pointer" aria-label={`Make pictures look like ${who}`} />
+          <span>
+            <span className="block text-xs font-medium text-[var(--foreground)]">Make pictures look like {who}</span>
+            <span className="block text-[11px] text-[var(--muted-fg)] mt-0.5">
+              Draws {who} with a likeness workflow that uses the reference pictures below to keep the face: one of yours
+              that takes an image, or the bundled SDXL Likeness. The image tags, LoRA and seed below are always used.
+            </span>
+          </span>
+        </label>
         <Field label="Image tags" hint="short, comma-separated, for the image model; used word for word">
           <Textarea value={value.tags} onChange={set("tags")} rows={2} aria-label="Image tags"
             placeholder="silver hair, scar across left jaw, green eyes, grey trench coat" />

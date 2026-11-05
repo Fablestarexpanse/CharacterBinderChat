@@ -1,0 +1,74 @@
+{
+  "_meta": {
+    "title": "SDXL Likeness (IP-Adapter FaceID)",
+    "description": "Keeps a character's face from their reference pictures. Needs the ComfyUI_IPAdapter_plus custom nodes, insightface, and the FaceID Plus V2 SDXL model and LoRA in ComfyUI's ipadapter and loras folders (Check nodes lists what is missing). Not yet confirmed on a real ComfyUI by FableChat's own tests.",
+    "fablechat": {
+      "purpose": "photo",
+      "promptNode": "6.inputs.text",
+      "negativePromptNode": "7.inputs.text",
+      "stepsNode": "3.inputs.steps",
+      "cfgNode": "3.inputs.cfg",
+      "seedNode": "3.inputs.seed",
+      "widthNode": "5.inputs.width",
+      "heightNode": "5.inputs.height",
+      "referenceImageNodes": ["12.inputs.image"]
+    }
+  },
+  "3": {
+    "class_type": "KSampler",
+    "_meta": { "title": "KSampler" },
+    "inputs": {
+      "seed": 42, "steps": 30, "cfg": 6, "sampler_name": "dpmpp_2m", "scheduler": "karras", "denoise": 1,
+      "model": ["11", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["5", 0]
+    }
+  },
+  "4": {
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": { "title": "Load Checkpoint" },
+    "inputs": { "ckpt_name": "sd_xl_base_1.0.safetensors" }
+  },
+  "5": {
+    "class_type": "EmptyLatentImage",
+    "_meta": { "title": "Empty Latent Image" },
+    "inputs": { "width": 896, "height": 1152, "batch_size": 1 }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "Positive" },
+    "inputs": { "text": "photo of a person, natural light, detailed face", "clip": ["4", 1] }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "Negative" },
+    "inputs": { "text": "blurry, deformed, extra fingers, bad anatomy, watermark", "clip": ["4", 1] }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "_meta": { "title": "VAE Decode" },
+    "inputs": { "samples": ["3", 0], "vae": ["4", 2] }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "_meta": { "title": "Save Image" },
+    "inputs": { "images": ["8", 0], "filename_prefix": "fablechat_likeness" }
+  },
+  "10": {
+    "class_type": "IPAdapterUnifiedLoaderFaceID",
+    "_meta": { "title": "IPAdapter FaceID loader" },
+    "inputs": { "model": ["4", 0], "preset": "FACEID PLUS V2", "lora_strength": 0.6, "provider": "CPU" }
+  },
+  "11": {
+    "class_type": "IPAdapterFaceID",
+    "_meta": { "title": "IPAdapter FaceID" },
+    "inputs": {
+      "model": ["10", 0], "ipadapter": ["10", 1], "image": ["12", 0],
+      "weight": 0.85, "weight_faceidv2": 1, "weight_type": "linear", "combine_embeds": "concat",
+      "start_at": 0, "end_at": 1, "embeds_scaling": "V only"
+    }
+  },
+  "12": {
+    "class_type": "LoadImage",
+    "_meta": { "title": "Reference face" },
+    "inputs": { "image": "reference.png", "upload": "image" }
+  }
+}

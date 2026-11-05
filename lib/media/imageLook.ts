@@ -19,6 +19,8 @@ export interface ImageLook {
   lora?: { name: string; trigger?: string; weight?: number };
   /** A fixed seed: the same face and framing more often, at the cost of variety */
   seed?: number;
+  /** "Make pictures look like them": draw them with a likeness workflow (one with an image input) */
+  likeness?: boolean;
 }
 
 const s = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -40,6 +42,7 @@ export function cleanImageLook(raw: unknown): ImageLook | undefined {
   }
   const seed = Number(r.seed);
   if (r.seed !== undefined && r.seed !== null && r.seed !== "" && Number.isInteger(seed) && seed >= 0 && seed <= 0xffffffff) out.seed = seed;
+  if (r.likeness === true) out.likeness = true;
   return Object.keys(out).length ? out : undefined;
 }
 
@@ -107,4 +110,36 @@ export async function injectReferences(
     node.inputs[key] = await upload(pics[i]);
   }
   return pics.length;
+}
+
+// ─── Likeness workflow ────────────────────────────────────────────────────────
+
+/** The bundled identity workflow (workflows/sdxl-faceid-likeness.json) */
+export const BUNDLED_LIKENESS = "sdxl-faceid-likeness";
+
+interface WorkflowLike { slug: string; source: "bundled" | "imported"; purpose: string | null; controls: string[]; error?: string }
+
+/**
+ * The workflow to draw someone with when "make pictures look like them" is on:
+ * one of the user's own photo/portrait workflows that takes reference images,
+ * else the bundled likeness workflow, else none (then the usual one is used).
+ */
+export function likenessWorkflow(workflows: WorkflowLike[]): string | null {
+  const ok = workflows.filter((w) => !w.error && w.controls.includes("referenceImage"));
+  const mine = ok.find((w) => w.source === "imported" && (w.purpose === "photo" || w.purpose === "portrait"));
+  if (mine) return mine.slug;
+  return ok.find((w) => w.slug === BUNDLED_LIKENESS)?.slug ?? null;
+}
+
+/** Settings for a picture of someone: their look, their references and, when they asked for it, the likeness workflow. */
+export function settingsForPerson(
+  settings: ImageGenerationSettings,
+  who: { image?: ImageLook; avatar?: string; referenceImages?: string[] } | undefined,
+  workflows: WorkflowLike[],
+): ImageGenerationSettings {
+  if (!who) return settings;
+  const refs = referencesFor(who);
+  const out = withReferences(applyImageLook(settings, who.image), refs);
+  const slug = who.image?.likeness && refs.length ? likenessWorkflow(workflows) : null;
+  return slug ? { ...out, workflow: slug } : out;
 }
