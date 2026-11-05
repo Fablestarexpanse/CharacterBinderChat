@@ -17,6 +17,7 @@ import { isEntityType, isWritableStatName } from "@/lib/db/models";
 import type { StatName } from "@/lib/db/models";
 import type { MemoryTaskRequest } from "@/lib/types";
 import { buildExtractionPrompt } from "@/lib/server/extractionPrompt";
+import { promptTemplate } from "@/lib/server/prompts";
 import type { ProviderType } from "@/lib/llm/callers";
 import { contentWords, coverage, jaccard } from "@/lib/text/overlap";
 
@@ -386,7 +387,7 @@ export async function extractMemory(
     userId:    "player",
     knownEntities,
     participants: present,
-  });
+  }, promptTemplate("memory.extraction"));
 
   // ── Call LLM ──────────────────────────────────────────────────────────
 

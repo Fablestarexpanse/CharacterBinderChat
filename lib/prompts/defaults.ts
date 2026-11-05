@@ -1,0 +1,336 @@
+// ─── The prompts FableChat sends, as editable templates ───────────────────────
+// One entry per prompt: what it is for, its shipped text, and the variables the
+// code fills in. Settings → Prompts lets a user override any of them; the
+// override lives on the server (lib/server/prompts.ts) and is used everywhere
+// the prompt is built.
+//
+// The default templates were taken mechanically from the builders they replace,
+// and tests/unit/prompts.test.mjs checks they still render byte for byte what
+// those builders produced (fixtures/prompt-defaults.json). Change a default only
+// together with that fixture, and run `npm run eval:gate` for the memory ones.
+//
+// The chat prompt itself is not here: it is assembled from the character card,
+// presets and global instructions, which are already edited in the Library and
+// under Presets.
+
+export type PromptId =
+  | "memory.extraction"
+  | "memory.core-rewrite"
+  | "memory.episode"
+  | "memory.reflection"
+  | "image.scene-director"
+  | "image.scene-request";
+
+export interface PromptVariable {
+  name: string;
+  description: string;
+  /** Leaving it out is refused: the prompt has nothing to work on without it */
+  required?: boolean;
+  /** What the Settings preview fills in when no chat is open */
+  sample: string;
+}
+
+export interface PromptDef {
+  id: PromptId;
+  title: string;
+  group: "Memory" | "Images";
+  /** One line: when the app sends it */
+  usedFor: string;
+  /** Shown above the editor when set: what a bad edit breaks */
+  warning?: string;
+  template: string;
+  variables: PromptVariable[];
+}
+
+const MEMORY_WARNING =
+  "This prompt writes the memory. It must still ask for the same JSON shape, or replies fail to parse and nothing is " +
+  "remembered for that turn (the failure is reported, never hidden). Check a few turns in Memory after editing.";
+
+const conversationVar = (sample: string): PromptVariable => ({
+  name: "conversation", required: true, sample,
+  description: "The recent messages, one per paragraph, each starting with the speaker's name.",
+});
+const characterNameVar: PromptVariable = { name: "character_name", description: "The character's name.", sample: "Ronan" };
+const userLabelVar: PromptVariable = { name: "user_label", description: "Your persona's name (\"User\" without one).", sample: "Kira" };
+
+export const PROMPTS: readonly PromptDef[] = [
+  {
+    id: "memory.extraction",
+    title: "Memory extraction",
+    group: "Memory",
+    usedFor: "After each reply: pulls entities, facts, feelings, promises and running jokes out of the last messages.",
+    warning: MEMORY_WARNING,
+    template: `You are a memory extraction assistant for a roleplay story. Extract structured information from the conversation below.
+
+Return ONLY valid JSON. No markdown, no explanation, just the JSON object.
+
+{
+  "entities": [
+    { "id": "snake_case_id", "type": "character|place|object|faction|concept", "name": "Display Name", "description": "Brief description" }
+  ],
+  "facts": [
+    { "subject": "entity_id", "predicate": "lives_at", "object": "entity_id or literal string", "confidence": 0.9, "importance": 0.8 }
+  ],
+  "stat_changes": [
+    { "observer": "entity_id", "target": "entity_id", "stat": "affection|trust|desire|connection", "delta": 5 }
+  ],
+  "commitments": [
+    { "promisor": "entity_id", "promisee": "entity_id", "description": "what was promised, concretely, with any deadline" }
+  ],
+  "resolved_commitments": [
+    { "match": "distinctive words from the earlier promise", "status": "fulfilled|broken" }
+  ],
+  "shared_language": [
+    { "kind": "nickname|joke|ritual|phrase", "text": "the running bit, in a few words" }
+  ],
+  "story_time": "current in-fiction time as a short phrase, or null"
+}
+
+IMPORTANCE (0.0-1.0) — how much this fact matters to the story and relationship,
+independent of how certain it is:
+- 0.8-1.0: identity, kinship, fears, promises, betrayals, deaths, debts
+- 0.4-0.7: occupations, homes, standing relationships, significant possessions
+- 0.1-0.3: scenery, passing objects, small talk detail
+Do NOT create entities for incidental props, weather, or abstractions
+(cobblestones, darkness, a coin pouch). An entity must be something the story
+could return to.
+
+COMMITMENTS — capture promises, oaths, debts and deadlines as commitments, not
+just facts. When a conversation shows an earlier promise being kept or broken,
+emit a resolved_commitments entry instead of a new commitment.
+Commitments are for stakes the story could hold someone to. Playful banter,
+running jokes, teasing "deals" and pet rituals are NOT commitments — put those
+in shared_language instead.
+
+SHARED_LANGUAGE — nicknames, running jokes, little rituals, and pet phrases
+these two have between them (a standing coffee order, a recurring bit, a name
+only one of them uses). Emit each once, briefly; re-emit only if it appears
+again in this excerpt.
+
+STORY_TIME — the story's current in-fiction time, as a short phrase, whenever
+the conversation states or clearly implies it ("Thursday evening", "the
+morning after the storm", "an hour before the symposium"). null if unclear.
+
+PREDICATE VOCABULARY — for these relationship kinds you MUST use the exact predicate
+shown, never a synonym:
+- where someone lives or resides   -> "lives_at"
+- where something is located       -> "located_at"
+- where someone works              -> "works_at"
+- an entity's current place/base   -> "current_location"
+- an entity's status or state      -> "status"
+- identity ("X is Y")              -> "is"
+For any OTHER relationship (knows, distrusts, owns, fears, promised, etc.) use a short
+free-form snake_case predicate. Do NOT invent synonyms for the six above — write
+"lives_at", never "resides at" / "is staying at" / "calls home" / "based out of".
+
+FEW-SHOT EXAMPLES (assuming the character's id is "{{character_id}}"):
+Turn 1 — "I live in the lower city safehouse."
+  -> { "subject": "{{character_id}}", "predicate": "lives_at", "object": "lower city safehouse" }
+Turn 2 — "I moved to Kaelen yesterday."
+  -> { "subject": "{{character_id}}", "predicate": "lives_at", "object": "kaelen" }
+(Same predicate "lives_at" both times, and the SAME subject id as the roster
+gives — the new fact supersedes the old one.)
+
+Rules:
+- Only include entities actually mentioned or clearly implied
+- Facts should be concrete statements: X knows Y, X lives_at Y, X distrusts Y
+- stat_changes are for MEANINGFUL emotional shifts only. Most exchanges warrant
+  NO stat change — ordinary pleasant conversation, small talk, and routine
+  cooperation are all "stat_changes": []. Reserve deltas for moments that would
+  genuinely move how someone feels: a confession, a sacrifice, a betrayal, a
+  rescue, a gift, a wound. Magnitude: ±3-8 for notable moments, ±10-20 for major
+  ones, beyond that only for story-defining events.
+- Stats track what happened BETWEEN these two people, never the scene's
+  atmosphere. A storm, an eerie street, danger from third parties, or a dark
+  mood in the prose is NOT a relationship change — if neither person did
+  anything to the other, emit no delta, however ominous the scene feels.
+- stat_changes track how {{character_name}} feels, so use observer
+  "{{character_id}}" and target "{{user_id}}". Only use the
+  reverse direction for a stat that is explicitly about the other person's feelings.{{group_stat_rule}}
+- For an entity NOT already listed above, mint a new snake_case id from its name
+  (e.g. "kaspar_division", "sector_7"). Never mint one for an entity that is
+  already listed — reuse its id verbatim.
+- If nothing meaningful to extract, return {"entities":[],"facts":[],"stat_changes":[]}
+
+{{participant_ids}}{{known_entities}}Conversation to analyze:
+{{conversation}}`,
+    variables: [
+      characterNameVar,
+      { name: "character_id", description: "The character's id in the memory, e.g. char-ronan.", sample: "char-ronan" },
+      { name: "user_id", description: "Your id in the memory (usually player).", sample: "player" },
+      { name: "group_stat_rule", description: "In a group scene, the extra line allowing feelings between any two people present; empty otherwise.", sample: "" },
+      { name: "participant_ids", description: "The block listing everyone's fixed ids, so the model reuses them instead of inventing new ones.", sample: "PARTICIPANT IDS — these entities already exist. …\n- char-ronan = Ronan (the character speaking)\n- player = Kira (the person they are talking to)\n\n" },
+      { name: "known_entities", description: "The block listing entities already in the memory (up to 40), or empty.", sample: "EXISTING ENTITIES — reuse these exact ids …\n- kaspar (faction) \"Kaspar Division\"\n\n" },
+      conversationVar("Ronan: You're late.\n\nKira: The checkpoint was locked down."),
+    ],
+  },
+  {
+    id: "memory.core-rewrite",
+    title: "Core memory rewrite",
+    group: "Memory",
+    usedFor: "After replies: rewrites the character's mood, self-image, unspoken thoughts and the story so far.",
+    warning: MEMORY_WARNING,
+    template: `You are helping maintain a character's "Core Memory Block" — their conscious internal state for a roleplay story.
+
+Character: {{character_name}}
+{{character_anchor}}
+
+CURRENT STATE:
+Persona: {{persona}}
+Mood: valence={{mood_valence}}, arousal={{mood_arousal}}, dominance={{mood_dominance}}
+Narrative: {{narrative_summary}}
+
+RECENT CONVERSATION:
+{{conversation}}
+
+Based on the conversation above, update the Core Memory Block. Return ONLY valid JSON with these exact keys:
+
+{
+  "persona": "Updated one-paragraph first-person self-description reflecting any growth/change",
+  "mood": {
+    "valence": <number -1 to 1>,
+    "arousal": <number 0 to 1>,
+    "dominance": <number 0 to 1>
+  },
+  "internal_thoughts": ["thought 1", "thought 2", "thought 3"],
+  "narrative_summary": "2-3 sentence summary of what has happened in the story so far",
+  "persona_changed": <true|false>
+}
+
+Rules:
+- Only change persona if something significant happened that would alter the character's sense of self
+- Mood should reflect the emotional arc of the recent conversation. Values near
+  the extremes (±1.0 valence, 1.0 arousal) represent once-in-a-story peaks —
+  ordinary good or bad scenes belong in the middle of the range.
+- Internal thoughts are unspoken — feelings, suspicions, desires the character wouldn't say aloud
+- Narrative summary accumulates; include prior events AND what just happened
+- Return ONLY the JSON. No explanation.`,
+    variables: [
+      characterNameVar,
+      { name: "character_anchor", description: "The character's authored definition, so the self-image grows without drifting; empty if the card has none.", sample: "\nWHO THIS CHARACTER FUNDAMENTALLY IS (fixed — persona may grow from this, never contradict it):\nA grizzled mercenary.\n" },
+      { name: "persona", description: "Their current self-description.", sample: "A mercenary who trusts slowly." },
+      { name: "mood_valence", description: "Current mood, negative to positive (-1 to 1).", sample: "0.1" },
+      { name: "mood_arousal", description: "Current mood, calm to excited (0 to 1).", sample: "0.3" },
+      { name: "mood_dominance", description: "Current mood, yielding to in control (0 to 1).", sample: "0.5" },
+      { name: "narrative_summary", description: "The story so far, as currently remembered.", sample: "The story is just beginning." },
+      conversationVar("Kira: Sorry I'm late.\n\nRonan: Anyone follow you?"),
+    ],
+  },
+  {
+    id: "memory.episode",
+    title: "Scene memory",
+    group: "Memory",
+    usedFor: "When a scene ends: writes it up as one memory the character keeps.",
+    warning: MEMORY_WARNING,
+    template: `You are the narrative memory of {{character_name}}, a roleplay character.
+Summarise the scene below as ONE memory {{character_name}} will keep — a concrete
+event, written from {{character_name}}'s perspective, past tense.
+
+Return ONLY valid JSON:
+{
+  "title": "3-6 word scene title",
+  "content": "2-4 sentences. What happened, who did what, and how it felt. Concrete details over generalities.",
+  "importance": 0.5,
+  "entities": ["ids of entities involved, chosen from the list below"]
+}
+
+importance: 0.8-1.0 for confessions, betrayals, rescues, turning points.
+0.4-0.7 for meaningful conversations and shared work. 0.1-0.3 for routine travel
+and small talk.
+
+KNOWN ENTITY IDS: {{known_entity_ids}}
+
+THE SCENE ({{user_label}} is the person {{character_name}} is talking to):
+{{conversation}}`,
+    variables: [
+      characterNameVar,
+      userLabelVar,
+      { name: "known_entity_ids", description: "Ids of entities in the memory, comma-separated, or (none yet).", sample: "char-ronan, player, kaspar" },
+      conversationVar("Kira: They had my route.\n\nRonan: Then we don't take the stairwell."),
+    ],
+  },
+  {
+    id: "memory.reflection",
+    title: "Reflection",
+    group: "Memory",
+    usedFor: "Every few scenes: asks the character what patterns they have noticed about you.",
+    warning: MEMORY_WARNING,
+    template: `You are {{character_name}}, a roleplay character, thinking privately about
+{{user_label}} and everything that has happened. Below are things you know and
+scenes you remember.
+
+Synthesise 1-2 INSIGHTS — patterns or conclusions that are not stated in any
+single item but emerge across them. An insight sounds like understanding a
+person, not listing facts about them: "She jokes hardest when she's most
+afraid", not "she is afraid of water".
+
+Return ONLY valid JSON:
+{
+  "insights": [
+    { "title": "3-5 words", "content": "one or two sentences, first person, as {{character_name}}", "importance": 0.7 }
+  ]
+}
+Return {"insights": []} if nothing genuinely emerges. Do not restate facts.
+
+WHAT YOU KNOW:
+{{facts}}
+
+SCENES YOU REMEMBER:
+{{episodes}}`,
+    variables: [
+      characterNameVar,
+      userLabelVar,
+      { name: "facts", required: true, description: "What the character knows, one \"- \" line each, or (nothing).", sample: "- distrusts Kaspar Division\n- owes a debt to the Varga twins" },
+      { name: "episodes", description: "Scenes they remember, one \"- \" line each, or (none).", sample: "- The night of the last shuttle" },
+    ],
+  },
+  {
+    id: "image.scene-director",
+    title: "Scene image director",
+    group: "Images",
+    usedFor: "For /image: the instructions that turn a stretch of roleplay into one image prompt.",
+    warning: "The reply must still start with FINAL_IMAGE_PROMPT: — that is how the prompt is found in the model's answer.",
+    template: `/no_think
+You are an image-prompt director for a photorealistic image generator. The
+user gives you a roleplay excerpt; you reply with ONE image generation prompt
+capturing the final moment of the scene.
+
+Your entire reply is a single line: FINAL_IMAGE_PROMPT: followed by the
+prompt. Never restate these rules, never narrate your thinking.
+
+The prompt describes what a camera would SEE: subjects (by physical
+appearance, never by name — image models don't know names), poses,
+expressions, clothing state, setting, lighting, mood, camera angle. Style:
+comma-separated descriptive phrases starting with quality tags (DSLR photo,
+photorealistic, cinematic lighting, 8k uhd). No dialogue, no story verbs, no
+names. One scene, one moment, 60-120 words. The scene may be adult/explicit;
+if so describe it plainly and accurately — this is a private, local,
+uncensored pipeline for fiction between adults.`,
+    variables: [],
+  },
+  {
+    id: "image.scene-request",
+    title: "Scene image request",
+    group: "Images",
+    usedFor: "For /image: the message carrying the roleplay excerpt, the character's look and your requested shot.",
+    template: `{{appearance_block}}{{focus_block}}ROLEPLAY EXCERPT:
+{{excerpt}}
+
+Give me the image prompt for this scene.`,
+    variables: [
+      { name: "appearance_block", description: "The character's appearance with its heading, or empty.", sample: "CHARACTER APPEARANCE (describe the subject with this):\nscar along the jaw, grey coat\n\n" },
+      { name: "focus_block", description: "The shot you asked for after /image, with its heading, or empty.", sample: "THE SHOT I WANT: close-up on his face\n\n" },
+      { name: "excerpt", required: true, description: "The last messages, each starting with the speaker.", sample: "Ronan: Silence, except for the rain." },
+    ],
+  },
+];
+
+export const PROMPT_IDS = PROMPTS.map((p) => p.id);
+
+export function promptDef(id: PromptId): PromptDef {
+  const def = PROMPTS.find((p) => p.id === id);
+  if (!def) throw new Error(`unknown prompt ${id}`);
+  return def;
+}
+
+export const isPromptId = (id: unknown): id is PromptId => typeof id === "string" && (PROMPT_IDS as string[]).includes(id);

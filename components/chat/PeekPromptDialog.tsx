@@ -9,6 +9,7 @@
 // at a glance instead of by inference from the reply.
 
 import { useEffect, useState } from "react";
+import { getJson } from "@/lib/api/client";
 import { Check, Copy, Eye, Loader2 } from "lucide-react";
 import { useFableStore } from "@/lib/store";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -31,6 +32,16 @@ export function PeekPromptDialog({
   const [nonce, setNonce] = useState(0);
   const [live, setLive] = useState<LiveResult | null>(null);
   const [copied, setCopied] = useState(false);
+  // Edited behind-the-scenes prompts (memory, images): not part of this prompt,
+  // but they shape what the memory holds, so say so here where people look.
+  const [editedPrompts, setEditedPrompts] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    getJson<{ prompts: Array<{ title: string; override: string | null; overrideInvalid: boolean }> }>("/api/prompts")
+      .then((r) => { if (!cancelled) setEditedPrompts(r.prompts.filter((p) => p.override !== null && !p.overrideInvalid).map((p) => p.title)); })
+      .catch(() => { /* informational only */ });
+    return () => { cancelled = true; };
+  }, []);
 
   const liveKey = `${chatId}:${nonce}`;
   useEffect(() => {
@@ -124,6 +135,11 @@ export function PeekPromptDialog({
                 {prompt.dropped > 0 && <> · {prompt.dropped} oldest message{prompt.dropped === 1 ? "" : "s"} dropped to fit</>}
                 {view === "sent" && <> · sent {new Date(prompt.sentAt).toLocaleTimeString()}</>}
               </div>
+              {editedPrompts.length > 0 && (
+                <div className="rounded-lg border border-[var(--purple)] px-3 py-2 text-[11px] text-[var(--purple-fg)]">
+                  Edited prompts in use behind the scenes: {editedPrompts.join(", ")}. Change or reset them in Settings → Prompts.
+                </div>
+              )}
               {prompt.messages.map((m, i) => (
                 <details key={i} open={m.role === "system"} className="rounded-lg border border-[var(--border)]">
                   <summary className="cursor-pointer select-none px-3 py-1.5 flex items-center gap-2 text-[11px]">

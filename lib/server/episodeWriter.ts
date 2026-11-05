@@ -5,6 +5,7 @@
 // then only validates its envelope and maps a result onto a status, and the
 // pipeline can be exercised without a server.
 
+import { promptTemplate } from "@/lib/server/prompts";
 import { getStore } from "@/lib/db";
 import { callLLM, parseLLMJson } from "@/lib/llm/callers";
 import { embedText, vecToBuffer } from "@/lib/llm/embeddings";
@@ -43,14 +44,14 @@ export async function writeEpisode(task: MemoryTaskRequest): Promise<EpisodeResu
       .filter((c) => c.tags.includes("episode"))
       .slice(0, 10)
       .map((c) => `${c.title}: ${c.content}`);
-    prompt = reflectPrompt(facts, episodes, characterName ?? characterId, userLabel);
+    prompt = reflectPrompt(facts, episodes, characterName ?? characterId, userLabel, promptTemplate("memory.reflection"));
   } else {
     const conversation = (messages ?? [])
       .slice(-16)
       .map((m) => `${m.role === "user" ? userLabel : characterName}: ${m.content}`)
       .join("\n\n");
     const entityIds = store.listEntities(chatId).map((e) => e.id);
-    prompt = episodePrompt(conversation, characterName ?? characterId, userLabel, entityIds);
+    prompt = episodePrompt(conversation, characterName ?? characterId, userLabel, entityIds, promptTemplate("memory.episode"));
   }
 
   const rawText = await callLLM({ providerType, providerBaseUrl, modelId, apiKey }, prompt);

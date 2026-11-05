@@ -8,15 +8,19 @@ import { getStore } from "@/lib/db";
 import { callLLM, parseLLMJson, type ProviderType } from "@/lib/llm/callers";
 import type { MessageRole } from "@/lib/types";
 import type { CoreMemory } from "@/lib/db/models";
+import { promptDef } from "@/lib/prompts/defaults";
+import { renderTemplate } from "@/lib/prompts/render";
+import { promptTemplate } from "@/lib/server/prompts";
 
 // ─── Rewrite prompt ───────────────────────────────────────────────────────────
 
-function buildRewritePrompt(
+export function buildRewritePrompt(
   characterName: string,
   currentMemory: CoreMemory,
   recentMessages: Array<{ role: MessageRole; content: string }>,
   userLabel = "User",
-  characterAnchor = ""
+  characterAnchor = "",
+  template = promptDef("memory.core-rewrite").template,
 ): string {
   const conversation = recentMessages
     .slice(-16)
@@ -30,41 +34,16 @@ function buildRewritePrompt(
     ? `\nWHO THIS CHARACTER FUNDAMENTALLY IS (fixed — persona may grow from this, never contradict it):\n${characterAnchor}\n`
     : "";
 
-  return `You are helping maintain a character's "Core Memory Block" — their conscious internal state for a roleplay story.
-
-Character: ${characterName}
-${anchorBlock}
-
-CURRENT STATE:
-Persona: ${currentMemory.persona}
-Mood: valence=${currentMemory.mood.valence}, arousal=${currentMemory.mood.arousal}, dominance=${currentMemory.mood.dominance}
-Narrative: ${currentMemory.narrative_summary}
-
-RECENT CONVERSATION:
-${conversation}
-
-Based on the conversation above, update the Core Memory Block. Return ONLY valid JSON with these exact keys:
-
-{
-  "persona": "Updated one-paragraph first-person self-description reflecting any growth/change",
-  "mood": {
-    "valence": <number -1 to 1>,
-    "arousal": <number 0 to 1>,
-    "dominance": <number 0 to 1>
-  },
-  "internal_thoughts": ["thought 1", "thought 2", "thought 3"],
-  "narrative_summary": "2-3 sentence summary of what has happened in the story so far",
-  "persona_changed": <true|false>
-}
-
-Rules:
-- Only change persona if something significant happened that would alter the character's sense of self
-- Mood should reflect the emotional arc of the recent conversation. Values near
-  the extremes (±1.0 valence, 1.0 arousal) represent once-in-a-story peaks —
-  ordinary good or bad scenes belong in the middle of the range.
-- Internal thoughts are unspoken — feelings, suspicions, desires the character wouldn't say aloud
-- Narrative summary accumulates; include prior events AND what just happened
-- Return ONLY the JSON. No explanation.`;
+  return renderTemplate(template, {
+    character_name:    characterName,
+    character_anchor:  anchorBlock,
+    persona:           currentMemory.persona,
+    mood_valence:      String(currentMemory.mood.valence),
+    mood_arousal:      String(currentMemory.mood.arousal),
+    mood_dominance:    String(currentMemory.mood.dominance),
+    narrative_summary: currentMemory.narrative_summary,
+    conversation,
+  });
 }
 
 // ─── Result shape ─────────────────────────────────────────────────────────────
@@ -111,7 +90,8 @@ export async function rewriteCoreMemory(opts: RewriteOptions): Promise<{
     current.data,
     opts.recentMessages,
     opts.personaName ?? "User",
-    opts.characterAnchor ?? ""
+    opts.characterAnchor ?? "",
+    promptTemplate("memory.core-rewrite"),
   );
 
   let rawText: string;

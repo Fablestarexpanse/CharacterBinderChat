@@ -1,3 +1,4 @@
+import { promptTemplate } from "@/lib/server/prompts";
 import { NextRequest } from "next/server";
 import { routeError, badRequest } from "@/lib/api/server";
 import { parseProviderBase } from "@/lib/llm/callers";
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model:    body.modelId,
-          messages: buildDirectorMessages(body),
+          messages: buildDirectorMessages(body, { system: promptTemplate("image.scene-director"), request: promptTemplate("image.scene-request") }),
           stream:   false,
           ...(withThink ? { think: false } : {}),
           // Unload the 9B director from VRAM the moment it answers — ComfyUI
