@@ -1,0 +1,133 @@
+# Plan: characters who reach you, and media that looks like them
+
+Characters can text you, send photos, video and voice notes, and look like themselves every time. All of it is
+**off until you turn it on**, every prompt behind it can be read and edited, and every image, video and voice service
+is connected, tested and swapped from one place.
+
+Written after reading how Marinara Engine does this (Conversation Mode, schedules, Illustrator selfies, reference
+images). It borrows ideas, not code or design. Where FableChat does it differently, the reason is given.
+
+Status key: ✅ done · 🔧 in progress · ⬜ not started. Like `plan-2026-11.md`, each item has an **acceptance test**,
+and nothing is ✅ until it has been observed in a running app.
+
+---
+
+## Principles
+
+1. **Opt-in, always visible, easy to stop.** Nothing new generates, sends or contacts anyone by default. Turning
+   something on says what it costs (which service, roughly how many calls). One switch pauses all of it.
+2. **One story, not a second mode.** A text from a character is part of the same chat, the same memory and the same
+   story clock. You never switch to a "messenger mode" and link it back.
+3. **Two ways to decide when a character reaches out**, chosen per character: **Story** (something in the memory calls
+   for it) and **Timed** (a routine and silence timers). Either, both, or neither.
+4. **Every prompt is editable.** Each prompt the app sends to a model has a name, a readable default, an override you
+   can edit, a list of the variables it may use, a live preview against the current chat, and *Reset to default*.
+5. **Media is connected in one place.** Images, video, voice and speech-to-text each have a connection with a **Test**
+   button. Anything generated can be edited, regenerated, kept as a reference, or deleted from where it appears.
+6. **Local first.** Local services (ComfyUI, Ollama, a local voice server) are first-class. Cloud services are optional
+   and their keys go through the existing encrypted secrets store.
+
+---
+
+## What "opt-in" means here, exactly
+
+| Control | Where | Default | What it does |
+|---|---|---|---|
+| **Contact & media** master switch | Settings → Contact & media | **Off** | Nothing in this plan runs while it is off: no outreach, no media requests, and the model is not told it can send any. |
+| **Pause all** | A button in the sidebar footer | — | Stops outreach and queued media at once, until you resume. Shown only while anything is enabled. |
+| **Can contact me** | Per character (editor → Contact) | **Off** | This character may start conversations. Off means they only ever reply. |
+| **When they reach out** | Per character | **Story** (once contact is on) | *Story*, *Timed*, or *Both*. See phase D. |
+| **May send** photos / video / voice notes | Per character | **Off** each | The model is told about a media type only when it is on, for that character, and a connection for it exists. |
+| **Review before generating** | Settings → Contact & media | **On** | Shows the media prompt for approval before any image, video or voice call is made. Turn off for hands-free. |
+| **Quiet hours**, **daily limit** | Settings, and per character | 23:00–08:00, 3 per day | Caps outreach regardless of trigger. A character's own limit can only lower the global one. |
+| **Notifications** | Settings → Contact & media | **Off** | Browser notifications for new messages. The browser's permission is asked only when you turn this on. |
+| **While FableChat is closed** | Settings → Contact & media | **Off** | Lets the server reach out with no tab open (phase D5). Clearly separate because it means the server calls a model on its own. |
+
+Each outreach message shows **why** it was sent ("Ronan texted: the shuttle promise is due"), with a link to the
+setting that allowed it, so turning something off is always one click from the thing you want to stop.
+
+---
+
+## Phase A — Foundations (everything else stands on these)
+
+| # | Item | Acceptance | Status |
+|---|---|---|---|
+| A1 | **Connections hub.** Settings → Connections gains four media kinds next to the chat providers: **Images** (ComfyUI today; one cloud provider that takes reference images, e.g. an OpenAI-compatible image API), **Video** (ComfyUI image-to-video), **Voice** (OpenAI-compatible speech endpoint, which covers local servers such as Kokoro or Piper wrappers, plus ElevenLabs), **Speech-to-text** (optional, OpenAI-compatible `/audio/transcriptions`). Each has **Test**, a default per purpose (portrait, photo message, scene, video), and shows in the sidebar's System panel. Keys use `lib/server/secrets.ts`. | Each kind can be added, tested (a real image, a real 2-second clip, a spoken sentence) and removed; a failing service shows the provider's own error; no key reaches localStorage or the state export | ⬜ |
+| A2 | **Prompt library.** Every prompt the app sends gets an id and lives in one registry: chat system template, memory extraction, core-memory rewrite, episode and reflection, scene director, and the new ones below (photo prompt writer, video prompt writer, voice-note writer, outreach decision, outreach message, schedule writer). Settings → **Prompts** lists them by purpose: default (read-only), your override (editable), the variables it can use with descriptions, **Preview** rendered against the open chat, **Reset to default**, a diff against the default, and export/import as JSON. Overrides are stored server-side (whitelisted `prompt:<id>` keys), included in backups, and listed in Peek Prompt ("using your edited extraction prompt"). | Editing a prompt changes what Peek Prompt shows on the next turn; an override missing a required variable is refused with the variable named; Reset restores the shipped text; a backup restored elsewhere keeps the overrides | ⬜ |
+| A3 | **Guard the memory prompts.** Extraction and core-memory prompts feed the memory, so an edited one shows a warning, `npm run eval:gate` and the extraction tests accept an override path, and output that fails to parse is reported (as today), never silently empty. | An override that breaks JSON output produces the existing "extraction failed" report, not lost memory; the warning names the prompt | ⬜ |
+| A4 | **Workflow manager.** The Workflows screen accepts a ComfyUI "API format" export by drop or paste, **detects** the nodes that matter (prompt, negative, seed, size, steps, LoRA, image inputs, video length) and offers them in dropdowns, replacing hand-edited `_meta.fablechat` paths. It asks ComfyUI (`/object_info`) which custom nodes are installed and lists any the workflow needs but the server lacks. Each workflow has a purpose (portrait / photo / scene / video) and a **Test run**. Existing workflow files keep working. | A workflow exported from ComfyUI is usable with no hand-editing; a missing custom node is named before a run fails; the four bundled workflows still run | ⬜ |
+
+## Phase B — The same person every time
+
+| # | Item | Acceptance | Status |
+|---|---|---|---|
+| B1 | **Image fields on the card.** Characters and personas gain **image tags** (a short look written for an image model, used verbatim), optional **LoRA** (name, trigger word, strength), **fixed seed** (on/off), and **avoid** (negative tags). Exported under the card's `extensions.fablechat`, so they travel and other apps ignore them safely. Added through the usual path (type, `characterToCard`, `cardToCharacterDraft`, editor, `CHARACTER_FIELDS`, round-trip test). | The fields round-trip through PNG and JSON export, archive export and the agent API; every image of the character includes the tags | ⬜ |
+| B2 | **Reference set.** Each character and persona has a gallery of reference images (assets, never inline): the avatar plus anything marked **Keep as reference** from any generated image, with one marked primary. Up to four are sent per generation. | A generated photo can be kept as a reference in one click from where it appears; the set survives backup, restore and export | ⬜ |
+| B3 | **References reach the workflow.** A workflow's detected image inputs (A4) receive the reference set: uploaded to ComfyUI's input folder (`/upload/image`) and their filenames injected, or sent natively to a cloud provider that accepts references. The Image Studio's existing **character reference** control is wired to this (today it is decorative). | Picking a character in Image Studio sends their primary reference, visible in ComfyUI's history; a workflow with no image input says that references will be ignored | ⬜ |
+| B4 | **A bundled identity workflow.** Ship one portrait/photo workflow built for likeness (a face-identity node set such as PuLID or IP-Adapter FaceID), with A4's node check telling the user exactly what to install if it is missing. Plain image-to-image is not presented as an identity method, because it copies composition rather than the face. | On a ComfyUI with the nodes installed, five photos of one character from five different prompts are recognisably the same person when laid out next to the avatar (a review sheet the app can produce) | ⬜ |
+| B5 | **One switch.** Per character: **Make images look like this character** turns on B1 tags, the B2 reference set and the B4 workflow together. The individual parts stay available underneath. | With only this switch on, a photo request uses tags, references and the identity workflow | ⬜ |
+
+## Phase C — Photos, video and voice inside the story
+
+| # | Item | Acceptance | Status |
+|---|---|---|---|
+| C1 | **Messages carry media and a channel.** A message gains attachments (image, video or audio, each an asset with the prompt, workflow, seed and connection that made it) and a **channel**: *scene* (today's roleplay) or *text* (a message sent by phone in the story). Text messages render as phone-style bubbles in the same chat. | Old chats load unchanged; a chat mixing scene and text messages exports, branches and syncs correctly | ⬜ |
+| C2 | **Media becomes memory.** Sending a photo, video or voice note records a dated fact ("sent Kira a photo from the river, after the argument"), extracted like anything else, so the character remembers what they sent and when. | After a photo message, the Facts view shows it with its time; a branch from before it does not have it | ⬜ |
+| C3 | **The character asks to send something.** When a media type is allowed (opt-in table), the prompt tells the model it may include a marker such as `[photo: by the river at dusk]`. FableChat strips it, writes the image prompt with the editable **photo prompt writer** (A2) using the character's look (B1–B5) and the scene, then generates through the chosen connection, after review if that is on. When not allowed, the model is never told markers exist, and a stray marker is shown as plain text, not acted on. | Allowed: a marker becomes an attached photo and the marker text is gone; not allowed: no generation happens | ⬜ |
+| C4 | **You ask for something.** Composer buttons: **Ask for a photo / a video / a voice note** from the speaking character, with an optional "of what". Same pipeline and review step as C3. | Each button produces the attachment from the right character, or explains which connection is missing | ⬜ |
+| C5 | **Edit anything that was generated.** Open any attachment to: edit prompt, avoid-tags, seed, workflow and connection, then **Regenerate** (the old one moves to the gallery, not deleted); **Set as avatar**; **Keep as reference**; **Download**; **Delete**. Voice notes: change voice and re-speak. Video: change length and re-animate from the same still. | Every action works from the message and from the gallery, and an undo restores a deleted attachment | ⬜ |
+| C6 | **Voice.** Characters and personas get a **voice** (connection + voice id + speed). Voice notes play inline; optionally, replies can be read aloud as they finish. | A voice note plays in the chat and in the gallery; changing a character's voice changes the next one | ⬜ |
+| C7 | **Video.** Image-to-video from a still: a new photo (C3) or the avatar, through a ComfyUI video workflow (e.g. a WAN image-to-video export), with progress, **Cancel**, and timeouts long enough for local video. | A 3-second clip of the character arrives as an attachment; cancelling stops the ComfyUI job | ⬜ |
+
+## Phase D — Characters who reach out
+
+The decision of *whether* to reach out is made by plain, testable rules. A model is only called to *write* the message
+(and, optionally, to judge an ambiguous case), so outreach never costs a call that is not used.
+
+| # | Item | Acceptance | Status |
+|---|---|---|---|
+| D1 | **Controls first.** Everything in the opt-in table above, including **Pause all**, quiet hours, limits and the reason line on every outreach message, built before any trigger. Turning contact on for the first time explains, in two sentences, what will happen and what it costs. | With the master switch off, no trigger runs and no prompt mentions outreach or media; the reason line links to the setting that allowed the message | ⬜ |
+| D2 | **Story triggers** (FableChat's own method). Each can be toggled per character: **a promise is due** (an active commitment whose moment has come on the story clock), **repair or sulk** after a rupture (a large drop in trust or affection, using the existing rupture window), **an unanswered question** you left hanging, **something to tell you** (a new fact involving you since you last spoke), and **long absence**. The message is written with the editable **outreach message** prompt and carries its reason. | Each trigger fires in a scripted test chat and in the browser, once, with the right reason; none fires during quiet hours, past the daily limit, or while paused | ⬜ |
+| D3 | **Timed method.** Per character: a weekly routine of **online / away / busy / offline** blocks (edited on a simple week grid, or drafted by the editable **schedule writer** prompt and then edited), **wait before checking in** (default 2 h), **follow-ups** (at most 2, each waiting longer), **check-in moments** (morning, goodnight, after a long absence), and the daily limit. Offline blocks never send; busy blocks wait longer. Schedules export and import as JSON. | A character with a routine reaches out only inside online blocks, at most the limit, with follow-ups spaced as set; replying resets the follow-up count | ⬜ |
+| D4 | **Both, and your status.** Mode **Both** lets either method fire, under one shared limit. Your status (**Available / Away / Do not disturb**, plus an optional "what I'm doing" note the characters can see) applies to both; *Do not disturb* stops all outreach. | In *Both*, the combined count never exceeds the limit; *Do not disturb* blocks both methods | ⬜ |
+| D5 | **Delivery while a tab is open.** Outreach is evaluated by the open tab (FableChat calls models from the browser today), shows an in-app badge and a bubble for chats you are not viewing, and a browser notification if enabled. | With FableChat in a background tab, a due promise produces a notification that opens the right chat | ⬜ |
+| D6 | **While FableChat is closed** (separate opt-in). Move the outreach writer to the server for the connections that allow it (local Ollama/LM Studio, and OpenRouter through the server-held key), run the same rules on a server timer, and deliver when the app is next opened, or by Web Push if enabled. | With every tab closed, a due promise is waiting when the app opens, and was generated once, not once per tab | ⬜ |
+| D7 | **Time passes between texts** (optional). The story clock can advance with real time between outreach messages ("the next evening"), so the story's sense of time matches when you actually talk. | With it on, a text after a day's gap is set the next day in the story, and its facts carry that time | ⬜ |
+
+## Phase E — Close the one memory gap
+
+| # | Item | Acceptance | Status |
+|---|---|---|---|
+| E1 | **Remember the exact words.** Alongside facts, store old messages as searchable chunks (local Ollama embeddings when available, word matching otherwise, as retrieval already does) and bring back short **verbatim excerpts** when they are relevant, within a token budget. Shown in Peek Prompt and in the 🧠 provenance view. | In a 300-message test chat, a question about something said early on brings back the original line; with Ollama stopped, word matching still finds it | ⬜ |
+
+---
+
+## What changes underneath
+
+- **Data:** message `attachments` and `channel`; character/persona image fields, voice, reference set, contact
+  settings and routine; new synced settings for contact & media; whitelisted secrets for new keys; prompt overrides in
+  `app_kv`. All through the documented paths (`patchAppState`, `APP_COLLECTIONS`, `_ensureColumns`), so sync, undo,
+  history and backup keep working.
+- **Cards:** new fields under `extensions.fablechat`; CharacterBinder-compatible exports stay valid.
+- **Agents (MCP):** `update_card` learns the new fields; a tool to add a reference image; no outreach tools (outreach is
+  yours to allow, not an agent's).
+- **Tests:** unit tests for every trigger and pacing rule (pure functions over chat, memory and clock), the prompt
+  registry (variables, overrides, reset), workflow detection against real ComfyUI exports, and attachment round trips;
+  a fake ComfyUI server so media tests run in CI without a GPU; browser checks for each acceptance line.
+
+## Order, and why
+
+1. **A1, A2, A4** — connections, prompts and workflows are what everything else is configured with.
+2. **B1–B5** — likeness is the difference between "a picture" and "a picture of *them*"; doing it before media
+   messages means the first photo a character sends already looks right.
+3. **C1–C5** — media in the story, requested by you or the character, editable everywhere.
+4. **D1–D5** — outreach, controls before triggers, Story and Timed both, while a tab is open.
+5. **C6, C7** — voice and video, on the same attachment pipeline.
+6. **D6, D7, E1** — the closed-app server path, story time, verbatim recall.
+
+## Decisions for the owner
+
+- **Default trigger once contact is on:** Story (recommended: it uses the memory and needs no setup) or Timed.
+- **Which cloud image provider to support first** alongside ComfyUI (one that accepts reference images).
+- **Whether D6 (contact while closed) is wanted at all**, since it means the server calls a model unattended.
+- **Content limits** for generated media, if any should be enforced by the app rather than left to the model and provider.

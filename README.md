@@ -226,6 +226,7 @@ The current plan is [`docs/plan-2026-11.md`](docs/plan-2026-11.md), drawn from t
 - [ ] Context-budget breakdown per prompt section
 - [ ] GPU / VRAM monitoring
 - [ ] Export a chat as a story document
+- [ ] Characters who text you, with photos, video and voice that look like them (opt-in): [`docs/plan-contact-media.md`](docs/plan-contact-media.md)
 
 ---
 
