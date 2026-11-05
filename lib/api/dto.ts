@@ -61,6 +61,8 @@ export interface WorkflowSummary {
   /** Sampler defaults, when the template exposes a KSampler */
   steps:       number | null;
   cfg:         number | null;
+  /** The workflow keeps its own steps, CFG and sampler; Image Studio's are not applied */
+  ownSampling?: boolean;
   /** Set when the template file could not be read or parsed */
   error?:      string;
 }

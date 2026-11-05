@@ -16,6 +16,7 @@ import {
 import { useFableStore } from "@/lib/store";
 import { useUiStore } from "@/lib/store/ui";
 import { Avatar } from "@/components/ui/avatar";
+import { BannerFade, bannerStyle, BANNER_TEXT } from "@/components/ui/banner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -42,6 +43,8 @@ interface Item {
   avatar?: string;
   created: string;
   updated: string;
+  /** Lorebooks and scenarios: a banner strip across the top of the card */
+  banner?: string;
 }
 
 const TABS: Array<{ id: Tab; label: string; icon: typeof Users }> = [
@@ -76,8 +79,8 @@ export function LibraryView() {
     switch (tab) {
       case "characters": return characters.map((c) => ({ id: c.id, name: c.name, detail: oneLine(c.description), tags: c.tags ?? [], avatar: c.avatar, created: c.createdAt, updated: c.updatedAt }));
       case "personas":   return personas.map((p) => ({ id: p.id, name: p.name, detail: oneLine(p.description), tags: [], avatar: p.avatar, created: p.createdAt, updated: p.updatedAt }));
-      case "lorebooks":  return lorebooks.map((b) => ({ id: b.id, name: b.name, detail: `${plural(b.entries.length, "entry", "entries")}${b.description ? ` · ${oneLine(b.description, 80)}` : ""}`, tags: [], created: b.createdAt, updated: b.createdAt }));
-      case "scenarios":  return scenarios.map((s) => ({ id: s.id, name: s.name, detail: oneLine(s.scenario), tags: [], created: s.createdAt, updated: s.updatedAt }));
+      case "lorebooks":  return lorebooks.map((b) => ({ id: b.id, name: b.name, detail: `${plural(b.entries.length, "entry", "entries")}${b.description ? ` · ${oneLine(b.description, 80)}` : ""}`, tags: [], banner: b.banner, created: b.createdAt, updated: b.createdAt }));
+      case "scenarios":  return scenarios.map((s) => ({ id: s.id, name: s.name, detail: oneLine(s.scenario), tags: [], banner: s.banner, created: s.createdAt, updated: s.updatedAt }));
     }
   }, [tab, characters, personas, lorebooks, scenarios]);
 
@@ -321,7 +324,15 @@ export function LibraryView() {
               const character = tab === "characters" ? characters.find((c) => c.id === i.id) : undefined;
               const persona = tab === "personas" ? personas.find((p) => p.id === i.id) : undefined;
               return (
-                <Card key={i.id} role="listitem" aria-label={i.name} className={`p-3 transition-colors ${isSel ? "border-[var(--purple)] bg-[var(--purple-light)]" : "hover:border-[var(--purple)]"}`}>
+                <Card key={i.id} role="listitem" aria-label={i.name} className={`p-3 transition-colors ${i.banner ? "overflow-hidden" : ""} ${isSel ? "border-[var(--purple)] bg-[var(--purple-light)]" : "hover:border-[var(--purple)]"}`}>
+                  {/* The same banner as on its own screen, as a strip across the top with the name on the fade */}
+                  {i.banner && (
+                    <button className="relative -mx-3 -mt-3 mb-2.5 flex items-center px-3 text-left cursor-pointer" style={{ ...bannerStyle(i.banner, "3rem"), width: "calc(100% + 1.5rem)" }}
+                      onClick={() => (selecting ? toggle(i.id) : openItem(i.id))} aria-label={`Open ${i.name}`}>
+                      <BannerFade />
+                      <span className={`relative truncate font-semibold text-sm ${BANNER_TEXT}`}>{i.name}</span>
+                    </button>
+                  )}
                   <div className="flex items-start gap-3">
                     {selecting && (
                       <button onClick={() => toggle(i.id)} aria-pressed={isSel} aria-label={`Select ${i.name}`} className="mt-1 cursor-pointer text-[var(--purple-fg)]">
@@ -330,7 +341,7 @@ export function LibraryView() {
                     )}
                     {(tab === "characters" || tab === "personas") && <Avatar name={i.name} src={i.avatar} size="md" />}
                     <button className="flex-1 min-w-0 text-left cursor-pointer" onClick={() => (selecting ? toggle(i.id) : openItem(i.id))}>
-                      <div className="flex items-center gap-1.5">
+                      <div className={`flex items-center gap-1.5 ${i.banner ? "sr-only" : ""}`}>
                         <span className="font-semibold text-sm text-[var(--foreground)] truncate">{i.name}</span>
                         {persona && persona.id === activePersonaId && (
                           <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-[var(--purple-fg)] border border-[var(--purple)] rounded-full px-1.5"><Check className="h-2.5 w-2.5" />Active</span>

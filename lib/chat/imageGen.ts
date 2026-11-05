@@ -23,7 +23,25 @@ import type { ImageJob, ImageGenerationSettings } from "@/lib/types";
  * app-layer work — it touches the store and calls one of the app's own routes.
  * The adapter underneath it is transport only.
  */
-export function queueImage(settings: ImageGenerationSettings, chatId?: string): ImageJob {
+// Running jobs, so Cancel can stop the wait and the ComfyUI prompt. Module-local:
+// an AbortController is not serialisable, like generation's.
+const running = new Map<string, { abort: AbortController; comfyui: ComfyUIProvider; promptId?: string }>();
+
+/** Stop a job that is still queued or rendering. It ends as failed with "Cancelled." */
+export async function cancelImageJob(jobId: string): Promise<void> {
+  const r = running.get(jobId);
+  if (!r) return;
+  r.abort.abort();
+  if (r.promptId) await r.comfyui.cancel(r.promptId);
+}
+
+export interface QueueOptions {
+  /** How long to wait for ComfyUI. Local video takes minutes, so clips pass a longer one. */
+  timeoutMs?: number;
+  kind?: "video";
+}
+
+export function queueImage(settings: ImageGenerationSettings, chatId?: string, opts: QueueOptions = {}): ImageJob {
   const store = useFableStore.getState();
   const comfyui = new ComfyUIProvider(store.providerSettings.comfyui.baseUrl);
   const job: ImageJob = {
@@ -36,8 +54,11 @@ export function queueImage(settings: ImageGenerationSettings, chatId?: string): 
     settings,
     outputUrls: [],
     createdAt: new Date().toISOString(),
+    ...(opts.kind ? { kind: opts.kind } : {}),
   };
   store.addImageJob(job);
+  const handle = { abort: new AbortController(), comfyui, promptId: undefined as string | undefined };
+  running.set(job.id, handle);
 
   void (async () => {
     const onUpdate = useFableStore.getState().updateImageJob;
@@ -51,11 +72,16 @@ export function queueImage(settings: ImageGenerationSettings, chatId?: string): 
           `ComfyUI is not reachable at ${comfyui.baseUrl}. Start ComfyUI (or fix the URL in Settings) and try again.`
         );
       }
-      const promptId = await comfyui.queuePrompt(await comfyui.prepareWorkflow(settings));
+      const workflow = await comfyui.prepareWorkflow(settings);
+      if (handle.abort.signal.aborted) throw new Error("Cancelled.");
+      const promptId = await comfyui.queuePrompt(workflow);
+      handle.promptId = promptId;
+      // Cancelled while the prompt was being sent: stop it now that it has an id
+      if (handle.abort.signal.aborted) { await comfyui.cancel(promptId); throw new Error("Cancelled."); }
       onUpdate(job.id, { status: "generating", promptId });
       onUpdate(job.id, {
         status: "complete",
-        outputUrls: await comfyui.waitForImages(promptId),
+        outputUrls: await comfyui.waitForImages(promptId, opts.timeoutMs, handle.abort.signal),
         completedAt: new Date().toISOString(),
       });
     } catch (err) {
@@ -64,6 +90,8 @@ export function queueImage(settings: ImageGenerationSettings, chatId?: string): 
         error: err instanceof Error ? err.message : String(err),
         completedAt: new Date().toISOString(),
       });
+    } finally {
+      running.delete(job.id);
     }
   })();
 

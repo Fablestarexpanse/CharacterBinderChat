@@ -321,6 +321,11 @@ function WorkflowForm({ editing, installed, onClose, onSaved, closeRef }: {
                   {Object.entries(PURPOSE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
               </label>
+              <label className="flex items-start gap-2 text-xs cursor-pointer sm:col-span-2">
+                <input type="checkbox" checked={m.ownSampling === true} onChange={(e) => setMapping({ ...m, ownSampling: e.target.checked || undefined })} className="mt-0.5 accent-[var(--purple)]" />
+                <span><span className="font-medium">Keep this workflow&apos;s own steps, CFG and sampler</span>
+                  <span className="block text-[11px] text-[var(--muted-fg)]">For tuned or distilled models. Image Studio&apos;s steps, CFG and sampler are then ignored for this workflow; prompt, seed and size are still filled in.</span></span>
+              </label>
             </div>
             <div className="space-y-2">
               <div className="text-xs font-medium">Settings FableChat fills in</div>

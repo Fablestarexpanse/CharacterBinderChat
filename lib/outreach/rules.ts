@@ -125,3 +125,12 @@ export const toMinutes = (hhmm: string) => {
   return m ? Math.min(23, Number(m[1])) * 60 + Math.min(59, Number(m[2])) : null;
 };
 export const fromMinutes = (n: number) => `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
+
+/**
+ * How a character reaches out once the rules say they will: a phone call for
+ * what would not wait for a text (repairing a rupture, a long silence), when
+ * you allowed them to call; otherwise a text. Pure, like the rest.
+ */
+export function reachOutBy(trigger: Trigger, contact: (CharacterOutreach & { calls?: boolean }) | undefined): "call" | "text" {
+  return contact?.calls && (trigger === "repair" || trigger === "absence") ? "call" : "text";
+}

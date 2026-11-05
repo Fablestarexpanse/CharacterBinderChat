@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useFableStore } from "@/lib/store";
 import { useInspectedCharacter, noCharacterText } from "@/lib/hooks/useInspectedCharacter";
 import { Avatar } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Section } from "./Section";
+import { CharacterHero } from "./CharacterHero";
 import { ExternalLink, Edit2, Heart, Shield, Flame, Link2, CloudSun, UserRound, ChevronDown, Check } from "lucide-react";
 import { useUiStore } from "@/lib/store/ui";
 import { useDrawerRead } from "@/lib/hooks/useDrawerRead";
@@ -98,22 +98,7 @@ export function CharacterTab() {
 
   return (
     <div className="p-3 space-y-3">
-      {/* Who's in the scene: the character... */}
-      <div className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
-        <Avatar name={character.name} src={character.avatar} size="md" />
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-[var(--foreground)] truncate">{character.name}</div>
-          {character.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {character.tags.slice(0, 4).map((tag) => (
-                <Badge key={tag} variant="purple">{tag}</Badge>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ...and you (the active persona) — click to switch to any saved one */}
+      {/* You (the active persona) first, then who you are talking to. Click to switch persona */}
       <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] overflow-hidden">
         <button
           onClick={() => setPersonaPickerOpen((v) => !v)}
@@ -169,6 +154,9 @@ export function CharacterTab() {
           </div>
         )}
       </div>
+
+      {/* ...and the character, large, with Call and Text */}
+      <CharacterHero character={character} />
 
       {drawerError && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-600">

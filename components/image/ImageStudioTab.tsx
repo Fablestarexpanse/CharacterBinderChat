@@ -109,14 +109,17 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
   // one's controls, and applySettingsToWorkflow keys LoRA injection off the
   // same loraSyntaxNode. A hardcoded slug meant a new LoRA-capable template
   // silently offered no LoRA panel.
-  const workflowSupportsLoras = workflows
-    .find((w) => w.slug === imageSettings.workflow)
-    ?.controls.includes("loraSyntax") ?? false;
+  const currentWorkflow = workflows.find((w) => w.slug === imageSettings.workflow);
+  const workflowSupportsLoras = currentWorkflow?.controls.includes("loraSyntax") ?? false;
+  // A tuned workflow keeps its own sampling, so the sliders would lie about what is sent
+  const ownSampling = currentWorkflow?.ownSampling === true;
 
-  const recentJobs = imageJobs.slice(0, 4);
-  const runningCount = imageJobs.filter((j) => j.status === "queued" || j.status === "generating").length;
+  // Clips are shown on their message, not as pictures here
+  const pictureJobs = imageJobs.filter((j) => j.kind !== "video");
+  const recentJobs = pictureJobs.slice(0, 4);
+  const runningCount = pictureJobs.filter((j) => j.status === "queued" || j.status === "generating").length;
   // Only surface a failure if the most recent job is the one that failed
-  const lastFailed = imageJobs[0]?.status === "failed" ? imageJobs[0] : undefined;
+  const lastFailed = pictureJobs[0]?.status === "failed" ? pictureJobs[0] : undefined;
 
   return (
     <div className="overflow-y-auto h-full">
@@ -202,6 +205,11 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
           {((imageSettings.width * imageSettings.height) / 1_000_000).toFixed(1)} megapixels
         </div>
 
+        {ownSampling && (
+          <div className="text-[11px] text-[var(--muted-fg)]">
+            {currentWorkflow?.title} uses its own tuned sampling ({currentWorkflow?.steps ?? "?"} steps, CFG {currentWorkflow?.cfg ?? "?"}), so the steps, CFG and sampler below are not used with it.
+          </div>
+        )}
         {/* Sliders */}
         <Slider
           label="Steps"

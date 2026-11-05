@@ -13,6 +13,7 @@ import { LORE_TOKEN_BUDGET } from "@/lib/chat/lorebook";
 import { charactersUsingLorebook, chatsListingLorebook, plural } from "@/lib/chat/references";
 import { BookOpen, Plus, Trash2, Zap, Pin, ChevronDown, ChevronRight } from "lucide-react";
 import type { LoreEntry } from "@/lib/types";
+import { BannerControl, BannerFade, bannerStyle, BANNER_TEXT, BANNER_SUBTEXT, BANNER_INPUT, BANNER_PILL } from "@/components/ui/banner";
 import { ExportButtons } from "@/components/cards/ExportButtons";
 import { exportLorebook } from "@/lib/cards/export";
 
@@ -119,40 +120,51 @@ export function LorebooksView() {
               .filter(Boolean)
               .join(" · ");
             return (
-              <Card key={book.id} id={`card-${book.id}`}>
-                <CardHeader className="flex items-center gap-3">
+              <Card key={book.id} id={`card-${book.id}`} className={book.banner ? "overflow-hidden" : undefined}>
+                <CardHeader
+                  className={book.banner ? "relative flex items-center gap-3" : "flex items-center gap-3"}
+                  style={book.banner ? bannerStyle(book.banner) : undefined}
+                >
+                  {/* A fade from the left: the name always sits on dark, whatever the picture */}
+                  {book.banner && <BannerFade />}
                   <button
                     onClick={() => toggleBook(book.id)}
                     title={isOpen ? "Collapse lorebook" : "Expand lorebook"}
-                    className="flex items-center gap-2 flex-shrink-0 text-[var(--muted-fg)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
+                    className={`relative flex items-center gap-2 flex-shrink-0 transition-colors cursor-pointer ${book.banner
+                      ? "text-white/90 hover:text-white drop-shadow"
+                      : "text-[var(--muted-fg)] hover:text-[var(--foreground)]"}`}
                   >
                     {isOpen
                       ? <ChevronDown className="h-4 w-4" />
                       : <ChevronRight className="h-4 w-4" />}
-                    <BookOpen className="h-4 w-4 text-[var(--purple-fg)]" />
+                    <BookOpen className={`h-4 w-4 ${book.banner ? "text-white" : "text-[var(--purple-fg)]"}`} />
                   </button>
                   {isOpen ? (
                     <Input
                       value={book.name}
                       onChange={(e) => updateLorebook(book.id, { name: e.target.value })}
-                      className="h-8 text-sm font-medium flex-1"
+                      className={`relative h-8 text-sm font-medium flex-1 ${book.banner
+                        ? BANNER_INPUT
+                        : ""}`}
                       placeholder="Lorebook name"
                     />
                   ) : (
                     <button
                       onClick={() => toggleBook(book.id)}
-                      className="flex-1 min-w-0 text-left cursor-pointer"
+                      className="relative flex-1 min-w-0 text-left cursor-pointer"
                       title="Expand lorebook"
                     >
-                      <div className="text-sm font-medium text-[var(--foreground)] truncate">
-                        {book.name || <span className="text-[var(--muted-fg)]">Untitled lorebook</span>}
+                      <div className={`text-sm font-medium truncate ${book.banner ? BANNER_TEXT : "text-[var(--foreground)]"}`}>
+                        {book.name || <span className={book.banner ? "text-white/80" : "text-[var(--muted-fg)]"}>Untitled lorebook</span>}
                       </div>
                       {keyPreview && (
-                        <div className="text-[11px] text-[var(--muted-fg)] truncate">{keyPreview}</div>
+                        <div className={`text-[11px] truncate ${book.banner ? BANNER_SUBTEXT : "text-[var(--muted-fg)]"}`}>{keyPreview}</div>
                       )}
                     </button>
                   )}
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {/* On a banner the controls sit on a solid frosted pill, so they read on any picture in either theme */}
+                  <div className={`relative flex items-center gap-1.5 flex-shrink-0 ${book.banner
+                    ? BANNER_PILL : ""}`}>
                     {/* Hidden on phones so the name keeps its room; the entry count shows when expanded */}
                     <Badge variant="default" className="hidden sm:inline-flex" title="Estimated tokens if every enabled entry fires at once">
                       <Zap className="h-2.5 w-2.5 mr-0.5" />
@@ -198,6 +210,7 @@ export function LorebooksView() {
                 </CardHeader>
                 {isOpen && (
                 <CardBody className="space-y-3">
+                  <BannerControl banner={book.banner} onChange={(banner) => updateLorebook(book.id, { banner })} />
                   {book.entries.map((entry) => (
                     <div
                       key={entry.id}

@@ -9,7 +9,9 @@ import { useUiStore } from "@/lib/store/ui";
 import { getJson } from "@/lib/api/client";
 import { contactSettings } from "@/lib/chat/photos";
 import { generateAssistantReply } from "@/lib/chat/generation";
-import { decideOutreach, hoursText, type ChatSignals } from "@/lib/outreach/rules";
+import { decideOutreach, hoursText, reachOutBy, type ChatSignals } from "@/lib/outreach/rules";
+import { ringIn } from "@/lib/chat/calls";
+import { playTextChime } from "@/lib/chat/sounds";
 import type { Character, Chat, Message } from "@/lib/types";
 
 const real = (m: Message) => !m.error && !m.imageJobId;
@@ -56,6 +58,7 @@ export async function outreachTick(now = new Date()): Promise<string> {
   if (st.isGenerating) return "a reply is being written";
   const settings = await contactSettings();
   if (!settings.enabled) return "off";
+  if (useUiStore.getState().call) return "on a call";
   running = true;
   const held: string[] = [];
   try {
@@ -77,8 +80,14 @@ export async function outreachTick(now = new Date()): Promise<string> {
       }, count);
       if (!d.send) { held.push(`${character.name}: ${d.why}`); continue; }
       const silence = base.lastUserAt ? hoursText(now.getTime() - base.lastUserAt) : "a while";
-      await generateAssistantReply(chat.id, character.id, { trigger: d.trigger, reason: d.reason, silence, userNote: settings.userNote || undefined });
-      announce(chat, character, settings.notifications);
+      const request = { trigger: d.trigger, reason: d.reason, silence, userNote: settings.userNote || undefined };
+      // A rupture or a long silence from someone allowed to call: the phone rings instead of a text
+      if (reachOutBy(d.trigger, character.contact) === "call") {
+        await ringIn(chat.id, character.id, request);
+        return `${character.name}: calling (${d.trigger})`;
+      }
+      await generateAssistantReply(chat.id, character.id, request);
+      announce(chat, character, settings.notifications, settings.sounds);
       return `${character.name}: ${d.trigger}`;
     }
     return held.length ? `nothing due (${held.join("; ")})` : "nothing due";
@@ -87,8 +96,13 @@ export async function outreachTick(now = new Date()): Promise<string> {
   }
 }
 
-/** Unread mark for a chat you are not looking at, and a notification if you allowed them. */
-function announce(chat: Chat, character: Character, notify: boolean) {
+/**
+ * A text arrived: the chime (if sounds are on), and for a chat you are not
+ * looking at an unread mark (its row in Recent Chats shows the text badge) and
+ * a browser notification if you allowed them.
+ */
+export function announce(chat: Chat, character: Character, notify: boolean, sounds: boolean) {
+  if (sounds) playTextChime();
   const viewing = useFableStore.getState().activeChatId === chat.id && useUiStore.getState().activeSection === "chats" && !document.hidden;
   if (viewing) return;
   useUiStore.getState().markUnread(chat.id);

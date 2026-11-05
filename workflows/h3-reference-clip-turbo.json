@@ -1,0 +1,331 @@
+{
+  "1": {
+    "inputs": {
+      "image": "example.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Picture 1: the photo (first frame)"
+    }
+  },
+  "2": {
+    "inputs": {
+      "image": "example.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Picture 2: a person in the scene"
+    }
+  },
+  "3": {
+    "inputs": {
+      "image": "example.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Picture 3: a person in the scene"
+    }
+  },
+  "4": {
+    "inputs": {
+      "image": "example.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Picture 4: a person in the scene"
+    }
+  },
+  "5": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "megapixels": 1,
+      "resolution_steps": 32,
+      "image": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "Clip size: Picture 1's shape at ~1 MP"
+    }
+  },
+  "6": {
+    "inputs": {
+      "image": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Clip size follows Picture 1"
+    }
+  },
+  "7": {
+    "inputs": {
+      "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "MiniMax H3 Ref2VA model (pruned int8)"
+    }
+  },
+  "8": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Qwen3-VL 32B text encoder (type = minimax)"
+    }
+  },
+  "9": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "H3 video VAE"
+    }
+  },
+  "10": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "H3 audio VAE"
+    }
+  },
+  "11": {
+    "inputs": {
+      "prompt": "",
+      "width": [
+        "6",
+        0
+      ],
+      "height": [
+        "6",
+        1
+      ],
+      "length": 124,
+      "ref_image_size": "match",
+      "clip": [
+        "8",
+        0
+      ],
+      "vae": [
+        "9",
+        0
+      ],
+      "audio_vae": [
+        "10",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "1",
+        0
+      ],
+      "ref_images.ref_image_1": [
+        "2",
+        0
+      ],
+      "ref_images.ref_image_2": [
+        "3",
+        0
+      ],
+      "ref_images.ref_image_3": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {
+      "title": "H3 reference to video (<Picture 1..4> in the prompt; length in frames at 24 fps)"
+    }
+  },
+  "12": {
+    "inputs": {
+      "noise_seed": 0
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "Seed"
+    }
+  },
+  "13": {
+    "inputs": {
+      "model": [
+        "20",
+        0
+      ],
+      "conditioning": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "Guider (CFG 1)"
+    }
+  },
+  "14": {
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "Sampler (res_multistep)"
+    }
+  },
+  "15": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 4,
+      "denoise": 1,
+      "model": [
+        "20",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "Scheduler (4 turbo steps)"
+    }
+  },
+  "16": {
+    "inputs": {
+      "noise": [
+        "12",
+        0
+      ],
+      "guider": [
+        "13",
+        0
+      ],
+      "sampler": [
+        "14",
+        0
+      ],
+      "sigmas": [
+        "15",
+        0
+      ],
+      "latent_image": [
+        "11",
+        1
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "Sample video + audio"
+    }
+  },
+  "17": {
+    "inputs": {
+      "samples": [
+        "16",
+        0
+      ],
+      "vae": [
+        "9",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "Decode frames"
+    }
+  },
+  "18": {
+    "inputs": {
+      "samples": [
+        "16",
+        0
+      ],
+      "vae": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {
+      "title": "Decode sound"
+    }
+  },
+  "19": {
+    "inputs": {
+      "fps": 24,
+      "bit_depth": 8,
+      "images": [
+        "17",
+        0
+      ],
+      "audio": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+      "title": "Mux at 24 fps"
+    }
+  },
+  "20": {
+    "inputs": {
+      "lora_name": "MiniMax H3minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+      "strength_model": 1,
+      "model": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "H3 Ref2VA turbo LoRA (4 steps)"
+    }
+  },
+  "21": {
+    "inputs": {
+      "filename_prefix": "FableChat/h3ref",
+      "format": "mp4",
+      "format.codec": "h264",
+      "codec": "auto",
+      "video": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "Save clip"
+    }
+  },
+  "_meta": {
+    "title": "MiniMax H3 reference clip (turbo)",
+    "description": "Faster (4 steps) but holds faces less well. A ~5 s clip with sound that keeps everyone's look: Picture 1 is the photo it starts from, Pictures 2-4 are the people in the scene (the character, your persona, others present). Unused pictures are left out. Needs the H3 Ref2VA model (diffusion_models), the Qwen3-VL 32B minimax text encoder (text_encoders) and both H3 VAEs (vae), plus the Ref2VA turbo LoRA (loras).",
+    "fablechat": {
+      "purpose": "video",
+      "ownSampling": true,
+      "promptNode": "11.inputs.prompt",
+      "negativePromptNode": null,
+      "seedNode": "12.inputs.noise_seed",
+      "stepsNode": "15.inputs.steps",
+      "cfgNode": null,
+      "widthNode": null,
+      "heightNode": null,
+      "videoLengthNode": "11.inputs.length",
+      "loraSyntaxNode": null,
+      "referenceImageNodes": [
+        "1.inputs.image",
+        "2.inputs.image",
+        "3.inputs.image",
+        "4.inputs.image"
+      ]
+    }
+  }
+}

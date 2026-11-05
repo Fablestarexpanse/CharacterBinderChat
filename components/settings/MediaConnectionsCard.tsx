@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 interface ListData { connections: MediaConnectionView[]; defaults: MediaDefaults }
-interface TestOutcome { ok: boolean; label: string; sample?: { type: "image" | "audio"; dataUrl: string } }
+interface TestOutcome { ok: boolean; label: string; sample?: { type: "image" | "audio" | "video"; dataUrl: string } }
 
 const KINDS: MediaKind[] = ["image", "video", "voice", "stt"];
 const KIND_ICON = { image: ImageIcon, video: Video, voice: Volume2, stt: Mic } as const;
@@ -155,7 +155,7 @@ export function MediaConnectionsCard() {
                             {info?.keyRequired || c.hasKey ? (c.hasKey ? " · key saved" : " · no key yet") : ""}
                           </div>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => runTest(c.id, { id: c.id })} disabled={t === "running"}>{t === "running" ? "Testing…" : "Test"}</Button>
+                        <Button variant="outline" size="sm" onClick={() => runTest(c.id, { id: c.id })} disabled={t === "running"}>{t === "running" ? (c.kind === "video" ? "Making a test clip… (a few minutes)" : "Testing…") : "Test"}</Button>
                         <Button variant="outline" size="sm" onClick={() => edit(c)}>Edit</Button>
                         {confirmRemove === c.id ? (
                           <>
@@ -219,6 +219,7 @@ function TestResult({ t }: { t: TestOutcome | "running" | undefined }) {
       {/* eslint-disable-next-line @next/next/no-img-element -- a data: URL test sample, not a site asset */}
       {t.sample?.type === "image" && <img src={t.sample.dataUrl} alt="Test image from this connection" className="h-32 w-32 rounded-lg object-cover border border-[var(--border)]" />}
       {t.sample?.type === "audio" && <audio controls src={t.sample.dataUrl} className="h-8 w-full max-w-sm" aria-label="Test speech from this connection" />}
+      {t.sample?.type === "video" && <video controls playsInline src={t.sample.dataUrl} className="max-h-48 rounded-lg border border-[var(--border)]" aria-label="Test clip from this connection" />}
     </div>
   );
 }
@@ -260,7 +261,7 @@ function DraftForm({ draft, setDraft, onSave, onTest, test }: {
       </div>
       <TestResult t={test} />
       <div className="flex flex-wrap gap-2 justify-end">
-        <Button variant="outline" size="sm" onClick={onTest} disabled={test === "running"}>{test === "running" ? "Testing…" : "Test"}</Button>
+        <Button variant="outline" size="sm" onClick={onTest} disabled={test === "running"}>{test === "running" ? (draft.kind === "video" ? "Making a test clip… (a few minutes)" : "Testing…") : "Test"}</Button>
         <Button variant="outline" size="sm" onClick={() => setDraft(null)}>Cancel</Button>
         <Button variant="purple" size="sm" onClick={onSave}>Save</Button>
       </div>

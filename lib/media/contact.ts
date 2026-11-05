@@ -15,11 +15,13 @@ export interface ContactSettings extends OutreachSettings {
   userNote: string;
   /** Browser notifications for messages in chats you are not looking at */
   notifications: boolean;
+  /** A ringtone for calls and a chime for texts (made in the browser, no sound files) */
+  sounds: boolean;
 }
 
 export const DEFAULT_CONTACT: ContactSettings = {
   enabled: false, reviewMedia: true, paused: false, userStatus: "available", userNote: "",
-  quietStart: 23 * 60, quietEnd: 8 * 60, dailyLimit: 3, notifications: false,
+  quietStart: 23 * 60, quietEnd: 8 * 60, dailyLimit: 3, notifications: false, sounds: true,
 };
 
 const minutes = (v: unknown, d: number) => (Number.isInteger(v) && (v as number) >= 0 && (v as number) < 1440 ? (v as number) : d);
@@ -37,6 +39,7 @@ export function cleanContactSettings(raw: unknown): ContactSettings {
     quietEnd: minutes(r.quietEnd, DEFAULT_CONTACT.quietEnd),
     dailyLimit: Number.isInteger(limit) && limit >= 0 && limit <= 20 ? limit : DEFAULT_CONTACT.dailyLimit,
     notifications: r.notifications === true,
+    sounds: r.sounds !== false,
   };
 }
 
@@ -44,6 +47,8 @@ export function cleanContactSettings(raw: unknown): ContactSettings {
 export interface CharacterContact extends CharacterOutreach {
   /** May send you photos of themselves */
   photos?: boolean;
+  /** May phone you (when they reach out about a rupture or a long absence) */
+  calls?: boolean;
 }
 
 export const STORY_TRIGGERS: ReadonlyArray<{ id: StoryTrigger; label: string; hint: string }> = [

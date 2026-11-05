@@ -40,7 +40,15 @@ interface FableWorkflowMeta {
   heightNode?: string | null;
   /** Node taking inline `<lora:name:weight>` syntax (LoRA Manager pipelines) */
   loraSyntaxNode?: string | null;
+  /** Keep the workflow's own steps, CFG and sampler (see WorkflowMapping.ownSampling) */
+  ownSampling?: boolean;
+  /** A video workflow's frame count */
+  videoLengthNode?: string | null;
 }
+
+type OutputFile = { filename: string; subfolder: string; type: string };
+/** SaveImage reports `images`; SaveVideo reports its clip under `images` (with `animated`) or `videos`; VHS under `gifs`. */
+type NodeOutput = { images?: OutputFile[]; videos?: OutputFile[]; gifs?: OutputFile[] };
 
 // ─── Aspect ratio ─────────────────────────────────────────────────────────────
 // Picking a ratio used to store a label that nothing read, so "16:9" still
@@ -179,6 +187,10 @@ export class ComfyUIProvider {
       const data = await res.json().catch(() => null) as
         { error?: { message?: string }; node_errors?: Record<string, unknown> } | null;
       const detail = data?.error?.message ?? `HTTP ${res.status}`;
+      const missing = missingFiles(data?.node_errors);
+      if (missing.length > 0) {
+        throw new Error(`ComfyUI does not have ${missing.length === 1 ? "this model file" : "these model files"}: ${missing.join(", ")}. Put ${missing.length === 1 ? "it" : "them"} in ComfyUI's models folders, or pick another workflow.`);
+      }
       const nodes = data?.node_errors ? ` (nodes: ${Object.keys(data.node_errors).join(", ")})` : "";
       throw new Error(`ComfyUI rejected the workflow: ${detail}${nodes}`);
     }
@@ -191,20 +203,26 @@ export class ComfyUIProvider {
     return promptId;
   }
 
-  /** Poll /history until the prompt completes; returns direct image URLs. */
-  async waitForImages(promptId: string, timeoutMs = GENERATION_TIMEOUT_MS): Promise<string[]> {
+  /**
+   * Poll /history until the prompt completes; returns direct output URLs
+   * (images, or the clip a video workflow saved). `signal` stops the wait,
+   * for Cancel; it does not stop ComfyUI (that is `cancel`).
+   */
+  async waitForImages(promptId: string, timeoutMs = GENERATION_TIMEOUT_MS, signal?: AbortSignal): Promise<string[]> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
+      if (signal?.aborted) throw new Error("Cancelled.");
       const res = await fetch(this.proxied(`history/${promptId}`), { cache: "no-store" });
       if (res.ok) {
         const history = await res.json() as Record<string, {
           status?: { completed?: boolean; status_str?: string; messages?: unknown[] };
-          outputs?: Record<string, { images?: Array<{ filename: string; subfolder: string; type: string }> }>;
+          outputs?: Record<string, NodeOutput>;
         }>;
         const entry = history[promptId];
         if (entry) {
           if (entry.status?.status_str === "error") {
-            throw new Error("ComfyUI reported an execution error — check the ComfyUI console.");
+            const interrupted = (entry.status.messages ?? []).some((m) => Array.isArray(m) && m[0] === "execution_interrupted");
+            throw new Error(interrupted ? "Cancelled." : "ComfyUI reported an execution error — check the ComfyUI console.");
           }
           const urls = this.collectImageUrls(entry.outputs);
           if (entry.status?.completed || urls.length > 0) {
@@ -215,9 +233,23 @@ export class ComfyUIProvider {
           }
         }
       }
-      await sleep(POLL_INTERVAL_MS);
+      await sleep(POLL_INTERVAL_MS, signal);
     }
     throw new Error(`Timed out after ${Math.round(timeoutMs / 1000)}s waiting for ComfyUI.`);
+  }
+
+  /**
+   * Stop a prompt: take it out of the queue if it is waiting, and interrupt it
+   * if it is the one running. Best-effort; ComfyUI answers both even when the
+   * prompt is already gone.
+   */
+  async cancel(promptId: string): Promise<void> {
+    const post = (path: string, body: unknown) => fetch(this.proxied(path), {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }).catch(() => null);
+    await post("queue", { delete: [promptId] });
+    // prompt_id limits the interrupt to this prompt, so someone else's render is left alone
+    await post("interrupt", { prompt_id: promptId });
   }
 
   /** URL to a generated image, proxied through the app. */
@@ -225,13 +257,11 @@ export class ComfyUIProvider {
     return this.proxied("view", { filename, subfolder, type });
   }
 
-  private collectImageUrls(
-    outputs?: Record<string, { images?: Array<{ filename: string; subfolder: string; type: string }> }>
-  ): string[] {
+  private collectImageUrls(outputs?: Record<string, NodeOutput>): string[] {
     if (!outputs) return [];
     const urls: string[] = [];
     for (const node of Object.values(outputs)) {
-      for (const img of node.images ?? []) {
+      for (const img of [...(node.images ?? []), ...(node.videos ?? []), ...(node.gifs ?? [])]) {
         // temp-type images are previews, not final outputs
         if (img.type === "temp") continue;
         urls.push(this.imageUrl(img.filename, img.subfolder, img.type));
@@ -289,9 +319,13 @@ function applySettingsToWorkflow(
       settings.loras.map((l) => `<lora:${l.name}:${l.weight}>`).join(" ")
     );
   }
-  setPath(meta.stepsNode, settings.steps);
-  setPath(meta.cfgNode, settings.cfg);
+  const ownSampling = meta.ownSampling === true;
+  if (!ownSampling) {
+    setPath(meta.stepsNode, settings.steps);
+    setPath(meta.cfgNode, settings.cfg);
+  }
   setPath(meta.seedNode, seed);
+  if (settings.videoLength && settings.videoLength > 0) setPath(meta.videoLengthNode, Math.round(settings.videoLength));
   // A cleared dimension input stores 0 — never inject a 0-px latent
   setPath(meta.widthNode, settings.width >= 64 ? settings.width : 1024);
   setPath(meta.heightNode, settings.height >= 64 ? settings.height : 1024);
@@ -306,10 +340,12 @@ function applySettingsToWorkflow(
     switch (node.class_type) {
       case "KSampler":
       case "KSamplerAdvanced":
+        if (ownSampling) break;
         inputs.sampler_name = samplerCfg.sampler;
         if (samplerCfg.scheduler) inputs.scheduler = samplerCfg.scheduler;
         break;
       case "KSamplerSelect": // Flux-style split samplers
+        if (ownSampling) break;
         inputs.sampler_name = samplerCfg.sampler;
         break;
       case "EmptyLatentImage":
@@ -323,6 +359,27 @@ function applySettingsToWorkflow(
 }
 
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * The model files a refused workflow names but ComfyUI lacks. ComfyUI reports
+ * them as `value_not_in_list` with details like "unet_name: 'x.safetensors' not
+ * in [...]"; node numbers alone told nobody what to download.
+ */
+export function missingFiles(nodeErrors: unknown): string[] {
+  if (!nodeErrors || typeof nodeErrors !== "object") return [];
+  const out = new Set<string>();
+  for (const node of Object.values(nodeErrors as Record<string, { errors?: Array<{ type?: string; details?: string }> }>)) {
+    for (const e of node?.errors ?? []) {
+      if (e?.type !== "value_not_in_list" || typeof e.details !== "string") continue;
+      const m = /^\s*[\w.]+:\s*'([^']+\.(?:safetensors|ckpt|pt|pth|bin|gguf|sft))'\s+not in/i.exec(e.details);
+      if (m) out.add(m[1]);
+    }
+  }
+  return [...out];
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => { clearTimeout(t); resolve(); }, { once: true });
+  });
 }

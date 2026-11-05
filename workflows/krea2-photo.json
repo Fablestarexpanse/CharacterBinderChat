@@ -1,0 +1,64 @@
+{
+  "1": {
+    "inputs": { "unet_name": "Krea2\\Muse by Stable Yogi Krea2 V3.5 Civ INT8-ConvRot C84.safetensors", "weight_dtype": "default" },
+    "class_type": "UNETLoader",
+    "_meta": { "title": "Krea2 diffusion model" }
+  },
+  "2": {
+    "inputs": { "clip_name": "qwen3vl_4b_bf16.safetensors", "type": "krea2", "device": "default" },
+    "class_type": "CLIPLoader",
+    "_meta": { "title": "Qwen3-VL text encoder (type = krea2)" }
+  },
+  "3": {
+    "inputs": { "vae_name": "krea2RealVae_v10.safetensors" },
+    "class_type": "VAELoader",
+    "_meta": { "title": "Krea2 VAE" }
+  },
+  "4": {
+    "inputs": { "text": "", "clip": ["2", 0] },
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "Positive prompt" }
+  },
+  "5": {
+    "inputs": { "text": "blurry, low resolution, jpeg artifacts, watermark, text, logo, deformed anatomy, extra fingers, extra limbs, plastic skin", "clip": ["2", 0] },
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "Negative prompt" }
+  },
+  "6": {
+    "inputs": { "width": 832, "height": 1216, "batch_size": 1 },
+    "class_type": "EmptyLatentImage",
+    "_meta": { "title": "Size" }
+  },
+  "7": {
+    "inputs": { "seed": 0, "steps": 8, "cfg": 1.3, "sampler_name": "euler", "scheduler": "beta", "denoise": 1, "model": ["1", 0], "positive": ["4", 0], "negative": ["5", 0], "latent_image": ["6", 0] },
+    "class_type": "KSampler",
+    "_meta": { "title": "Sampler (8 steps, CFG 1.3, euler/beta)" }
+  },
+  "8": {
+    "inputs": { "samples": ["7", 0], "vae": ["3", 0] },
+    "class_type": "VAEDecode",
+    "_meta": { "title": "Decode" }
+  },
+  "9": {
+    "inputs": { "filename_prefix": "FableChat/krea2", "images": ["8", 0] },
+    "class_type": "SaveImage",
+    "_meta": { "title": "Save" }
+  },
+  "_meta": {
+    "title": "Krea2 photo",
+    "description": "Krea2 (Muse fine-tune) text to image: portraits, photo messages and scenes. Keeps its own tuned sampling (8 steps, CFG 1.3, euler/beta).",
+    "fablechat": {
+      "purpose": "photo",
+      "ownSampling": true,
+      "promptNode": "4.inputs.text",
+      "negativePromptNode": "5.inputs.text",
+      "seedNode": "7.inputs.seed",
+      "stepsNode": "7.inputs.steps",
+      "cfgNode": "7.inputs.cfg",
+      "widthNode": "6.inputs.width",
+      "heightNode": "6.inputs.height",
+      "loraSyntaxNode": null,
+      "referenceImageNodes": []
+    }
+  }
+}

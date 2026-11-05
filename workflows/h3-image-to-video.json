@@ -1,0 +1,110 @@
+{
+  "1": {
+    "inputs": { "image": "example.png" },
+    "class_type": "LoadImage",
+    "_meta": { "title": "First frame (the still to animate)" }
+  },
+  "2": {
+    "inputs": { "upscale_method": "lanczos", "megapixels": 1, "resolution_steps": 32, "image": ["1", 0] },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": { "title": "Scale to H3's native ~1 MP, keeping the still's shape" }
+  },
+  "3": {
+    "inputs": { "image": ["2", 0] },
+    "class_type": "GetImageSize",
+    "_meta": { "title": "Clip size follows the still" }
+  },
+  "4": {
+    "inputs": { "unet_name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors", "weight_dtype": "default" },
+    "class_type": "UNETLoader",
+    "_meta": { "title": "MiniMax H3 diffusion model (FL2VA, pruned int8)" }
+  },
+  "5": {
+    "inputs": { "lora_name": "MiniMax H3\\minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors", "strength_model": 1, "model": ["4", 0] },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": { "title": "H3 FL2V turbo LoRA (8 steps, built for the pruned model)" }
+  },
+  "6": {
+    "inputs": { "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "type": "minimax", "device": "default" },
+    "class_type": "CLIPLoader",
+    "_meta": { "title": "Qwen3-VL 32B text encoder (type = minimax)" }
+  },
+  "7": {
+    "inputs": { "vae_name": "minimax_h3_video_vae_fp16.safetensors" },
+    "class_type": "VAELoader",
+    "_meta": { "title": "H3 video VAE" }
+  },
+  "8": {
+    "inputs": { "vae_name": "minimax_h3_audio_vae_fp32.safetensors" },
+    "class_type": "VAELoader",
+    "_meta": { "title": "H3 audio VAE" }
+  },
+  "9": {
+    "inputs": { "prompt": "", "width": ["3", 0], "height": ["3", 1], "length": 124, "clip": ["6", 0], "vae": ["7", 0], "first_frame": ["2", 0] },
+    "class_type": "MiniMaxH3ImageToVideo",
+    "_meta": { "title": "H3 image to video (prompt, length in frames at 24 fps)" }
+  },
+  "10": {
+    "inputs": { "noise_seed": 0 },
+    "class_type": "RandomNoise",
+    "_meta": { "title": "Seed" }
+  },
+  "11": {
+    "inputs": { "model": ["5", 0], "conditioning": ["9", 0] },
+    "class_type": "BasicGuider",
+    "_meta": { "title": "Guider (CFG 1)" }
+  },
+  "12": {
+    "inputs": { "sampler_name": "res_multistep" },
+    "class_type": "KSamplerSelect",
+    "_meta": { "title": "Sampler (res_multistep)" }
+  },
+  "13": {
+    "inputs": { "scheduler": "simple", "steps": 8, "denoise": 1, "model": ["5", 0] },
+    "class_type": "BasicScheduler",
+    "_meta": { "title": "Scheduler (8 turbo steps)" }
+  },
+  "14": {
+    "inputs": { "noise": ["10", 0], "guider": ["11", 0], "sampler": ["12", 0], "sigmas": ["13", 0], "latent_image": ["9", 1] },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": { "title": "Sample video + audio" }
+  },
+  "15": {
+    "inputs": { "samples": ["14", 0], "vae": ["7", 0] },
+    "class_type": "VAEDecode",
+    "_meta": { "title": "Decode frames" }
+  },
+  "16": {
+    "inputs": { "samples": ["14", 0], "vae": ["8", 0] },
+    "class_type": "VAEDecodeAudio",
+    "_meta": { "title": "Decode sound" }
+  },
+  "17": {
+    "inputs": { "fps": 24, "bit_depth": 8, "images": ["15", 0], "audio": ["16", 0] },
+    "class_type": "CreateVideo",
+    "_meta": { "title": "Mux at 24 fps" }
+  },
+  "18": {
+    "inputs": { "filename_prefix": "FableChat/h3", "format": "mp4", "format.codec": "h264", "codec": "auto", "video": ["17", 0] },
+    "class_type": "SaveVideo",
+    "_meta": { "title": "Save clip" }
+  },
+  "_meta": {
+    "title": "MiniMax H3 image to video",
+    "description": "Animates a still (a photo or the portrait) into a ~5 s clip with sound, using MiniMax H3 with a turbo LoRA at 8 steps. Needs the H3 FL2VA model (diffusion_models), the Qwen3-VL 32B minimax text encoder (text_encoders), both H3 VAEs (vae) and the turbo LoRA (loras).",
+    "fablechat": {
+      "purpose": "video",
+      "ownSampling": true,
+      "promptNode": "9.inputs.prompt",
+      "negativePromptNode": null,
+      "seedNode": "10.inputs.noise_seed",
+      "stepsNode": "13.inputs.steps",
+      "cfgNode": null,
+      "widthNode": null,
+      "heightNode": null,
+      "videoLengthNode": "9.inputs.length",
+      "loraSyntaxNode": null,
+      "referenceImageNodes": ["1.inputs.image"]
+    }
+  }
+}

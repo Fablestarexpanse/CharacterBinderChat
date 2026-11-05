@@ -7,6 +7,8 @@
 // served at every size. Nothing breaks, avatars just download heavier.
 
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+/** A ~5 s clip at 1 MP is a few MB; this leaves room for longer ones. */
+export const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 
 /** The sizes a resized copy may be asked for. Snapping to a few stops requests from minting endless variants. */
 export const WIDTHS = [64, 128, 256, 512, 1024] as const;

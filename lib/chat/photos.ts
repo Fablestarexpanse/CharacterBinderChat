@@ -14,6 +14,7 @@ import { renderTemplate } from "@/lib/prompts/render";
 import { settingsForPerson } from "@/lib/media/imageLook";
 import { DEFAULT_CONTACT, cleanContactSettings, type ContactSettings } from "@/lib/media/contact";
 import type { WorkflowSummary } from "@/lib/api/dto";
+import { whileMaking } from "@/lib/chat/inflight";
 import type { Attachment, Character, ImageJob } from "@/lib/types";
 
 // ── Markers ───────────────────────────────────────────────────────────────────
@@ -51,7 +52,7 @@ export const forgetContactSettings = () => { settingsCache = null; };
 const newId = () => `att-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
 /** Wait for an image job in the store to finish. */
-function waitForJob(jobId: string): Promise<ImageJob> {
+export function waitForJob(jobId: string): Promise<ImageJob> {
   return new Promise((resolve) => {
     const check = (jobs: ImageJob[]) => {
       const j = jobs.find((x) => x.id === jobId);
@@ -76,7 +77,11 @@ export async function startPhoto(chatId: string, messageId: string, character: C
 }
 
 /** Make (or re-make) a photo attachment with its current prompt. */
-export async function makePhoto(chatId: string, messageId: string, attachmentId: string, characterId: string, promptOverride?: string): Promise<void> {
+export function makePhoto(chatId: string, messageId: string, attachmentId: string, characterId: string, promptOverride?: string): Promise<void> {
+  return whileMaking(attachmentId, () => photoNow(chatId, messageId, attachmentId, characterId, promptOverride));
+}
+
+async function photoNow(chatId: string, messageId: string, attachmentId: string, characterId: string, promptOverride?: string): Promise<void> {
   const st = useFableStore.getState();
   const msg = st.chats.find((c) => c.id === chatId)?.messages.find((m) => m.id === messageId);
   const att = msg?.attachments?.find((a) => a.id === attachmentId);
@@ -102,7 +107,7 @@ export async function makePhoto(chatId: string, messageId: string, attachmentId:
     return;
   }
   try {
-    const url = await storePicture(done.outputUrls[0]);
+    const url = await storePicture(done.outputUrls[0], { who: character.name });
     // A redo keeps the take it replaces, so you can go back to it
     const before = useFableStore.getState().chats.find((c) => c.id === chatId)?.messages.find((m) => m.id === messageId)?.attachments?.find((a) => a.id === attachmentId);
     const previous = att.url && att.url !== url ? [{ url: att.url, prompt: att.prompt }, ...(att.previous ?? [])].slice(0, 6) : before?.previous;

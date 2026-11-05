@@ -158,3 +158,15 @@ test("data URLs decode; malformed ones do not", () => {
   assert.equal(decodeDataUrl("data:text/html;base64,PGI+"), null);
   assert.equal(decodeDataUrl("https://x"), null);
 });
+
+test("a clip is stored only where video was asked for, so an avatar can never be a movie", () => {
+  const s = new FableStore(":memory:");
+  // The first bytes of a real MP4: a 'ftyp' box with brand isom
+  const mp4 = new Uint8Array([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 2, 0, 1, 2, 3, 4]);
+  const webm = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 9, 9, 9, 9]);
+  assert.throws(() => s.putAsset(mp4), /not an image/, "an upload that did not ask for video refuses an MP4");
+  assert.equal(s.putAsset(mp4, { video: true }).mime, "video/mp4");
+  assert.equal(s.putAsset(webm, { video: true }).mime, "video/webm");
+  assert.equal(s.putAsset(png(2, 2), { video: true }).mime, "image/png", "a still is still a still");
+  assert.throws(() => s.putAsset(new TextEncoder().encode("not a clip"), { video: true }), /not a clip/);
+});

@@ -47,7 +47,12 @@ next-env.d.ts
 
 # encryption key for stored API keys - never commit
 /data/.fable-secret
+# test copies of chat photos and clips (Settings → Media → Save chat media to a folder)
+/data/media-copies/
 
 # memory eval harness: isolated DB and per-run result snapshots
 /tests/memory-eval/.eval-db/
 /tests/memory-eval/results/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/

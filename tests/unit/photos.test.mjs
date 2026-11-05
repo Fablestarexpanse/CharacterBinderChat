@@ -7,7 +7,8 @@ const { takePhotoMarkers } = await import("../../lib/chat/photos.ts");
 const { mayOfferPhotos, cleanContactSettings, DEFAULT_CONTACT } = await import("../../lib/media/contact.ts");
 
 test("everything is off by default; both switches must be on to offer photos", () => {
-  assert.deepEqual(DEFAULT_CONTACT, { enabled: false, reviewMedia: true, paused: false, userStatus: "available", userNote: "", quietStart: 1380, quietEnd: 480, dailyLimit: 3, notifications: false });
+  assert.deepEqual(DEFAULT_CONTACT, { enabled: false, reviewMedia: true, paused: false, userStatus: "available", userNote: "", quietStart: 1380, quietEnd: 480, dailyLimit: 3, notifications: false, sounds: true });
+  // sounds: true is safe as a default: nothing calls or texts while the master switch (enabled) is off
   const c = cleanContactSettings({ enabled: "yes", reviewMedia: false, notifications: 1, userStatus: "busy", dailyLimit: 99, quietStart: 9999, extra: 1 });
   assert.equal(c.enabled, false, "only a real true turns it on");
   assert.equal(c.notifications, false);

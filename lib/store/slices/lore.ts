@@ -10,7 +10,7 @@ export interface LoreSlice {
   // Lorebooks
   lorebooks: Lorebook[];
   addLorebook: (name: string) => string;
-  updateLorebook: (id: string, updates: Partial<Pick<Lorebook, "name" | "description">>) => void;
+  updateLorebook: (id: string, updates: Partial<Pick<Lorebook, "name" | "description" | "banner">>) => void;
   deleteLorebook: (id: string) => void;
   addLoreEntry: (lorebookId: string, entry: Omit<LoreEntry, "id" | "lorebookId">) => string;
   updateLoreEntry: (lorebookId: string, entryId: string, updates: Partial<Omit<LoreEntry, "id" | "lorebookId">>) => void;

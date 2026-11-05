@@ -17,10 +17,10 @@ test("every bundled template is read exactly as its hand-written mapping says", 
     const r = readWorkflow(wf);
     assert.ok(r.ok, f);
     for (const [k, v] of Object.entries(wf._meta.fablechat)) {
-      if (k === "loraSyntaxNode" || k === "purpose") continue; // chosen by hand, never guessed
+      if (k === "loraSyntaxNode" || k === "purpose" || k === "ownSampling") continue; // chosen by hand, never guessed
       assert.deepEqual(r.mapping[k] ?? null, v ?? null, `${f}: ${k}`);
     }
-    assert.equal(r.isVideo, false, `${f} is an image workflow`);
+    assert.equal(r.isVideo, wf._meta.fablechat.purpose === "video", `${f}: video is detected exactly when it is a video workflow`);
   }
 });
 
@@ -83,4 +83,31 @@ test("missing node types are named; the mapping is stored where FableChat reads 
   assert.equal(saved._meta.title, "WAN clip");
   assert.equal(saved._meta.fablechat.videoLengthNode, "5.inputs.length");
   assert.equal(saved["6"].class_type, "KSampler", "the graph itself is untouched");
+});
+
+test("a size measured from a picture is not mapped onto the picture scaler's settings", () => {
+  const r = readWorkflow({
+    "1": { class_type: "LoadImage", inputs: { image: "start.png" } },
+    "2": { class_type: "ImageScaleToTotalPixels", inputs: { upscale_method: "lanczos", megapixels: 1, resolution_steps: 32, image: ["1", 0] } },
+    "3": { class_type: "GetImageSize", inputs: { image: ["2", 0] } },
+    "4": { class_type: "EmptyLatentImage", inputs: { width: ["3", 0], height: ["3", 1], batch_size: 1 } },
+    "5": { class_type: "CLIPTextEncode", inputs: { text: "a street", clip: ["9", 0] } },
+    "6": { class_type: "KSampler", inputs: { seed: 1, steps: 8, cfg: 1, positive: ["5", 0], negative: ["5", 0], latent_image: ["4", 0] } },
+  });
+  assert.ok(r.ok);
+  assert.equal(r.mapping.widthNode, null, "width follows the picture, it is not 2.inputs.megapixels");
+  assert.equal(r.mapping.heightNode, null);
+});
+
+test("a value behind a Reroute is still found", () => {
+  const r = readWorkflow({
+    "1": { class_type: "PrimitiveInt", inputs: { value: 768 } },
+    "2": { class_type: "Reroute", inputs: { "": ["1", 0] } },
+    "4": { class_type: "EmptyLatentImage", inputs: { width: ["2", 0], height: 1344, batch_size: 1 } },
+    "5": { class_type: "CLIPTextEncode", inputs: { text: "a street", clip: ["9", 0] } },
+    "6": { class_type: "KSampler", inputs: { seed: 1, steps: 8, cfg: 1, positive: ["5", 0], negative: ["5", 0], latent_image: ["4", 0] } },
+  });
+  assert.ok(r.ok);
+  assert.equal(r.mapping.widthNode, "1.inputs.value");
+  assert.equal(r.mapping.heightNode, "4.inputs.height");
 });

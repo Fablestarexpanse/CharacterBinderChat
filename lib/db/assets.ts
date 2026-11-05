@@ -30,14 +30,25 @@ export function sniffImage(bytes: Uint8Array): "image/png" | "image/jpeg" | "ima
   return null;
 }
 
+/**
+ * A clip's type, from the bytes: MP4/MOV (an ISO "ftyp" box) or WebM (EBML). Only
+ * accepted where the caller asked for video, so an avatar can never be a movie.
+ */
+export function sniffVideo(bytes: Uint8Array): "video/mp4" | "video/webm" | null {
+  const b = bytes;
+  if (b.length >= 12 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) return "video/mp4";
+  if (b.length >= 4 && b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) return "video/webm";
+  return null;
+}
+
 export function hashBytes(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-/** Store an image. The same bytes stored twice are one row. */
-export function putAsset(db: DB, bytes: Uint8Array): { hash: string; mime: string; size: number } {
-  const mime = sniffImage(bytes);
-  if (!mime) throw new Error("not an image FableChat accepts (PNG, JPEG, GIF or WebP)");
+/** Store an image (or, with `video`, a clip). The same bytes stored twice are one row. */
+export function putAsset(db: DB, bytes: Uint8Array, opts: { video?: boolean } = {}): { hash: string; mime: string; size: number } {
+  const mime = sniffImage(bytes) ?? (opts.video ? sniffVideo(bytes) : null);
+  if (!mime) throw new Error(opts.video ? "not a clip FableChat accepts (MP4 or WebM)" : "not an image FableChat accepts (PNG, JPEG, GIF or WebP)");
   const hash = hashBytes(bytes);
   db.prepare("INSERT OR IGNORE INTO app_assets (hash, mime, bytes, size, created_at) VALUES (?, ?, ?, ?, ?)")
     .run(hash, mime, Buffer.from(bytes), bytes.length, Math.floor(Date.now() / 1000));

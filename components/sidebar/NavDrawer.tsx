@@ -22,10 +22,19 @@ export function MobileBar() {
   const { activeSection, setNavOpenAt } = useUiStore();
   // The section, not the chat: an open chat's header already names it
   const title = NAV_ITEMS.find((n) => n.id === activeSection)?.label ?? "FableChat";
+  // The chat list is in the drawer: a dot on the menu says something came in (green and pulsing while a call rings)
+  const ringing = useUiStore((s) => s.call?.phase === "incoming");
+  const unread = useUiStore((s) => Object.values(s.unreadChats).reduce((a, n) => a + n, 0));
   return (
     <div className="flex h-11 flex-shrink-0 items-center gap-2 border-b border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] px-2">
-      <button onClick={() => setNavOpenAt(key)} aria-label="Open menu" className="rounded-lg p-2 cursor-pointer text-[var(--foreground)] hover:bg-[var(--muted)]">
+      <button onClick={() => setNavOpenAt(key)} aria-label={ringing ? "Open menu (a call is ringing)" : unread ? `Open menu (${unread} new)` : "Open menu"}
+        className="relative rounded-lg p-2 cursor-pointer text-[var(--foreground)] hover:bg-[var(--muted)]">
         <Menu className="h-5 w-5" />
+        {ringing ? (
+          <span aria-hidden className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-[var(--sidebar-bg)] animate-pulse" />
+        ) : unread > 0 && (
+          <span aria-hidden className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-[var(--sidebar-bg)] tabular-nums">{unread > 9 ? "9+" : unread}</span>
+        )}
       </button>
       <div className="h-6 w-6 rounded-md bg-[var(--purple)] flex items-center justify-center flex-shrink-0">
         <Sparkles className="h-3.5 w-3.5 text-white" />

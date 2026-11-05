@@ -102,6 +102,8 @@ export function ContactCard() {
                 <input type="number" min={0} max={20} aria-label="Daily limit" value={v.dailyLimit} onChange={(e) => change({ dailyLimit: Number(e.target.value) })} className={`${input} w-20`} />)}
               {row("Notifications", "A browser notification when a character messages you in a chat you are not looking at.",
                 <input type="checkbox" checked={v.notifications} onChange={(e) => askNotifications(e.target.checked)} aria-label="Notifications" className="h-4 w-4 accent-[var(--purple)] cursor-pointer" />)}
+              {row("Sounds", "A ringtone when a character calls and a chime when a text arrives. The browser plays them only after you have clicked somewhere in FableChat.",
+                <input type="checkbox" checked={v.sounds} onChange={(e) => change({ sounds: e.target.checked })} aria-label="Sounds" className="h-4 w-4 accent-[var(--purple)] cursor-pointer" />)}
             </div>
           </>
         )}

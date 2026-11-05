@@ -16,12 +16,38 @@ export function sizedSrc(src: string | undefined, px: number): string | undefine
   return `${src}?w=${Math.ceil(px * 2)}`;
 }
 
-/** Upload an image's original bytes. Resolves to its asset URL; rejects with the server's reason. */
-export async function uploadImage(image: Blob): Promise<string> {
-  const res = await fetch("/api/assets", { method: "POST", body: image });
-  const body = await res.json().catch(() => null) as { ok?: boolean; url?: string; error?: string } | null;
+/** Made in a chat: also save a copy to the folder in Settings → Media (when one is set), named for this character. */
+export interface CopyFor { who: string }
+
+const assetQuery = (video: boolean, copy?: CopyFor) => {
+  const q = new URLSearchParams();
+  if (video) q.set("kind", "video");
+  if (copy) { q.set("copy", "1"); q.set("who", copy.who); }
+  const s = q.toString();
+  return s ? `/api/assets?${s}` : "/api/assets";
+};
+
+async function upload(blob: Blob, video: boolean, copy?: CopyFor): Promise<string> {
+  const res = await fetch(assetQuery(video, copy), { method: "POST", body: blob });
+  const body = await res.json().catch(() => null) as { ok?: boolean; url?: string; error?: string; saveError?: string } | null;
   if (!res.ok || !body?.ok || !body.url) throw new Error(body?.error ?? `upload failed (HTTP ${res.status})`);
+  // The copy is extra: the picture is stored either way, so a full disk is a warning, not a failure
+  if (body.saveError) console.warn("[media] " + body.saveError);
   return body.url;
+}
+
+/** Upload an image's original bytes. Resolves to its asset URL; rejects with the server's reason. */
+export const uploadImage = (image: Blob, copy?: CopyFor): Promise<string> => upload(image, false, copy);
+
+/** Upload a clip (MP4 or WebM) to the asset store. Resolves to its asset URL. */
+export const uploadVideo = (clip: Blob, copy?: CopyFor): Promise<string> => upload(clip, true, copy);
+
+/** Store a clip ComfyUI made (through the proxy) as an asset. */
+export async function storeClip(url: string, copy?: CopyFor): Promise<string> {
+  if (isAssetUrl(url)) return url.split("?")[0];
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Could not read that clip (HTTP ${res.status}).`);
+  return uploadVideo(await res.blob(), copy);
 }
 
 /**
@@ -44,9 +70,9 @@ export async function imageToAvatar(image: Blob): Promise<string | null> {
  * proxy, a gallery image) as an asset, so it can be kept as a reference. The
  * same picture always lands on the same asset (content-addressed).
  */
-export async function storePicture(url: string): Promise<string> {
+export async function storePicture(url: string, copy?: CopyFor): Promise<string> {
   if (isAssetUrl(url)) return url.split("?")[0];
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(`Could not read that picture (HTTP ${res.status}).`);
-  return uploadImage(await res.blob());
+  return uploadImage(await res.blob(), copy);
 }

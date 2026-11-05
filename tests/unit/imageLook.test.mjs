@@ -88,3 +88,44 @@ test("the likeness switch: your own photo workflow with an image input first, el
   assert.equal(settingsForPerson(base, { ...who, image: { tags: "grey coat" } }, [bundled]).workflow, "w", "switch off: the usual workflow");
   assert.equal(settingsForPerson(base, undefined, [bundled]), base);
 });
+
+test("an unfilled picture slot that only feeds an optional reference input is taken out", async () => {
+  const { injectReferences } = await import("../../lib/media/imageLook.ts");
+  const wf = {
+    "1": { class_type: "LoadImage", inputs: { image: "example.png" } },
+    "2": { class_type: "LoadImage", inputs: { image: "example.png" } },
+    "3": { class_type: "LoadImage", inputs: { image: "example.png" } },
+    "5": { class_type: "ImageScaleToTotalPixels", inputs: { image: ["1", 0] } },
+    "11": { class_type: "MiniMaxH3ReferenceToVideo", inputs: { prompt: "", "ref_images.ref_image_0": ["1", 0], "ref_images.ref_image_1": ["2", 0], "ref_images.ref_image_2": ["3", 0] } },
+    "20": { class_type: "LoadImage", inputs: { image: "face.png" } },
+    "21": { class_type: "IPAdapterFaceID", inputs: { image: ["20", 0] } },
+  };
+  const n = await injectReferences(wf, ["1.inputs.image", "2.inputs.image", "3.inputs.image", "20.inputs.image"], ["/api/assets/a", "/api/assets/b"], async (u) => `up-${u.slice(-1)}.png`);
+  assert.equal(n, 2);
+  assert.deepEqual(Object.keys(wf["11"].inputs), ["prompt", "ref_images.ref_image_0", "ref_images.ref_image_1"], "H3 is not told about a third person");
+  assert.equal(wf["3"], undefined, "the empty slot is gone, so ComfyUI does not look for example.png");
+  assert.equal(wf["1"].inputs.image, "up-a.png");
+  assert.equal(wf["20"].inputs.image, "face.png", "a slot feeding a required input keeps the workflow's own picture");
+});
+
+test("a clip's people: the sender first, each once, only with a picture; labels follow H3's reference format", async () => {
+  const { clipPeople, referenceLines, isReferenceWorkflow } = await import("../../lib/media/clipRefs.ts");
+  const people = clipPeople([
+    { name: "Ronan", picture: "/api/assets/r" },
+    { name: "Kira", picture: "/api/assets/k" },
+    { name: "Fenna" },
+    { name: "Ronan", picture: "/api/assets/r" },
+    { name: "Ash", picture: "/api/assets/a" },
+    { name: "Bo", picture: "/api/assets/b" },
+  ]);
+  assert.deepEqual(people.map((p) => p.name), ["Ronan", "Kira", "Ash"], "no picture, no reference; nobody twice; three at most beside the photo");
+  const r = referenceLines(people);
+  assert.match(r.subjects, /^<Picture 1> is the first frame of \[Shot 1\]/);
+  assert.match(r.subjects, /<Subject 1> is Ronan, .*<Picture 2>/);
+  assert.match(r.subjects, /<Subject 3> is Ash, .*<Picture 4>/);
+  assert.equal(r.retention.split("\n").length, 4);
+  assert.equal(r.names, "Ronan (<Subject 1>), Kira (<Subject 2>), Ash (<Subject 3>)");
+  assert.equal(referenceLines([]).names, "the people in the photo");
+  assert.ok(isReferenceWorkflow(["CLIPLoader", "MiniMaxH3ReferenceToVideo"]));
+  assert.ok(!isReferenceWorkflow(["MiniMaxH3ImageToVideo"]));
+});

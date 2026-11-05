@@ -5,6 +5,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useFableStore } from "@/lib/store";
+import { callLength } from "@/lib/chat/channel";
 import { useUiStore } from "@/lib/store/ui";
 import { branchChat } from "@/lib/chat/branch";
 import { regenerateLastReply } from "@/lib/chat/generation";
@@ -13,21 +14,7 @@ import { ImageCard } from "@/components/chat/ImageCard";
 import { Attachments } from "@/components/chat/Attachments";
 import { formatTime } from "@/lib/utils";
 import type { Message, MemoryTrace } from "@/lib/types";
-import {
-  Copy,
-  Pencil,
-  RefreshCw,
-  ThumbsUp,
-  ThumbsDown,
-  Check,
-  X,
-  ImagePlus,
-  Brain,
-  GitBranch,
-  Clock,
-  Loader2,
-  Smartphone,
-} from "lucide-react";
+import { Copy, Pencil, RefreshCw, ThumbsUp, ThumbsDown, Check, X, ImagePlus, Brain, GitBranch, Clock, Loader2, Phone, PhoneMissed, PhoneOff } from "lucide-react";
 
 interface MessageItemProps {
   message: Message;
@@ -58,6 +45,7 @@ export function MessageItem({ message }: MessageItemProps) {
 
   const isUser = message.role === "user";
   const isText = message.channel === "text";
+  const isCall = message.channel === "call";
   const openCharacterEditor = useUiStore((s) => s.openCharacterEditor);
   const character = characters.find((c) => c.id === message.characterId);
   // The user speaks AS their persona — show its name and portrait, not "You"
@@ -104,6 +92,27 @@ export function MessageItem({ message }: MessageItemProps) {
     return <ImageCard message={message} />;
   }
 
+  // A call starting, ending or being missed: one centred line, like a phone's log
+  if (message.callEvent) {
+    const e = message.callEvent;
+    const who = character?.name ?? "them";
+    const label = e.kind === "started" ? (isUser ? `You called ${who}` : `${who} called`)
+      : e.kind === "ended" ? `Call · ${callLength(e.seconds ?? 0)}`
+      : e.kind === "missed" ? (isUser ? `${who} didn't pick up` : `Missed call from ${who}`)
+      : `You declined ${who}'s call`;
+    const Icon = e.kind === "missed" || e.kind === "declined" ? PhoneMissed : e.kind === "ended" ? PhoneOff : Phone;
+    return (
+      <div role="note" className="flex items-center justify-center gap-1.5 py-2 text-[11px] text-[var(--muted-fg)]">
+        <Icon className={`h-3.5 w-3.5 ${e.kind === "missed" || e.kind === "declined" ? "text-red-500" : "text-green-500"}`} />
+        <span className="font-medium">{label}</span>
+        <span>· {formatTime(message.timestamp)}</span>
+      </div>
+    );
+  }
+
+  // Texts read like a phone: no name over each bubble, "Delivered" under your newest
+  const lastUserText = isText && isUser && chat?.messages.findLast((m) => m.role === "user")?.id === message.id;
+
   return (
     <div
       className={`group flex gap-3 px-4 py-3 hover:bg-[var(--muted)] transition-colors rounded-xl mx-2 ${
@@ -114,7 +123,7 @@ export function MessageItem({ message }: MessageItemProps) {
 
       <div className={`flex-1 min-w-0 space-y-1 ${isUser ? "items-end" : "items-start"} flex flex-col`}>
         <div className="flex items-baseline gap-2">
-          <span className="text-xs font-semibold text-[var(--foreground)]">{displayName}</span>
+          {!isText && <span className="text-xs font-semibold text-[var(--foreground)]">{displayName}</span>}
           <span className="text-[10px] text-[var(--muted-fg)]">{formatTime(message.timestamp)}</span>
         </div>
 
@@ -145,16 +154,19 @@ export function MessageItem({ message }: MessageItemProps) {
           </div>
         ) : (
         <>
-        {isText && (
-          <span className="inline-flex items-center gap-1 text-[10px] text-[var(--muted-fg)]" title="Sent as a text message in the story">
-            <Smartphone className="h-3 w-3" />text
+        {isCall && (
+          <span className="inline-flex items-center gap-1 text-[10px] text-[var(--muted-fg)]" title="Said on a phone call in the story">
+            <Phone className="h-3 w-3 text-green-500" />on the call
           </span>
         )}
         {(message.content.length > 0 || !message.attachments?.length) && (
         <div
           className={`prose-chat text-sm text-[var(--foreground)] max-w-2xl ${
             isText
-              ? `px-3 py-2 rounded-2xl ${isUser ? "bg-[var(--purple)] text-white rounded-br-sm" : "bg-[var(--muted)] rounded-bl-sm"}`
+              // A phone's texts: yours green on the right, theirs gray on the left, each with a tail corner
+              ? `px-3.5 py-2 rounded-[20px] ${isUser
+                ? "bg-[#34C759] text-white rounded-br-[6px] [&_*]:text-white"
+                : "bg-[#E9E9EB] text-black rounded-bl-[6px] dark:bg-[#3A3A3C] dark:text-white"}`
               : isUser
               ? "bg-[var(--purple-light)] text-[var(--purple-fg)] px-3 py-2 rounded-2xl rounded-tr-sm"
               : ""
@@ -163,9 +175,9 @@ export function MessageItem({ message }: MessageItemProps) {
           {message.content.length === 0 ? (
             /* Typing / streaming indicator */
             <span className="flex items-center gap-1 text-[var(--muted-fg)]">
-              <span className="h-2 w-2 rounded-full bg-[var(--purple)] opacity-60 animate-bounce [animation-delay:-0.3s]" />
-              <span className="h-2 w-2 rounded-full bg-[var(--purple)] opacity-60 animate-bounce [animation-delay:-0.15s]" />
-              <span className="h-2 w-2 rounded-full bg-[var(--purple)] opacity-60 animate-bounce" />
+              <span className={`h-2 w-2 rounded-full opacity-60 animate-bounce [animation-delay:-0.3s] ${isText ? "bg-gray-500" : "bg-[var(--purple)]"}`} />
+              <span className={`h-2 w-2 rounded-full opacity-60 animate-bounce [animation-delay:-0.15s] ${isText ? "bg-gray-500" : "bg-[var(--purple)]"}`} />
+              <span className={`h-2 w-2 rounded-full opacity-60 animate-bounce ${isText ? "bg-gray-500" : "bg-[var(--purple)]"}`} />
             </span>
           ) : (
             message.content.split("\n\n").map((para, i) => (
@@ -175,6 +187,7 @@ export function MessageItem({ message }: MessageItemProps) {
         </div>
         )}
         {message.attachments && message.attachments.length > 0 && <Attachments message={message} />}
+        {lastUserText && <span className="text-[10px] font-medium text-[var(--muted-fg)]">Delivered</span>}
         </>
         )}
 

@@ -153,7 +153,7 @@ export interface AssembledPrompt {
 }
 
 /** A message the character sends on their own (lib/outreach/runner.ts decides when) */
-export interface OutreachRequest { trigger: string; reason: string; silence: string; userNote?: string }
+export interface OutreachRequest { trigger: string; reason: string; silence: string; userNote?: string; /** A call they made and you answered (default: a text) */ channel?: "text" | "call" }
 
 export async function assemblePrompt(chatId: string, speakerCharId: string | undefined, outreach?: OutreachRequest): Promise<AssembledPrompt | null> {
   const store = useFableStore.getState();
@@ -208,9 +208,10 @@ export async function assemblePrompt(chatId: string, speakerCharId: string | und
     });
   }
 
-  // Answering a text: say so, in the user's editable words (Settings → Prompts)
-  if ((replyChannel(chat.messages) === "text" || outreach) && character) {
-    systemPrompt += "\n\n" + renderTemplate(await clientPromptTemplate("chat.text-message"), {
+  // Answering a text, or talking on a call: say so, in the user's editable words (Settings → Prompts)
+  const way = outreach ? outreach.channel ?? "text" : replyChannel(chat.messages);
+  if ((way === "text" || way === "call") && character) {
+    systemPrompt += "\n\n" + renderTemplate(await clientPromptTemplate(way === "call" ? "chat.phone-call" : "chat.text-message"), {
       character_name: character.name, user_label: persona?.name ?? "User",
     });
   }
@@ -258,7 +259,7 @@ export async function assemblePrompt(chatId: string, speakerCharId: string | und
   // "newest is always kept" rule then protects it from being trimmed.
   // Reaching out: the last turn says why they are writing now (editable: Settings → Prompts)
   if (outreach && character) {
-    fullHistory.push({ role: "user", content: renderTemplate(await clientPromptTemplate("chat.outreach"), {
+    fullHistory.push({ role: "user", content: renderTemplate(await clientPromptTemplate(outreach.channel === "call" ? "chat.call-outreach" : "chat.outreach"), {
       character_name: character.name, user_label: persona?.name ?? "User",
       silence: outreach.silence, reason: outreach.reason,
       user_note: outreach.userNote ? ` (they said: ${outreach.userNote})` : "",
@@ -355,8 +356,8 @@ export async function generateAssistantReply(chatId: string, speakerId?: string,
       role:        "assistant",
       content:     prefill,
       characterId: character?.id,
-      // Reaching out happens apart, so it is always a text, and it says why
-      ...(channel === "text" || outreach ? { channel: "text" as const } : {}),
+      // Reaching out happens apart: a text, or a call they made; it says why
+      ...(outreach ? { channel: outreach.channel ?? ("text" as const) } : channel !== "scene" ? { channel } : {}),
       ...(outreach ? { outreach: { trigger: outreach.trigger, reason: outreach.reason } } : {}),
     });
     // Provenance: record exactly which memory was injected into this reply's

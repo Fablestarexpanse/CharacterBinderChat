@@ -1,0 +1,64 @@
+{
+  "1": {
+    "inputs": { "unet_name": "moss\\moss_image_sft_deband_plus_int8_convrot.safetensors", "weight_dtype": "default" },
+    "class_type": "UNETLoader",
+    "_meta": { "title": "MOSS-Image diffusion model (SFT DeBand)" }
+  },
+  "2": {
+    "inputs": { "clip_name": "qwen35ForMossImage_v10_int8.safetensors", "type": "moss_image", "device": "default" },
+    "class_type": "CLIPLoader",
+    "_meta": { "title": "Qwen3.5 text encoder (type = moss_image)" }
+  },
+  "3": {
+    "inputs": { "vae_name": "flux2-vae.safetensors" },
+    "class_type": "VAELoader",
+    "_meta": { "title": "Flux2 VAE" }
+  },
+  "4": {
+    "inputs": { "text": "", "clip": ["2", 0] },
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "Positive prompt" }
+  },
+  "5": {
+    "inputs": { "text": "jpeg artifact, CGI, cartoon, anime, painting, illustration, watermark, text, deformed anatomy, extra fingers", "clip": ["2", 0] },
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "Negative prompt" }
+  },
+  "6": {
+    "inputs": { "width": 1152, "height": 1728, "batch_size": 1 },
+    "class_type": "EmptyFlux2LatentImage",
+    "_meta": { "title": "Size (2 MP or more: hands fuse at 1 MP)" }
+  },
+  "7": {
+    "inputs": { "seed": 0, "steps": 30, "cfg": 3, "sampler_name": "dpmpp_2m_sde", "scheduler": "beta", "denoise": 1, "model": ["1", 0], "positive": ["4", 0], "negative": ["5", 0], "latent_image": ["6", 0] },
+    "class_type": "KSampler",
+    "_meta": { "title": "Sampler (30 steps, CFG 3, dpmpp_2m_sde/beta)" }
+  },
+  "8": {
+    "inputs": { "samples": ["7", 0], "vae": ["3", 0] },
+    "class_type": "VAEDecode",
+    "_meta": { "title": "Decode" }
+  },
+  "9": {
+    "inputs": { "filename_prefix": "FableChat/moss", "images": ["8", 0] },
+    "class_type": "SaveImage",
+    "_meta": { "title": "Save" }
+  },
+  "_meta": {
+    "title": "MOSS photo",
+    "description": "MOSS-Image (SFT DeBand) text to image: slower than Krea2, stronger on text in the picture and busy scenes. Keeps its own tuned sampling (30 steps, CFG 3, dpmpp_2m_sde/beta).",
+    "fablechat": {
+      "purpose": "photo",
+      "ownSampling": true,
+      "promptNode": "4.inputs.text",
+      "negativePromptNode": "5.inputs.text",
+      "seedNode": "7.inputs.seed",
+      "stepsNode": "7.inputs.steps",
+      "cfgNode": "7.inputs.cfg",
+      "widthNode": "6.inputs.width",
+      "heightNode": "6.inputs.height",
+      "loraSyntaxNode": null,
+      "referenceImageNodes": []
+    }
+  }
+}

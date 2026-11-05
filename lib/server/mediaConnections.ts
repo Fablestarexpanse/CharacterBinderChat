@@ -7,6 +7,7 @@
 import path from "node:path";
 import { getStore } from "@/lib/db";
 import { decryptSecret, encryptSecret, loadKey } from "@/lib/server/secrets";
+import { testVideoClip } from "@/lib/server/videoTest";
 import {
   cleanDefaults, providerInfo, validateConnection,
   type MediaConnection, type MediaConnectionView, type MediaDefaults,
@@ -98,7 +99,7 @@ export interface TestOutcome {
   /** One line for the UI: what worked, or what the service said was wrong */
   label: string;
   /** A real sample to show: an image or a playable clip */
-  sample?: { type: "image" | "audio"; dataUrl: string };
+  sample?: { type: "image" | "audio" | "video"; dataUrl: string };
 }
 
 const TEST_PROMPT = "A small red apple on a wooden table, soft window light";
@@ -146,10 +147,14 @@ export async function testConnection(c: MediaConnection, key: string | null): Pr
         const gpu = s.devices?.[0];
         const vram = gpu?.vram_total ? ` · ${(gpu.vram_total / 2 ** 30).toFixed(0)} GB` : "";
         const version = s.system?.comfyui_version ? ` ${s.system.comfyui_version}` : "";
+        // For video, answering is not enough: make a real short clip with your video workflow
+        if (c.kind === "video") {
+          const clip = await testVideoClip(c.baseUrl);
+          return clip.ok ? { ...clip, label: `Connected to ComfyUI${version}. ${clip.label}` } : clip;
+        }
         return {
           ok: true,
-          label: `Connected to ComfyUI${version}${gpu?.name ? ` · ${gpuName(gpu.name)}${vram}` : ""}.` +
-            (c.kind === "video" ? " Choose a video workflow on the Workflows screen to make clips." : ""),
+          label: `Connected to ComfyUI${version}${gpu?.name ? ` · ${gpuName(gpu.name)}${vram}` : ""}.`,
         };
       }
       case "openai-image": {

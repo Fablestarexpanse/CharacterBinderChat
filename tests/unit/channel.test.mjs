@@ -24,3 +24,15 @@ test("history marks texts and describes ready attachments only", () => {
   assert.equal(hasHistoryContent({ content: "", attachments: [{ ...photo, status: "pending" }] }), false);
   assert.equal(hasHistoryContent({ content: "", attachments: [photo] }), true);
 });
+
+test("phone calls: lines said on a call and the call's start, end and misses reach the model", async () => {
+  const { callNote, callLength } = await import("../../lib/chat/channel.ts");
+  assert.equal(historyContent({ content: "Hey. You up?", channel: "call" }), "(on the phone) Hey. You up?");
+  assert.equal(historyContent({ content: "", channel: "call", callEvent: { kind: "started" } }), "[phone call starts]");
+  assert.equal(historyContent({ content: "", callEvent: { kind: "ended", seconds: 151 } }), "[phone call ends after 3 min]");
+  assert.equal(callNote({ kind: "missed" }), "[missed phone call: no answer]");
+  assert.equal(callNote({ kind: "declined" }), "[phone call declined]");
+  assert.ok(hasHistoryContent({ content: "", callEvent: { kind: "missed" } }), "a missed call is part of the story even with no words");
+  assert.equal(replyChannel([{ role: "user", channel: "call", content: "" }]), "call", "a call you started is answered on the call");
+  assert.deepEqual([callLength(0), callLength(42), callLength(151), callLength(725)], ["0:00", "0:42", "2:31", "12:05"]);
+});

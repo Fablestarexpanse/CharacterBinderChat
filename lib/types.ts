@@ -57,6 +57,8 @@ export interface Scenario {
   scenario: string;
   /** Opening assistant message; falls back to the character's own when empty */
   firstMessage?: string;
+  /** Banner picture behind the scenario's header (asset URL; best at 770 × 110). Not a card field, so not exported */
+  banner?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -77,7 +79,15 @@ export interface Persona {
 }
 
 /** How a message was sent in the story: in person (the default) or by phone */
-export type MessageChannel = "scene" | "text";
+/** In person (the default), a phone text, or spoken on a phone call */
+export type MessageChannel = "scene" | "text" | "call";
+
+/** A line in the chat that records a phone call rather than saying something */
+export interface CallEvent {
+  kind: "started" | "ended" | "missed" | "declined";
+  /** How long it lasted ("ended" only) */
+  seconds?: number;
+}
 
 /** A photo, clip or voice note carried by a message, stored as an asset once it is ready */
 export interface Attachment {
@@ -97,6 +107,10 @@ export interface Attachment {
   jobId?: string;
   /** Waiting for you to approve (or change) the prompt before anything is generated */
   awaitingReview?: boolean;
+  /** A picture you sent (rather than one the character made); `prompt` is then what it shows, as read by the picture reader */
+  fromUser?: boolean;
+  /** A clip: the still it animates (asset URL) */
+  from?: string;
   /** Earlier takes (asset URLs, newest first) kept when it was redone */
   previous?: Array<{ url: string; prompt?: string }>;
 }
@@ -109,6 +123,8 @@ export interface Message {
   characterId?: string;
   /** Omitted for in-person messages, so older chats read unchanged */
   channel?: MessageChannel;
+  /** This message records a phone call starting, ending or being missed (its content is empty) */
+  callEvent?: CallEvent;
   /** Sent by the character on their own: what prompted it (shown under the message) */
   outreach?: { trigger: string; reason: string };
   attachments?: Attachment[];
@@ -205,6 +221,8 @@ export interface Lorebook {
   id: string;
   name: string;
   description?: string;
+  /** Banner picture behind the book's header (asset URL; best at 770 × 110). Not a card field, so not exported */
+  banner?: string;
   entries: LoreEntry[];
   createdAt: string;
 }
@@ -238,6 +256,8 @@ export interface ImageGenerationSettings {
   loras: LoraEntry[];
   /** Pictures (asset URLs) for the workflow's reference-image inputs, primary first */
   referenceImages?: string[];
+  /** Video workflows: frames to make (H3 runs at 24 fps and snaps up to its own grid) */
+  videoLength?: number;
 }
 
 export interface ImageJob {
@@ -248,6 +268,8 @@ export interface ImageJob {
   settings: ImageGenerationSettings;
   outputUrls: string[];
   promptId?: string; // ComfyUI prompt ID
+  /** A clip rather than a still: kept out of Image Studio's recent pictures */
+  kind?: "video";
   createdAt: string;
   completedAt?: string;
   error?: string;
@@ -281,6 +303,8 @@ export interface ProviderSettings {
   lmstudio: { baseUrl: string; enabled: boolean };
   openrouter: { apiKey: string; enabled: boolean };
   comfyui: { baseUrl: string; enabled: boolean };
+  /** The model that reads pictures you send (one that can see images); absent until you choose one */
+  vision?: { provider: ProviderType; model: string };
 }
 
 export interface ProviderStatus {

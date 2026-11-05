@@ -30,6 +30,13 @@ const server = http.createServer((req, res) => {
     if (req.url === "/v1/images/generations") return res.end(JSON.stringify({ data: [{ b64_json: Buffer.from("PNGDATA").toString("base64") }] }));
     if (req.url === "/v1/audio/speech" || req.url.startsWith("/v1/text-to-speech/")) { res.setHeader("Content-Type", "audio/mpeg"); return res.end(Buffer.alloc(2048, 7)); }
     if (req.url === "/v1/audio/transcriptions") return res.end(JSON.stringify({ text: "" }));
+    if (req.url === "/upload/image") return res.end(JSON.stringify({ name: "fablechat-video-test.png", subfolder: "" }));
+    if (req.url === "/prompt") {
+      if (mode === "nomodels") { res.statusCode = 400; return res.end(JSON.stringify({ error: { message: "Prompt outputs failed validation" }, node_errors: { "4": { errors: [{ type: "value_not_in_list", details: "unet_name: 'minimax_h3_fl2va_pruned_int8_convrot.safetensors' not in ['a.safetensors']" }] } } })); }
+      return res.end(JSON.stringify({ prompt_id: "vt1" }));
+    }
+    if (req.url === "/history/vt1") return res.end(JSON.stringify({ vt1: { status: { completed: true, status_str: "success" }, outputs: { "18": { images: [{ filename: "h3_00009_.mp4", subfolder: "FableChat", type: "output" }], animated: [true] } } } }));
+    if (req.url.startsWith("/view?")) { res.setHeader("Content-Type", "video/mp4"); return res.end(Buffer.from([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d])); }
     res.statusCode = 404; res.end("{}");
   });
 });
@@ -119,4 +126,38 @@ test("failures say what the service said, or that nothing is listening", async (
   assert.match(dead.label, /Nothing is listening at/);
   assert.match((await M.testConnection(conn({ baseUrl: "http://127.0.0.1:9" }), null)).label, /refuses to use for safety/);
   mode = "ok";
+});
+
+
+test("a video connection's Test makes a real short clip with the first-frame workflow, and names missing models", async () => {
+  mode = "ok"; seen.length = 0;
+  const r = await M.testConnection(conn({ kind: "video" }), null);
+  assert.ok(r.ok, r.label);
+  assert.equal(r.sample.type, "video");
+  assert.match(r.sample.dataUrl, /^data:video\/mp4;base64,/);
+  assert.match(r.label, /2\.3-second test clip with "h3-image-to-video"/);
+  const upload = seen.find((x) => x.url === "/upload/image");
+  assert.ok(upload.body.includes(Buffer.from([0x89, 0x50, 0x4e, 0x47])), "a real PNG test frame is uploaded");
+  const sent = JSON.parse(seen.find((x) => x.url === "/prompt").body).prompt;
+  assert.equal(sent["1"].inputs.image, "fablechat-video-test.png", "the frame goes into the first-frame input");
+  assert.equal(sent["9"].inputs.length, 56, "a short clip, on H3's frame grid");
+  assert.match(sent["9"].inputs.prompt, /camera slowly pushes in/);
+  assert.equal(sent._meta, undefined, "FableChat's own metadata is not sent to ComfyUI");
+
+  mode = "nomodels";
+  const missing = await M.testConnection(conn({ kind: "video" }), null);
+  assert.equal(missing.ok, false);
+  assert.match(missing.label, /needs model files it does not have: minimax_h3_fl2va_pruned_int8_convrot\.safetensors/);
+  mode = "ok";
+});
+
+test("the test frame is a real PNG and the test prefers a first-frame workflow over a reference one", async () => {
+  const { testFrame, testWorkflow } = await import("../../lib/server/videoTest.ts");
+  const png = testFrame(64);
+  assert.deepEqual([...png.slice(0, 4)], [0x89, 0x50, 0x4e, 0x47]);
+  const w = (slug, source, classTypes) => ({ slug, source, purpose: "video", controls: ["prompt", "referenceImage"], classTypes });
+  assert.equal(testWorkflow([w("h3-reference-clip", "bundled", ["MiniMaxH3ReferenceToVideo"]), w("h3-image-to-video", "bundled", ["MiniMaxH3ImageToVideo"])]), "h3-image-to-video");
+  assert.equal(testWorkflow([w("h3-image-to-video", "bundled", ["MiniMaxH3ImageToVideo"]), w("my-wan", "imported", ["WanImageToVideo"])]), "my-wan", "yours first");
+  assert.equal(testWorkflow([w("h3-reference-clip", "bundled", ["MiniMaxH3ReferenceToVideo"])]), "h3-reference-clip", "a reference workflow when it is the only one");
+  assert.equal(testWorkflow([]), null);
 });

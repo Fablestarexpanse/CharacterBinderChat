@@ -28,6 +28,12 @@ export function ContactFields({ value, onChange, who }: { value: CharacterContac
         <span><span className="block text-xs font-medium">May contact you</span><span className="block text-[11px] text-[var(--muted-fg)]">{who} may text you first after you have been quiet a while, in your latest chat with them, while a FableChat tab is open.</span></span>
       </label>
       {value.canContact && (
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input type="checkbox" checked={!!value.calls} onChange={(e) => set({ calls: e.target.checked })} aria-label="May call you" className="mt-0.5 h-4 w-4 accent-[var(--purple)] cursor-pointer" />
+          <span><span className="block text-xs font-medium">May call you</span><span className="block text-[11px] text-[var(--muted-fg)]">For what would not wait for a text (making up after trust broke, or a long silence), {who} phones instead: your screen rings and you answer or decline.</span></span>
+        </label>
+      )}
+      {value.canContact && (
         <div className="space-y-3 border-l-2 border-[var(--border)] pl-4">
           <label className="flex flex-wrap items-center gap-2 text-xs">
             <span className="font-medium">When</span>

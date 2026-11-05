@@ -57,11 +57,12 @@ export function summarise(slug: string, json: ApiWorkflow, source: "bundled" | "
     nodeCount: nodes.length,
     purpose: mapping.purpose ?? null,
     controls: Object.entries(mapping)
-      .filter(([k, v]) => k !== "purpose" && (Array.isArray(v) ? v.length > 0 : !!v))
+      .filter(([k, v]) => k !== "purpose" && k !== "ownSampling" && (Array.isArray(v) ? v.length > 0 : !!v))
       .map(([k]) => k.replace(/Nodes?$/, "")),
     classTypes: [...new Set(nodes.map(([, v]) => (v as Node).class_type).filter((c): c is string => !!c))].sort(),
     steps: typeof sampler?.inputs?.steps === "number" ? sampler.inputs.steps as number : null,
     cfg: typeof sampler?.inputs?.cfg === "number" ? sampler.inputs.cfg as number : null,
+    ...(mapping.ownSampling === true ? { ownSampling: true } : {}),
   };
 }
 
@@ -131,6 +132,7 @@ function cleanMapping(m: WorkflowMapping): WorkflowMapping {
   const out: WorkflowMapping = {};
   for (const [k, v] of Object.entries(m ?? {})) {
     if (k === "purpose") { if (typeof v === "string" && PURPOSES.has(v)) out.purpose = v as WorkflowMapping["purpose"]; continue; }
+    if (k === "ownSampling") { if (v === true) out.ownSampling = true; continue; }
     if (k === "referenceImageNodes") { if (Array.isArray(v)) out.referenceImageNodes = v.filter((p): p is string => typeof p === "string" && PATH.test(p)).slice(0, 4); continue; }
     if (/Node$/.test(k)) (out as Record<string, unknown>)[k] = typeof v === "string" && PATH.test(v) ? v : null;
   }

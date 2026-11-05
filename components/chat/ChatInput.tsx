@@ -19,7 +19,10 @@ import {
   Wand2,
   Smartphone,
   Camera,
+  Paperclip,
+  X,
 } from "lucide-react";
+import { sendPicture } from "@/lib/chat/userPictures";
 import { askForPhoto, contactSettings } from "@/lib/chat/photos";
 import { useUiStore } from "@/lib/store/ui";
 
@@ -37,6 +40,7 @@ export function ChatInput() {
   // "Ask for a photo": a small row above the box. null = closed; the string is what you asked for.
   const [photoAsk, setPhotoAsk] = useState<{ open: boolean; what: string; allowed: boolean | null }>({ open: false, what: "", allowed: null });
   const photoFrom = characters.find((c) => c.id === (nextSpeaker ?? chat?.characterId));
+  const activeCharacterName = photoFrom?.name;
   const openPhotoAsk = async () => {
     if (photoAsk.open) { setPhotoAsk({ open: false, what: "", allowed: null }); return; }
     setPhotoAsk({ open: true, what: "", allowed: null });
@@ -108,10 +112,40 @@ export function ChatInput() {
 
   // ── Keyboard / resize ─────────────────────────────────────────────────────
 
+  // ── A picture you send ────────────────────────────────────────────────────
+  // Picked, pasted or dropped: shown above the box until you send (with or
+  // without words) or take it off. It is read by the picture reader before
+  // the character answers (lib/chat/userPictures.ts).
+  const [picture, setPicture] = useState<{ file: File; preview: string } | null>(null);
+  const [pictureError, setPictureError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const takePicture = (file: File | undefined | null) => {
+    if (!file || !file.type.startsWith("image/")) return;
+    if (picture) URL.revokeObjectURL(picture.preview);
+    setPicture({ file, preview: URL.createObjectURL(file) });
+    setPictureError(null);
+  };
+  const dropPicture = () => {
+    if (picture) URL.revokeObjectURL(picture.preview);
+    setPicture(null);
+  };
+  const sendWithPicture = async () => {
+    if (!picture || !activeChatId || isGenerating || !activePersona) return;
+    const text = inputValue.trim();
+    const file = picture.file;
+    dropPicture();
+    setInputValue("");
+    try {
+      await sendPicture(activeChatId, file, text, textMode ? "text" : "scene", nextSpeaker ?? undefined);
+    } catch (e) {
+      setPictureError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      if (picture) void sendWithPicture(); else handleSend();
     }
   };
 
@@ -167,7 +201,7 @@ export function ChatInput() {
             : !photoAsk.allowed ? (
               <>
                 <span className="text-xs text-[var(--muted-fg)] flex-1">Photos are off. Turn on Contact &amp; media in Settings to ask for one.</span>
-                <Button variant="outline" size="sm" onClick={() => { setPhotoAsk({ open: false, what: "", allowed: null }); setActiveSection("settings"); }}>Open Settings</Button>
+                <Button variant="outline" size="sm" onClick={() => { setPhotoAsk({ open: false, what: "", allowed: null }); useUiStore.getState().setSettingsTab("contact"); setActiveSection("settings"); }}>Open Settings</Button>
               </>
             ) : (
               <>
@@ -241,14 +275,36 @@ export function ChatInput() {
       )}
 
       <div
+        onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
+        onDrop={(e) => {
+          const f = [...e.dataTransfer.files].find((x) => x.type.startsWith("image/"));
+          // Only a picture dropped on the box is taken here; card files go to the window-wide importer
+          if (f) { e.preventDefault(); e.stopPropagation(); takePicture(f); }
+        }}
         className={`flex flex-col gap-2 rounded-2xl border bg-[var(--card)] p-2 transition-colors ${
           isImageCommand ? "border-[var(--purple)]" : "border-[var(--border)]"
         } focus-within:border-[var(--purple)] focus-within:ring-1 focus-within:ring-[var(--purple)]`}
       >
+        {picture && (
+          <div className="flex items-center gap-2 px-1">
+            <div className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element -- a local preview of the file you picked */}
+              <img src={picture.preview} alt="Picture to send" className="h-16 w-16 rounded-lg border border-[var(--border)] object-cover" />
+              <button onClick={dropPicture} aria-label="Remove picture" title="Remove"
+                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--card)] cursor-pointer"><X className="h-3 w-3" /></button>
+            </div>
+            <span className="text-[11px] text-[var(--muted-fg)]">Add words if you like, then send. {activeCharacterName ?? "They"} will see it.</span>
+          </div>
+        )}
+        {pictureError && <div role="alert" className="px-1 text-[11px] text-red-600">The picture was not sent: {pictureError}</div>}
         <textarea
           ref={textareaRef}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
+          onPaste={(e) => {
+            const f = [...e.clipboardData.files].find((x) => x.type.startsWith("image/"));
+            if (f) { e.preventDefault(); takePicture(f); }
+          }}
           onKeyDown={handleKeyDown}
           onInput={handleInput}
           placeholder={
@@ -272,6 +328,18 @@ export function ChatInput() {
               onClick={() => setInputValue("/image ")}
             >
               <ImageIcon className="h-3.5 w-3.5" />
+            </Button>
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" aria-label="Picture to send"
+              onChange={(e) => { takePicture(e.target.files?.[0]); e.target.value = ""; }} />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              title="Send a picture (or paste or drop one in the box)"
+              aria-label="Send a picture"
+              onClick={() => fileRef.current?.click()}
+            >
+              <Paperclip className="h-3.5 w-3.5" />
             </Button>
             <Button
               variant="ghost"
@@ -309,8 +377,8 @@ export function ChatInput() {
             variant="purple"
             size="icon"
             className="h-8 w-8 rounded-xl"
-            onClick={isGenerating ? stopGeneration : handleSend}
-            disabled={!isGenerating && !inputValue.trim()}
+            onClick={isGenerating ? stopGeneration : picture ? () => void sendWithPicture() : handleSend}
+            disabled={!isGenerating && !inputValue.trim() && !picture}
             title={isGenerating ? "Stop generating" : "Send (Enter)"}
           >
             {isGenerating

@@ -75,16 +75,19 @@ npm run dev
 | **Core Memory** | Mood (valence / arousal / dominance), relationship stats, commitments, emotional events, internal thoughts and a narrative summary. |
 | **Knowledge graph** | Entities, facts with supersession and semantic de-duplication, relationship stats (affection / trust / desire / connection), commitments, episodic scene cards, reflections, running jokes and nicknames, and a story clock. Retrieval uses local Ollama embeddings when available and falls back to lexical ranking. |
 | **Emotional dynamics** | Stats move non-linearly: headroom near the extremes, loss aversion on drops in trust and affection, blended mood, and post-rupture inertia, so a betrayal heals slowly and stays in the prompt. |
-| **Lorebooks & scenarios** | Keyword-triggered world lore with priorities, always-on entries and a token budget. Scenarios are reusable scene setups with their own opening message. |
+| **Lorebooks & scenarios** | Keyword-triggered world lore with priorities, always-on entries and a token budget. Scenarios are reusable scene setups with their own opening message. Either can have a 770 × 110 banner picture, shown behind its header and on its Library card. |
 | **Inspector** | A side panel with Character · Core Mem · Memory (Relationships, Facts with history, Entities with duplicate merge) · Lore · Web (the story as a mind map) · Images. All six tabs are visible at once. Every reply has a 🧠 view of the memory that shaped it. |
 | **Memory curation** | Edit a fact, **pin** it (always in the prompt) or **lock** it (extraction can't replace it). Editing locks automatically. |
 | **Peek Prompt** | The eye icon shows exactly what the model receives: the last prompt sent, or a live preview built by the same code. |
 | **Branching** | "Branch from here" on any message copies the chat up to that point together with the memory it had *then*. Branches from newer messages are exact; older ones are flagged approximate. |
 | **Agents (MCP)** | Claude Code, Claude Desktop or any MCP client can create and edit cards, portraits included. Changes appear in open tabs within seconds, with **Undo**. |
 | **Backup & restore** | One file holds everything, memory included. Restore shows what a file contains first and keeps the database it replaces. |
-| **Image generation** | `/image <prompt>` renders through your local ComfyUI, proxied by the server. Workflow templates live in `workflows/*.json`. |
+| **Image generation** | `/image <prompt>` renders through your local ComfyUI, proxied by the server. Bundled workflows include **Krea2 photo** and **MOSS photo**, which keep their own tuned sampling; import your own ComfyUI "Export (API)" files on the Workflows screen. |
+| **Texts and calls** (opt-in) | Characters you allow can text you first, send photos, or **phone** you about what would not wait for a text. Texts read like a phone's (your bubbles green, theirs gray). An incoming call or text shows on its chat in Recent Chats (Answer / Decline right there, a red count for unread texts), with a ringtone and chime you can turn off. The call screen shows their lines as captions while you type back. |
+| **Pictures you send** | Attach, paste or drop a picture into a message. A **picture reader** (any model that can see images, on LM Studio, Ollama or OpenRouter) describes it once, so every chat model understands it and memory keeps it. |
+| **Photos and clips** | A character's photo can become a ~5 s clip with sound through **MiniMax H3**: everyone in the scene (the character, your persona, others present) is given as a reference so faces hold. Cancel stops the ComfyUI job. Chat photos and clips can also be copied to a folder you choose. |
 | **Model selector** | Every model each provider reports, plus any ID typed by hand (see [Choosing a model](#choosing-a-model)). Per-chat temperature, top-p and max tokens behind the gear icon. |
-| **Appearance** | Light, dark or match system; nine accent colours or any custom one. |
+| **Appearance** | Light, dark or match system; nine accent colours or any custom one. Settings is split into tabs (Appearance, Chat models, Memory, Media, Contact, Prompts, Data & backup). |
 | **Phones and narrow windows** | Below 768 px the sidebar becomes a drawer and the inspector a sheet over the chat. |
 | **Local access control** | Listens on `127.0.0.1` only. Other devices are refused unless you set `FABLE_PASSWORD`; cross-site writes are refused. |
 
@@ -156,6 +159,24 @@ FableChat must be running. Set `FABLE_URL` if it is not on `http://127.0.0.1:300
 started it with one. Every change an agent makes is announced in the open tab and can be undone, deletes included. If
 you edit the same card at the same moment, the agent's version is kept and you are told.
 
+### Texts, calls and pictures
+
+Everything here is **off until you turn it on** in **Settings → Contact**, and each character has its own switches
+(editor → Contact: *May send you photos*, *May contact you*, *May call you*).
+
+- **Text** or **Call** a character from the right-hand panel. Calls show their lines as captions; voice comes with a
+  voice connection (planned).
+- **Send a picture** with the paperclip in the message box (or paste / drop one). Set a **Picture reader** in
+  **Settings → Chat models** first: a model that can see images, for example one in LM Studio with a vision projector
+  (`mmproj`), an Ollama vision model such as `qwen2.5vl:7b`, or an OpenRouter model that accepts images. Without one
+  the picture still sends and you can describe it yourself.
+- **Clips** need ComfyUI with MiniMax H3 (Hugging Face `Comfy-Org/MiniMax-H3`):
+  `minimax_h3_fl2va_pruned_int8_convrot` and `minimax_h3_ref2va_pruned_int8_convrot` (diffusion_models),
+  `qwen3vl_32b_minimax_h3_nvfp4_awq` (text_encoders), `minimax_h3_video_vae_fp16` and `minimax_h3_audio_vae_fp32`
+  (vae), and the turbo LoRAs `minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16` and
+  `minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16` (loras, in a `MiniMax H3` subfolder). If one is missing, the app
+  names it. **Settings → Media → Test** on a video connection makes a real 2-second clip.
+
 ### Using it from another device
 
 By default anything addressed to a hostname other than localhost is refused. To use FableChat from your phone or
@@ -225,7 +246,8 @@ The current plan is [`docs/plan-2026-11.md`](docs/plan-2026-11.md), drawn from t
 - [ ] Context-budget breakdown per prompt section
 - [ ] GPU / VRAM monitoring
 - [ ] Export a chat as a story document
-- [ ] Characters who text you, with photos, video and voice that look like them (opt-in): [`docs/plan-contact-media.md`](docs/plan-contact-media.md)
+- [x] Characters who text and call you, with photos and video clips that look like them (opt-in)
+- [ ] Voice for calls and voice notes, and the rest of [`docs/plan-contact-media.md`](docs/plan-contact-media.md)
 
 ---
 
@@ -239,7 +261,7 @@ npm run dev        # dev server with hot reload
 npm run build      # production build
 npm run lint       # ESLint
 npm run typecheck  # tsc --noEmit
-npm test           # ~450 unit tests (node --test, no server, no API key)
+npm test           # ~525 unit tests (node --test, no server, no API key)
 npm run audit:prod # high/critical advisories in what ships
 npm run eval:gate  # offline check of the extraction gate against recorded soaks
 ```

@@ -15,6 +15,7 @@ import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Clapperboard, Plus, Trash2 } from "lucide-react";
+import { BannerControl, BannerFade, bannerStyle, BANNER_INPUT, BANNER_PILL } from "@/components/ui/banner";
 
 export function ScenariosView() {
   // Opened from the Library: scroll to that scenario
@@ -72,15 +73,18 @@ export function ScenariosView() {
 
         <div className="space-y-6">
           {scenarios.map((sc) => (
-            <Card key={sc.id} id={`card-${sc.id}`}>
-              <CardHeader className="flex items-center gap-3">
-                <Clapperboard className="h-4 w-4 text-[var(--purple-fg)] flex-shrink-0" />
+            <Card key={sc.id} id={`card-${sc.id}`} className={sc.banner ? "overflow-hidden" : undefined}>
+              <CardHeader className={sc.banner ? "relative flex items-center gap-3" : "flex items-center gap-3"} style={sc.banner ? bannerStyle(sc.banner) : undefined}>
+                {sc.banner && <BannerFade />}
+                <Clapperboard className={`relative h-4 w-4 flex-shrink-0 ${sc.banner ? "text-white drop-shadow" : "text-[var(--purple-fg)]"}`} />
                 <Input
                   value={sc.name}
                   onChange={(e) => updateScenario(sc.id, { name: e.target.value })}
                   placeholder="Scenario name"
-                  className="flex-1 font-medium"
+                  className={`relative flex-1 font-medium ${sc.banner ? BANNER_INPUT : ""}`}
                 />
+                {/* On a banner the controls sit on a solid frosted pill, so they read on any picture */}
+                <div className={`relative flex items-center gap-1.5 flex-shrink-0 ${sc.banner ? BANNER_PILL : ""}`}>
                 <ExportButtons png={false} run={(f) => exportScenario(sc, f)} />
                 <Button
                   variant="ghost"
@@ -99,8 +103,10 @@ export function ScenariosView() {
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
+                </div>
               </CardHeader>
               <CardBody className="space-y-3">
+                <BannerControl banner={sc.banner} onChange={(banner) => updateScenario(sc.id, { banner })} />
                 <div>
                   <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-fg)] mb-1">
                     Scenario — the situation the story opens in

@@ -12,6 +12,30 @@ import { create } from "zustand";
 import type { Character } from "@/lib/types";
 import type { SidebarSection, InspectorTab } from "./index";
 
+/** A phone call in progress (lib/chat/calls.ts); null when there is none */
+export interface CallState {
+  chatId: string;
+  characterId: string;
+  /** incoming: ringing for you · calling: you rang, not picked up yet · connected: talking */
+  phase: "incoming" | "calling" | "connected";
+  /** When the call connected (ms), for the timer and the length logged at the end */
+  connectedAt?: number;
+  /** Why they are calling (incoming calls only) */
+  outreach?: import("@/lib/chat/generation").OutreachRequest;
+}
+
+/** Settings is split into tabs so nothing needs a long scroll to find. */
+export const SETTINGS_TABS = [
+  { id: "appearance", label: "Appearance" },
+  { id: "models", label: "Chat models" },
+  { id: "memory", label: "Memory" },
+  { id: "media", label: "Media" },
+  { id: "contact", label: "Contact" },
+  { id: "prompts", label: "Prompts" },
+  { id: "data", label: "Data & backup" },
+] as const;
+export type SettingsTab = (typeof SETTINGS_TABS)[number]["id"];
+
 /** Something changed outside this tab. `historyId` is set when it can be undone. */
 export interface RemoteNotice {
   key: number;
@@ -65,6 +89,13 @@ interface UiStore {
   focusCardId: string | null;
   setFocusCardId: (id: string | null) => void;
 
+  call: CallState | null;
+  setCall: (call: CallState | null) => void;
+
+  /** The Settings tab showing; set it before opening Settings to land on one (`setSettingsTab("contact")`) */
+  settingsTab: SettingsTab;
+  setSettingsTab: (tab: SettingsTab) => void;
+
   // Changes made by something other than this tab (an agent, another device)
   remoteNotices: RemoteNotice[];
   pushRemoteNotices: (notices: Array<Omit<RemoteNotice, "key">>) => void;
@@ -110,6 +141,12 @@ export const useUiStore = create<UiStore>()((set) => ({
 
   focusCardId: null,
   setFocusCardId: (id) => set({ focusCardId: id }),
+
+  call: null,
+  setCall: (call) => set({ call }),
+
+  settingsTab: "appearance",
+  setSettingsTab: (tab) => set({ settingsTab: tab }),
 
   remoteNotices: [],
   pushRemoteNotices: (notices) =>

@@ -15,7 +15,10 @@ import { ACCENT_PRESETS, accentHex, normalizeHex, type ThemeMode } from "@/lib/t
 import { CheckCircle, XCircle, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { PromptsCard } from "@/components/settings/PromptsCard";
 import { MediaConnectionsCard } from "@/components/settings/MediaConnectionsCard";
+import { MediaFolderCard } from "@/components/settings/MediaFolderCard";
+import { PictureReaderCard } from "@/components/settings/PictureReaderCard";
 import { ContactCard } from "@/components/settings/ContactCard";
+import { useUiStore, SETTINGS_TABS, type SettingsTab } from "@/lib/store/ui";
 
 // ─── Per-provider test state ──────────────────────────────────────────────────
 
@@ -369,8 +372,45 @@ function BackupCard() {
 
 // ─── Main Settings View ───────────────────────────────────────────────────────
 
+/**
+ * The tab row. Every panel stays mounted (only hidden), so a half-filled form
+ * survives a look at another tab. Arrow keys move between tabs, as tabs should.
+ */
+function SettingsTabs({ tab, onTab }: { tab: SettingsTab; onTab: (t: SettingsTab) => void }) {
+  const move = (e: React.KeyboardEvent, i: number) => {
+    const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    if (!d) return;
+    e.preventDefault();
+    const next = SETTINGS_TABS[(i + d + SETTINGS_TABS.length) % SETTINGS_TABS.length].id;
+    onTab(next);
+    document.getElementById(`settings-tab-${next}`)?.focus();
+  };
+  return (
+    <div role="tablist" aria-label="Settings sections" className="flex flex-wrap gap-1 rounded-xl border border-[var(--border)] bg-[var(--background)] p-1">
+      {SETTINGS_TABS.map((t, i) => (
+        <button key={t.id} id={`settings-tab-${t.id}`} role="tab" aria-selected={tab === t.id} aria-controls={`settings-panel-${t.id}`}
+          tabIndex={tab === t.id ? 0 : -1} onClick={() => onTab(t.id)} onKeyDown={(e) => move(e, i)}
+          className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-medium transition-colors cursor-pointer ${tab === t.id
+            ? "bg-[var(--purple)] text-white"
+            : "text-[var(--muted-fg)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"}`}>
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Panel({ id, tab, children }: { id: SettingsTab; tab: SettingsTab; children: React.ReactNode }) {
+  return (
+    <div role="tabpanel" id={`settings-panel-${id}`} aria-labelledby={`settings-tab-${id}`} hidden={tab !== id} className="space-y-6">
+      {children}
+    </div>
+  );
+}
+
 export function SettingsView() {
   const { providerSettings, setProviderSetting } = useFableStore();
+  const { settingsTab: tab, setSettingsTab } = useUiStore();
 
   // ── Ollama ──────────────────────────────────────────────────────────────────
   const testOllama = async (): Promise<TestResult> => {
@@ -431,22 +471,23 @@ export function SettingsView() {
         <div>
           <h1 className="text-xl font-bold text-[var(--foreground)]">Settings</h1>
           <p className="text-sm text-[var(--muted-fg)] mt-1">
-            Configure your AI providers. Hit <strong>Test</strong> to verify a connection and see available models.
+            Pick a section below. <strong>Test</strong> on any connection makes a real request so you know it works.
           </p>
         </div>
 
-        <AppearanceCard />
+        <div className="sticky top-0 z-10 -mx-1 bg-[var(--card)] px-1 py-2">
+          <SettingsTabs tab={tab} onTab={setSettingsTab} />
+        </div>
 
-        <MemoryCard />
+        <Panel id="appearance" tab={tab}><AppearanceCard /></Panel>
 
-        <ContactCard />
+        <Panel id="memory" tab={tab}><MemoryCard /></Panel>
 
-        <MediaConnectionsCard />
+        <Panel id="contact" tab={tab}><ContactCard /></Panel>
 
-        <PromptsCard />
+        <Panel id="prompts" tab={tab}><PromptsCard /></Panel>
 
-        <BackupCard />
-
+        <Panel id="models" tab={tab}>
         {/* Ollama */}
         <ProviderCard
           id="ollama"
@@ -535,6 +576,14 @@ export function SettingsView() {
           </div>
         </ProviderCard>
 
+        <PictureReaderCard />
+        </Panel>
+
+        <Panel id="media" tab={tab}>
+        <MediaConnectionsCard />
+
+        <MediaFolderCard />
+
         {/* ComfyUI */}
         <ProviderCard
           id="comfyui"
@@ -557,6 +606,10 @@ export function SettingsView() {
             />
           </div>
         </ProviderCard>
+        </Panel>
+
+        <Panel id="data" tab={tab}>
+        <BackupCard />
 
         {/* Data */}
         <Card>
@@ -592,6 +645,7 @@ export function SettingsView() {
             </div>
           </CardBody>
         </Card>
+        </Panel>
       </div>
     </div>
   );

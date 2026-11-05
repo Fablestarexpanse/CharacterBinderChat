@@ -11,21 +11,10 @@ import { ContactPill } from "./ContactPill";
 import { useHydrated } from "@/lib/hooks/useHydrated";
 import { truncate, formatAgeFromIso } from "@/lib/utils";
 import type { Chat, Character } from "@/lib/types";
+import { answerCall, declineCall } from "@/lib/chat/calls";
+import { unlockSounds } from "@/lib/chat/sounds";
 import {
-  MessageSquare,
-  Group,
-  BookOpen,
-  Sliders,
-  ImageIcon,
-  GalleryHorizontal,
-  GitBranch,
-  Settings,
-  Plus,
-  Sparkles,
-  Pencil,
-  Trash2,
-  Clapperboard,
-  Library,
+  MessageSquare, Group, BookOpen, Sliders, ImageIcon, GalleryHorizontal, GitBranch, Settings, Plus, Sparkles, Pencil, Trash2, Clapperboard, Library, Phone, PhoneOff, PhoneMissed, MessageCircle,
 } from "lucide-react";
 import { useUiStore } from "@/lib/store/ui";
 
@@ -139,6 +128,8 @@ function ChatRow({
   const { setActiveChatId, renameChat, deleteChat } = useFableStore();
   const { setActiveSection } = useUiStore();
   const unread = useUiStore((s) => s.unreadChats[chat.id] ?? 0);
+  // What just came in on this chat, shown on its row rather than over the screen
+  const ringing = useUiStore((s) => s.call?.phase === "incoming" && s.call.chatId === chat.id);
 
   const [renaming,      setRenaming]      = useState(false);
   const [draft,         setDraft]         = useState(chat.name);
@@ -149,6 +140,8 @@ function ChatRow({
   const hydrated = useHydrated();
 
   const lastMsg = chat.messages[chat.messages.length - 1];
+  const missed = unread > 0 && lastMsg?.callEvent?.kind === "missed";
+  const newText = unread > 0 && !missed && lastMsg?.channel === "text";
 
   const commitRename = () => {
     renameChat(chat.id, draft);
@@ -172,7 +165,22 @@ function ChatRow({
           : "hover:bg-[var(--muted)] text-[var(--foreground)]"
       }`}
     >
-      <Avatar name={character?.name ?? chat.name} src={character?.avatar} size="xs" />
+      <div className="relative flex-shrink-0">
+        <Avatar name={character?.name ?? chat.name} src={character?.avatar ?? character?.referenceImages?.[0]} size="xs" />
+        {/* How many came in, like a phone's badge: red, top right, "9+" past nine */}
+        {unread > 0 && !ringing && (
+          <span aria-label={`${unread} new`} className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-[var(--sidebar-bg)] tabular-nums">
+            {unread > 9 ? "9+" : unread}
+          </span>
+        )}
+        {/* What it was, small, bottom right: ringing (the only one that moves, gently), a text, or a missed call */}
+        {(ringing || newText || missed) && (
+          <span aria-hidden className={`absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full ring-2 ring-[var(--sidebar-bg)] ${
+            missed ? "bg-red-500" : "bg-green-500"} ${ringing ? "animate-pulse" : ""}`}>
+            {ringing ? <Phone className="h-2 w-2 text-white" /> : missed ? <PhoneMissed className="h-2 w-2 text-white" /> : <MessageCircle className="h-2 w-2 text-white" />}
+          </span>
+        )}
+      </div>
 
       <div className="flex-1 min-w-0">
         {renaming ? (
@@ -192,10 +200,15 @@ function ChatRow({
           <>
             <div className="flex items-center gap-1.5">
               <span className={`text-xs truncate ${unread ? "font-bold" : "font-medium"}`}>{chat.name}</span>
-              {unread > 0 && <span className="flex-shrink-0 rounded-full bg-[var(--purple)] px-1.5 text-[9px] font-semibold text-white" aria-label={`${unread} new`}>{unread}</span>}
             </div>
-            {lastMsg && (
-              <div className="text-[10px] text-[var(--muted-fg)] truncate">
+            {ringing ? (
+              <div className="text-[10px] font-medium text-green-600 dark:text-green-400 truncate" role="status">Calling you…</div>
+            ) : missed ? (
+              <div className="text-[10px] font-medium text-red-500 truncate">Missed call</div>
+            ) : lastMsg?.callEvent ? (
+              <div className="text-[10px] text-[var(--muted-fg)] truncate">{lastMsg.callEvent.kind === "ended" ? "Call ended" : lastMsg.callEvent.kind === "declined" ? "Declined call" : "Call"}</div>
+            ) : lastMsg && (
+              <div className={`text-[10px] truncate ${newText ? "text-[var(--foreground)]" : "text-[var(--muted-fg)]"}`}>
                 {truncate(lastMsg.content, 30)}
               </div>
             )}
@@ -203,7 +216,16 @@ function ChatRow({
         )}
       </div>
 
-      {!renaming && (
+      {ringing && !renaming && (
+        // Answer or decline right here; answering opens the call screen
+        <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+          <button onClick={declineCall} aria-label="Decline call" title="Decline"
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 cursor-pointer"><PhoneOff className="h-3 w-3" /></button>
+          <button onClick={() => { unlockSounds(); answerCall(); }} aria-label="Answer call" title="Answer"
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-white hover:bg-green-600 cursor-pointer"><Phone className="h-3 w-3" /></button>
+        </div>
+      )}
+      {!renaming && !ringing && (
         <>
           {/* Timestamp — swapped for actions on hover */}
           <div className="text-[10px] text-[var(--muted-fg)] flex-shrink-0 group-hover:hidden">

@@ -64,3 +64,21 @@ test("quiet hours wrap midnight; times convert both ways", () => {
   assert.equal(inQuietHours(at(3), 0, 0), false, "start = end means none");
   assert.equal(toMinutes("23:00"), 1380); assert.equal(fromMinutes(480), "08:00"); assert.equal(toMinutes("nope"), null);
 });
+
+test("a character allowed to call phones about a rupture or a long silence, and texts otherwise", async () => {
+  const { reachOutBy } = await import("../../lib/outreach/rules.ts");
+  assert.equal(reachOutBy("repair", { canContact: true, calls: true }), "call");
+  assert.equal(reachOutBy("absence", { canContact: true, calls: true }), "call");
+  assert.equal(reachOutBy("promise", { canContact: true, calls: true }), "text", "a promise coming due is a text");
+  assert.equal(reachOutBy("morning", { canContact: true, calls: true }), "text");
+  assert.equal(reachOutBy("repair", { canContact: true }), "text", "not allowed to call: always a text");
+  assert.equal(reachOutBy("repair", undefined), "text");
+});
+
+test("sounds are on by default and only an explicit false turns them off", async () => {
+  const { cleanContactSettings, DEFAULT_CONTACT } = await import("../../lib/media/contact.ts");
+  assert.equal(DEFAULT_CONTACT.sounds, true);
+  assert.equal(cleanContactSettings({}).sounds, true, "settings saved before sounds existed get them");
+  assert.equal(cleanContactSettings({ sounds: false }).sounds, false);
+  assert.equal(cleanContactSettings({ sounds: "no" }).sounds, true);
+});

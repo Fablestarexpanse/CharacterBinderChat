@@ -22,6 +22,13 @@ export interface WorkflowMapping extends Partial<Record<WorkflowRole, string | n
   purpose?: WorkflowPurpose;
   /** LoadImage inputs that receive reference images, in order */
   referenceImageNodes?: string[];
+  /**
+   * Keep the workflow's own steps, CFG and sampler instead of the app's image
+   * settings. Distilled and tuned models (Krea2 at 8 steps, MOSS at CFG 3 with
+   * dpmpp_2m_sde) break when Image Studio's numbers are pushed into them.
+   * Chosen by hand, never guessed.
+   */
+  ownSampling?: boolean;
 }
 
 export const ROLE_INFO: ReadonlyArray<{ role: WorkflowRole; label: string; kind: "text" | "number"; video?: boolean }> = [
@@ -97,7 +104,11 @@ export function readWorkflow(input: unknown): WorkflowReadResult {
   const byId = new Map(nodes);
 
   /** Follow a link to where a value really lives: a primitive's own input. */
-  const valuePath = (id: string, key: string, kind: "text" | "number", depth = 0): string | null => {
+  // `wanted`: once the walk has passed through a node with no value of its own
+  // (Get Image Size measuring a picture), only an input with the asked-for name
+  // still counts. Taking one by position there mapped "width" onto an image
+  // scaler's "megapixels", and 1024 megapixels is not a width.
+  const valuePath = (id: string, key: string, kind: "text" | "number", depth = 0, wanted?: string): string | null => {
     const n = byId.get(id);
     if (!n || depth > 6) return null;
     const v = n.inputs[key];
@@ -108,12 +119,17 @@ export function readWorkflow(input: unknown): WorkflowReadResult {
         const x = src.inputs[k];
         return kind === "text" ? typeof x === "string" : typeof x === "number";
       });
+      const named = typed.find((k) => k === (wanted ?? key));
+      if (named) return valuePath(v[0], named, kind, depth + 1, wanted);
+      // A lone value behind a pass-through (Reroute → primitive) is still the value
+      if (wanted) return typed.length === 1 ? valuePath(v[0], typed[0], kind, depth + 1, wanted) : null;
       // A node with several outputs (a resolution helper giving width on 0 and
       // height on 1): prefer the input named like the one asking, then the one
       // at the linked output's position, then the first.
-      const srcKey = typed.find((k) => k === key) ?? typed[v[1]] ?? typed[0]
-        ?? Object.keys(src.inputs).find((k) => isLink(src.inputs[k]));
-      return srcKey ? valuePath(v[0], srcKey, kind, depth + 1) : null;
+      const srcKey = typed[v[1]] ?? typed[0];
+      if (srcKey) return valuePath(v[0], srcKey, kind, depth + 1);
+      const through = Object.keys(src.inputs).find((k) => isLink(src.inputs[k]));
+      return through !== undefined ? valuePath(v[0], through, kind, depth + 1, key) : null;
     }
     if (kind === "text" ? typeof v === "string" : typeof v === "number") return `${id}.inputs.${key}`;
     return null;

@@ -109,6 +109,20 @@ export async function injectReferences(
     if (!node?.inputs || !key) continue;
     node.inputs[key] = await upload(pics[i]);
   }
+  // A picture slot nobody filled is taken out when everything it feeds is an
+  // optional, growable input (H3's "ref_images.ref_image_2"): otherwise ComfyUI
+  // loads the placeholder file and H3 is told about a person who is not there.
+  // A slot feeding a required input keeps the workflow's own picture, as before.
+  for (const p of paths.slice(pics.length)) {
+    const nodeId = p.split(".")[0];
+    const users = Object.values(workflow).flatMap((n) => {
+      const inputs = (n as { inputs?: Record<string, unknown> } | null)?.inputs;
+      return inputs ? Object.keys(inputs).filter((k) => Array.isArray(inputs[k]) && (inputs[k] as unknown[])[0] === nodeId).map((k) => ({ inputs, k })) : [];
+    });
+    if (users.length === 0 || !users.every((u) => u.k.includes("."))) continue;
+    for (const u of users) delete u.inputs[u.k];
+    delete workflow[nodeId];
+  }
   return pics.length;
 }
 

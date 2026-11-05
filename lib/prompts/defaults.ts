@@ -23,7 +23,12 @@ export type PromptId =
   | "chat.text-message"
   | "chat.photo-offer"
   | "chat.outreach"
-  | "image.photo";
+  | "chat.phone-call"
+  | "chat.call-outreach"
+  | "image.photo"
+  | "image.describe"
+  | "video.clip"
+  | "video.reference-clip";
 
 export interface PromptVariable {
   name: string;
@@ -81,6 +86,28 @@ export const PROMPTS: readonly PromptDef[] = [
     ],
   },
   {
+    id: "chat.phone-call",
+    title: "Talking on the phone",
+    group: "Chat",
+    usedFor: "Added to the chat prompt during a phone call (the call screen): tells the character to answer as they would speak on the phone.",
+    template: `[Phone call]
+{{character_name}} and {{user_label}} are talking on the phone right now. Reply only with what {{character_name}} says out loud: natural spoken words, fairly short, the way people talk on a call. No narration, no actions and no *asterisks*; a laugh or a sigh can be written as a word ("ha", "mm").`,
+    variables: [characterNameVar, userLabelVar],
+  },
+  {
+    id: "chat.call-outreach",
+    title: "Calling you",
+    group: "Chat",
+    usedFor: "When a character you allowed to call you rings on their own and you answer: the first thing they say.",
+    template: `({{user_label}} has not written for {{silence}}{{user_note}}. {{character_name}} phoned them, on their own, because {{reason}}, and {{user_label}} has just picked up. Write only what {{character_name}} says first: spoken words, short, in their own voice, no narration.)`,
+    variables: [
+      characterNameVar, userLabelVar,
+      { name: "silence", description: "How long since you last wrote, in words.", sample: "3 hours" },
+      { name: "reason", required: true, description: "Why they are calling, from the story.", sample: "trust broke between you and they want to say something" },
+      { name: "user_note", description: "Your status note, with its lead-in, or empty.", sample: " (they said: at work until six)" },
+    ],
+  },
+  {
     id: "chat.photo-offer",
     title: "Offering to send a photo",
     group: "Chat",
@@ -97,6 +124,56 @@ export const PROMPTS: readonly PromptDef[] = [
     template: `{{what}}, candid phone photo, natural light, realistic`,
     variables: [
       { name: "what", required: true, description: "What the photo shows: the character's [photo: …] words, or what you asked for.", sample: "standing by the boarded window, rain outside" },
+    ],
+  },
+  {
+    id: "image.describe",
+    title: "Describing a picture",
+    group: "Images",
+    usedFor: "When you send a picture in a chat: the picture reader (Settings → Chat models) describes it once, and the character reads that description.",
+    template: `{{user_label}} just sent {{character_name}} this picture. Describe what it shows in one or two plain sentences: who or what is in it, what they are doing, the setting and anything notable (text, mood, time of day). Do not guess anyone's name and do not address anyone. Answer with the description only.`,
+    variables: [characterNameVar, userLabelVar],
+  },
+  {
+    id: "video.clip",
+    title: "Clip from a photo",
+    group: "Images",
+    usedFor: "Turns a photo into a short clip with sound (MiniMax H3 or another image-to-video workflow). The photo is the first frame, so this says what happens, not what it looks like.",
+    template: `{{motion}}
+
+One continuous handheld shot with no cuts; the camera stays close and steady. Sound: the natural ambience of the place and the small sounds of their movement. No music, no text on screen.`,
+    variables: [
+      { name: "motion", required: true, description: "What happens in the clip: how they move, what they do, how it ends. You can change it before the clip is made.", sample: "She glances up from the phone, breathes out a laugh and pushes her wet hair back" },
+    ],
+  },
+  {
+    id: "video.reference-clip",
+    title: "Clip with everyone's look",
+    group: "Images",
+    usedFor: "A clip made with a reference workflow (MiniMax H3 Ref2VA): the photo is <Picture 1> and each person in the scene (the character, your persona, others present) is a <Subject> from their own picture, so faces hold. Follows MiniMax's full-reference prompt format.",
+    template: `subject_definitions:
+{{subjects}}
+
+summary:
+[keyframe completion + reference generation] A short handheld clip that opens on <Picture 1> and keeps the look of {{people}}: {{motion}}
+
+retention_analysis:
+{{retention}}
+
+detailed_description:
+Realistic, natural-light handheld phone footage, about five seconds, one continuous shot with no cuts.
+[Shot 1] The clip opens exactly on <Picture 1>. {{motion}}. The camera stays close and steady, with small natural handheld movement. Faces and clothing stay consistent with their pictures throughout.
+
+overall_soundscape:
+The natural ambience of the place and the small sounds of their movement.
+
+non_diegetic_music:
+None.`,
+    variables: [
+      { name: "motion", required: true, description: "What happens in the clip: how they move, what they do, how it ends. You can change it before the clip is made.", sample: "He looks up from the phone, breathes out a tired half-smile and pushes off the wall" },
+      { name: "subjects", required: true, description: "Filled in by the app: one line per picture, <Picture 1> the photo and <Subject N> each person from <Picture N+1>.", sample: "<Picture 1> is the first frame of [Shot 1]: the photo this clip starts from.\n<Subject 1> is Ronan, whose face, hair, build and clothing come from <Picture 2>." },
+      { name: "retention", description: "Filled in by the app: how each picture is kept.", sample: "<Subject 1> (wherever they appear): fully_preserved - identity stays as in <Picture 2>." },
+      { name: "people", description: "Filled in by the app: the people and their labels.", sample: "Ronan (<Subject 1>)" },
     ],
   },
   {
