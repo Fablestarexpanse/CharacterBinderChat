@@ -26,11 +26,28 @@ export function Attachments({ message }: { message: Message }) {
 }
 
 function AttachmentView({ a, message, onView }: { a: Attachment; message: Message; onView: (u: string) => void }) {
-  const { setAttachment, removeAttachment } = useFableStore();
+  const { setAttachment, removeAttachment, characters, updateCharacter } = useFableStore();
+  const character = characters.find((c) => c.id === message.characterId);
+  const [done, setDone] = useState<string | null>(null);
+  const set = (patch: Partial<Attachment>) => setAttachment(message.chatId, message.id, { ...a, ...patch });
+  const switchToTake = (url: string) => {
+    if (!a.url) return;
+    const take = a.previous?.find((p) => p.url === url);
+    set({ url, prompt: take?.prompt ?? a.prompt, previous: [{ url: a.url, prompt: a.prompt }, ...(a.previous ?? []).filter((p) => p.url !== url)] });
+  };
   const [draft, setDraft] = useState(a.prompt ?? "");
   const run = (prompt?: string) => message.characterId && void makePhoto(message.chatId, message.id, a.id, message.characterId, prompt);
   const what = a.kind === "image" ? "photo" : a.kind === "video" ? "clip" : "voice note";
 
+  if (a.status === "removed") {
+    return (
+      <div role="status" className="flex items-center gap-2 rounded-xl border border-dashed border-[var(--border)] px-3 py-2 text-[11px] text-[var(--muted-fg)]">
+        {a.kind === "image" ? "Photo" : a.kind === "video" ? "Clip" : "Voice note"} removed.
+        <button className="underline cursor-pointer text-[var(--foreground)]" onClick={() => set({ status: a.url ? "ready" : "failed" })}>Undo</button>
+        <button className="cursor-pointer hover:text-[var(--foreground)]" onClick={() => removeAttachment(message.chatId, message.id, a.id)} title="Remove for good">Dismiss</button>
+      </div>
+    );
+  }
   if (a.awaitingReview) {
     return (
       <figure role="group" aria-label={`Review ${what}`} className="w-80 space-y-2 rounded-xl border border-[var(--purple)] bg-[var(--purple-light)]/40 p-3">
@@ -74,10 +91,35 @@ function AttachmentView({ a, message, onView }: { a: Attachment; message: Messag
         <audio src={a.url} controls className="h-9 w-64" aria-label={a.prompt ?? "Voice note"} />
       )}
       {a.status === "ready" && a.kind === "image" && message.characterId && (
-        <button onClick={() => setAttachment(message.chatId, message.id, { ...a, awaitingReview: true })}
-          className="flex items-center gap-1 text-[10px] text-[var(--muted-fg)] hover:text-[var(--foreground)] cursor-pointer" title="Change the prompt and take it again">
-          <RefreshCw className="h-3 w-3" />Redo
-        </button>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-[var(--muted-fg)]" role="toolbar" aria-label="Photo actions">
+          <button onClick={() => set({ awaitingReview: true })} className="flex items-center gap-1 hover:text-[var(--foreground)] cursor-pointer" title="Change the prompt and take it again (this take is kept)">
+            <RefreshCw className="h-3 w-3" />Redo
+          </button>
+          {character && a.url && (
+            <>
+              <button className="hover:text-[var(--foreground)] cursor-pointer" title={`Make this ${character.name}'s portrait`}
+                onClick={() => { updateCharacter(character.id, { avatar: a.url }); setDone("Now their portrait."); }}>Use as portrait</button>
+              <button className="hover:text-[var(--foreground)] cursor-pointer" title={`Add to ${character.name}'s reference pictures`}
+                disabled={(character.referenceImages ?? []).includes(a.url)}
+                onClick={() => { updateCharacter(character.id, { referenceImages: [...(character.referenceImages ?? []), a.url!] }); setDone("Kept as a reference."); }}>
+                {(character.referenceImages ?? []).includes(a.url) ? "Kept as reference" : "Keep as reference"}
+              </button>
+            </>
+          )}
+          <button className="hover:text-red-600 cursor-pointer" onClick={() => set({ status: "removed" })} title="Remove (you can undo)">Remove</button>
+          {done && <span role="status" className="text-green-700 dark:text-green-400">{done}</span>}
+        </div>
+      )}
+      {a.status === "ready" && (a.previous?.length ?? 0) > 0 && (
+        <div className="flex items-center gap-1" aria-label="Earlier takes">
+          <span className="text-[10px] text-[var(--muted-fg)]">Earlier:</span>
+          {a.previous!.map((p) => (
+            <button key={p.url} onClick={() => switchToTake(p.url)} title="Use this take instead" aria-label="Use an earlier take" className="cursor-pointer">
+              {/* eslint-disable-next-line @next/next/no-img-element -- a stored asset at thumbnail size */}
+              <img src={sizedSrc(p.url, 96)} alt="" className="h-9 w-9 rounded object-cover border border-[var(--border)] hover:border-[var(--purple)]" />
+            </button>
+          ))}
+        </div>
       )}
     </figure>
   );

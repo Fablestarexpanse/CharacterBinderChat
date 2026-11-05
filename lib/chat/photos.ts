@@ -103,7 +103,10 @@ export async function makePhoto(chatId: string, messageId: string, attachmentId:
   }
   try {
     const url = await storePicture(done.outputUrls[0]);
-    update({ status: "ready", url });
+    // A redo keeps the take it replaces, so you can go back to it
+    const before = useFableStore.getState().chats.find((c) => c.id === chatId)?.messages.find((m) => m.id === messageId)?.attachments?.find((a) => a.id === attachmentId);
+    const previous = att.url && att.url !== url ? [{ url: att.url, prompt: att.prompt }, ...(att.previous ?? [])].slice(0, 6) : before?.previous;
+    update({ status: "ready", url, ...(previous ? { previous } : {}) });
   } catch (e) {
     update({ status: "failed", error: e instanceof Error ? e.message : String(e) });
     return;

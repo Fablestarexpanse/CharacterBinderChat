@@ -83,7 +83,8 @@ export type MessageChannel = "scene" | "text";
 export interface Attachment {
   id: string;
   kind: "image" | "video" | "audio";
-  status: "pending" | "ready" | "failed";
+  /** "removed" keeps it (with an Undo) but nothing is shown or told to the model */
+  status: "pending" | "ready" | "failed" | "removed";
   /** Asset URL (/api/assets/<hash>) once ready */
   url?: string;
   error?: string;
@@ -96,6 +97,8 @@ export interface Attachment {
   jobId?: string;
   /** Waiting for you to approve (or change) the prompt before anything is generated */
   awaitingReview?: boolean;
+  /** Earlier takes (asset URLs, newest first) kept when it was redone */
+  previous?: Array<{ url: string; prompt?: string }>;
 }
 
 export interface Message {
