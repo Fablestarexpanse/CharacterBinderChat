@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useDiscardGuard, DiscardBar, type CloseRelay } from "@/components/ui/discardGuard";
 import { ImageLookFields, toLookDraft, fromLookDraft, type LookDraft } from "@/components/characters/ImageLookFields";
+import { ReferencePictures } from "@/components/characters/ReferencePictures";
 import { useFableStore } from "@/lib/store";
 import type { Character } from "@/lib/types";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -36,10 +37,11 @@ interface FormState {
   creatorNotes:            string;
   lorebookId:              string;  // "" = none
   image:                   LookDraft;
+  referenceImages:         string[];
 }
 
 /** The form fields that are plain text (everything but the image look) */
-type TextKey = Exclude<keyof FormState, "image">;
+type TextKey = Exclude<keyof FormState, "image" | "referenceImages">;
 
 const GREETING_SEPARATOR = "\n---\n";
 
@@ -60,6 +62,7 @@ function toFormState(source: Partial<Character> | null): FormState {
     creatorNotes:            source?.creatorNotes ?? "",
     lorebookId:              source?.lorebookId ?? "",
     image:                   toLookDraft(source?.image),
+    referenceImages:         source?.referenceImages ?? [],
   };
 }
 
@@ -127,6 +130,7 @@ function EditorForm({ editing, draft, closeRef }: { editing: Character | null; d
       // opened so importing then saving does not silently drop platform data.
       lorebookId:   form.lorebookId || undefined,
       image:        fromLookDraft(form.image),
+      referenceImages: form.referenceImages.length ? form.referenceImages : undefined,
       characterVersion: (editing ?? draft)?.characterVersion,
       cardExtensions:   (editing ?? draft)?.cardExtensions,
     };
@@ -198,7 +202,10 @@ function EditorForm({ editing, draft, closeRef }: { editing: Character | null; d
           </select>
         </Field>
 
-        <ImageLookFields value={form.image} onChange={(image) => setForm((f) => ({ ...f, image }))} who={form.name.trim() || "them"} />
+        <ImageLookFields value={form.image} onChange={(image) => setForm((f) => ({ ...f, image }))} who={form.name.trim() || "them"} open={form.referenceImages.length > 0}>
+          <ReferencePictures value={form.referenceImages} onChange={(referenceImages) => setForm((f) => ({ ...f, referenceImages }))}
+            avatar={form.avatar} who={form.name.trim() || "them"} />
+        </ImageLookFields>
 
         <details className="rounded-lg border border-[var(--border)] px-3 py-2">
           <summary className="cursor-pointer select-none text-xs font-medium text-[var(--foreground)]">

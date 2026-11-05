@@ -30,13 +30,13 @@ export function fromLookDraft(d: LookDraft): ImageLook | undefined {
   });
 }
 
-export function ImageLookFields({ value, onChange, who }: { value: LookDraft; onChange: (d: LookDraft) => void; who: string }) {
+export function ImageLookFields({ value, onChange, who, open, children }: { value: LookDraft; onChange: (d: LookDraft) => void; who: string; open?: boolean; children?: React.ReactNode }) {
   const set = (k: keyof LookDraft) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange({ ...value, [k]: e.target.value });
   const anySet = Object.values(value).some((v) => v.trim());
   const seedBad = value.seed.trim() !== "" && !(Number.isInteger(Number(value.seed)) && Number(value.seed) >= 0 && Number(value.seed) <= 0xffffffff);
   const weightBad = value.loraWeight.trim() !== "" && !Number.isFinite(Number(value.loraWeight));
   return (
-    <details className="rounded-lg border border-[var(--border)] px-3 py-2" open={anySet}>
+    <details className="rounded-lg border border-[var(--border)] px-3 py-2" open={anySet || open}>
       <summary className="cursor-pointer select-none text-xs font-medium text-[var(--foreground)]">
         How images draw {who} <span className="font-normal text-[var(--muted-fg)]">— used in every picture of {who}</span>
       </summary>
@@ -70,8 +70,9 @@ export function ImageLookFields({ value, onChange, who }: { value: LookDraft; on
           </div>
         </Field>
         {seedBad && <div role="alert" className="text-[11px] text-red-600">The seed must be a whole number from 0 to 4294967295.</div>}
+        {children}
         <p className="text-[11px] text-[var(--muted-fg)]">
-          Written for image models, not the story: the chat uses the description above. Reference pictures come in a later update.
+          Written for image models, not the story: the chat uses the description above.
         </p>
       </div>
     </details>

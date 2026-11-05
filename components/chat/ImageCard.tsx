@@ -13,15 +13,32 @@ import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { downloadFromUrl } from "@/lib/utils";
 import type { Message } from "@/lib/types";
 import {
-  ImageIcon, Download, Minus, Trash2, ChevronDown, RefreshCw, Pencil,
+  ImageIcon, Download, Minus, Trash2, ChevronDown, RefreshCw, Pencil, Star,
 } from "lucide-react";
+import { storePicture } from "@/lib/chat/assets";
 
 export function ImageCard({ message }: { message: Message }) {
   const {
     imageJobs, setMessageImageJob,
     updateMessageContent, toggleMessageCollapsed, removeMessage,
+    chats, characters, updateCharacter,
   } = useFableStore();
   const job = imageJobs.find((j) => j.id === message.imageJobId);
+  // "Keep as reference": add this picture to the chat character's reference set
+  const character = characters.find((c) => c.id === chats.find((ch) => ch.id === message.chatId)?.characterId);
+  const [kept, setKept] = useState<"idle" | "saving" | "done" | string>("idle");
+  const keepAsReference = async (url: string) => {
+    if (!character) return;
+    setKept("saving");
+    try {
+      const asset = await storePicture(url);
+      const current = useFableStore.getState().characters.find((c) => c.id === character.id)?.referenceImages ?? [];
+      if (!current.includes(asset)) updateCharacter(character.id, { referenceImages: [...current, asset] });
+      setKept("done");
+    } catch (e) {
+      setKept(e instanceof Error ? e.message : String(e));
+    }
+  };
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Edit-prompt mode: tweak the prompt and regenerate in place — the new
@@ -240,6 +257,9 @@ export function ImageCard({ message }: { message: Message }) {
                   {job?.status ?? "missing"}
                 </span>
               </div>
+              {kept !== "idle" && kept !== "saving" && kept !== "done" && (
+                <div role="alert" className="mt-1 text-[10px] text-red-600">Could not keep it: {kept}</div>
+              )}
               {job && !busy && !editingPrompt && (
                 <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-[var(--border)]">
                   <Button
@@ -275,6 +295,19 @@ export function ImageCard({ message }: { message: Message }) {
                     >
                       <Download className="h-3 w-3 mr-1" />
                       Download
+                    </Button>
+                  )}
+                  {job.status === "complete" && job.outputUrls.length > 0 && character && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-[11px]"
+                      onClick={() => keepAsReference(job.outputUrls[0])}
+                      disabled={kept === "saving" || kept === "done"}
+                      title={`Add this picture to ${character.name}'s reference pictures, so later pictures look like this`}
+                    >
+                      <Star className="h-3 w-3 mr-1" />
+                      {kept === "done" ? "Kept" : kept === "saving" ? "Keeping…" : "Keep as reference"}
                     </Button>
                   )}
                 </div>

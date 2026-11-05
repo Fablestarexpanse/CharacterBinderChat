@@ -38,3 +38,31 @@ test("no look changes nothing; an empty negative takes just the avoid-tags", () 
   assert.equal(hasImageLook(undefined), false);
   assert.equal(hasImageLook({ tags: "x" }), true);
 });
+
+test("references: the chosen set (stored assets only, at most four), else the portrait", async () => {
+  const { referencesFor, withReferences, MAX_REFERENCES } = await import("../../lib/media/imageLook.ts");
+  const a = (n) => `/api/assets/${String(n).repeat(64).slice(0, 64)}`;
+  assert.deepEqual(referencesFor({ avatar: a(1) + "?w=96" }), [a(1)], "no set: the portrait, without its size suffix");
+  assert.deepEqual(referencesFor({ avatar: "https://example.com/x.png" }), [], "an outside URL is never sent");
+  assert.deepEqual(referencesFor({ avatar: a(1), referenceImages: [a(2), "data:image/png;base64,xx", a(3)] }), [a(2), a(3)], "a set replaces the portrait; inline data is skipped");
+  assert.equal(referencesFor({ referenceImages: [a(1), a(2), a(3), a(4), a(5), a(6)] }).length, MAX_REFERENCES);
+  assert.deepEqual(referencesFor({ referenceImages: [a(2), a(2)] }), [a(2)], "no duplicates");
+  const s = { prompt: "x", loras: [] };
+  assert.equal(withReferences(s, []), s, "nothing to add, settings unchanged");
+  assert.deepEqual(withReferences(s, [a(1)]).referenceImages, [a(1)]);
+});
+
+test("injecting: each picture is uploaded into the next image input; extras are not sent", async () => {
+  const { injectReferences } = await import("../../lib/media/imageLook.ts");
+  const wf = { "4": { inputs: { image: "start.png" } }, "7": { inputs: { image: "ref.png" } }, "9": { inputs: { x: 1 } } };
+  const uploaded = [];
+  const n = await injectReferences(wf, ["7.inputs.image", "4.inputs.image"], ["/api/assets/a", "/api/assets/b", "/api/assets/c"],
+    async (u) => { uploaded.push(u); return `up-${u.slice(-1)}.png`; });
+  assert.equal(n, 2);
+  assert.deepEqual(uploaded, ["/api/assets/a", "/api/assets/b"], "the third has no input to go to, so it is not uploaded");
+  assert.deepEqual([wf["7"].inputs.image, wf["4"].inputs.image], ["up-a.png", "up-b.png"], "the primary goes to the first input");
+  const wf2 = { "4": { inputs: { image: "start.png" } } };
+  assert.equal(await injectReferences(wf2, ["4.inputs.image"], [], async () => { throw new Error("must not upload"); }), 0);
+  assert.equal(wf2["4"].inputs.image, "start.png", "no pictures: the workflow's own image stays");
+  assert.equal(await injectReferences(wf2, undefined, ["/api/assets/a"], async () => { throw new Error("must not upload"); }), 0, "a workflow without image inputs ignores references");
+});

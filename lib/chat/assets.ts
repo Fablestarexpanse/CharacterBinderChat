@@ -38,3 +38,15 @@ export async function imageToAvatar(image: Blob): Promise<string | null> {
     return downscaleImage(image);
   }
 }
+
+/**
+ * Store a picture shown anywhere in the app (a ComfyUI result through the
+ * proxy, a gallery image) as an asset, so it can be kept as a reference. The
+ * same picture always lands on the same asset (content-addressed).
+ */
+export async function storePicture(url: string): Promise<string> {
+  if (isAssetUrl(url)) return url.split("?")[0];
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Could not read that picture (HTTP ${res.status}).`);
+  return uploadImage(await res.blob());
+}

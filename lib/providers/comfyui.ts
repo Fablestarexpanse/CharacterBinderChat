@@ -12,6 +12,7 @@
  * in lib/chat/imageGen.ts owns the queue-poll-update lifecycle.
  */
 
+import { injectReferences } from "@/lib/media/imageLook";
 import type { ImageGenerationSettings, AspectRatio } from "@/lib/types";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:8188";
@@ -134,7 +135,28 @@ export class ComfyUIProvider {
    * stay private to this module; callers get a ready-to-queue workflow.
    */
   async prepareWorkflow(settings: ImageGenerationSettings): Promise<Workflow> {
-    return applySettingsToWorkflow(await this.loadWorkflowTemplate(settings.workflow), settings);
+    const wf = applySettingsToWorkflow(await this.loadWorkflowTemplate(settings.workflow), settings);
+    // Reference pictures go into the inputs the workflow's mapping names
+    // (detected Load Image nodes); a workflow without any simply ignores them.
+    const meta = (wf._meta as { fablechat?: { referenceImageNodes?: string[] } } | undefined)?.fablechat;
+    await injectReferences(wf, meta?.referenceImageNodes, settings.referenceImages, (url) => this.uploadImage(url));
+    return wf;
+  }
+
+  /** Copy a stored picture into ComfyUI's input folder; returns the name to put in a Load Image node. */
+  async uploadImage(url: string): Promise<string> {
+    const src = await fetch(url, { cache: "no-store" });
+    if (!src.ok) throw new Error(`Could not read reference picture ${url} (HTTP ${src.status}).`);
+    const blob = await src.blob();
+    const ext = (blob.type.split("/")[1] ?? "png").replace("jpeg", "jpg");
+    const form = new FormData();
+    // Named by content so the same picture is stored once in ComfyUI's input folder
+    form.append("image", blob, `fablechat-${url.split("/").pop()?.slice(0, 16) ?? "ref"}.${ext}`);
+    form.append("overwrite", "true");
+    const res = await fetch(this.proxied("upload/image"), { method: "POST", body: form });
+    const j = await res.json().catch(() => null) as { name?: string; subfolder?: string; error?: string } | null;
+    if (!res.ok || !j?.name) throw new Error(`ComfyUI did not accept the reference picture: ${j?.error ?? `HTTP ${res.status}`}`);
+    return j.subfolder ? `${j.subfolder}/${j.name}` : j.name;
   }
 
   /**

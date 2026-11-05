@@ -9,7 +9,7 @@ import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { dimensionsForRatio, ComfyUIProvider } from "@/lib/providers/comfyui";
 import { queueImage } from "@/lib/chat/imageGen";
-import { applyImageLook, hasImageLook } from "@/lib/media/imageLook";
+import { applyImageLook, hasImageLook, referencesFor, withReferences } from "@/lib/media/imageLook";
 import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { useEffect, useState } from "react";
 import {
@@ -70,8 +70,8 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
   // Whose look (image tags, avoid, LoRA, seed) to apply. Only those who have one are offered.
   const { characters, personas } = useFableStore();
   const lookOptions = [
-    ...characters.filter((c) => hasImageLook(c.image)).map((c) => ({ key: `character:${c.id}`, label: c.name, look: c.image })),
-    ...personas.filter((p) => hasImageLook(p.image)).map((p) => ({ key: `persona:${p.id}`, label: `${p.name} (you)`, look: p.image })),
+    ...characters.filter((c) => hasImageLook(c.image) || c.referenceImages?.length).map((c) => ({ key: `character:${c.id}`, label: c.name, look: c.image, refs: referencesFor(c) })),
+    ...personas.filter((p) => hasImageLook(p.image) || p.referenceImages?.length).map((p) => ({ key: `persona:${p.id}`, label: `${p.name} (you)`, look: p.image, refs: referencesFor(p) })),
   ];
   const [lookChoice, setLookChoice] = useState<string | null>(null);
   const lookKey = lookChoice ?? (lookOptions.some((o) => o.key === lookOf) ? lookOf! : "");
@@ -80,7 +80,7 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
   const handleGenerate = () => {
     // queueImage returns immediately; connection check, queueing and polling
     // all happen in the background and land through the store.
-    queueImage(applyImageLook(imageSettings, chosenLook?.look), activeChatId ?? undefined);
+    queueImage(withReferences(applyImageLook(imageSettings, chosenLook?.look), chosenLook?.refs ?? []), activeChatId ?? undefined);
   };
 
   // Choosing a ratio resolves to real pixels; typing a dimension by hand flips
@@ -334,9 +334,14 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
               <option value="">Nobody in particular</option>
               {lookOptions.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
             </select>
+            {chosenLook && chosenLook.refs.length > 0 && workflows.some((w) => w.slug === imageSettings.workflow && !w.controls.includes("referenceImage")) && (
+              <span role="status" className="mt-1 block text-[10px] text-amber-700 dark:text-amber-300">
+                This workflow has no image input, so the reference pictures are not sent. Pick one that does on the Workflows screen.
+              </span>
+            )}
             {chosenLook && (
               <span className="mt-1 block text-[10px] text-[var(--muted-fg)]">
-                Adds {[chosenLook.look?.tags && "their image tags", chosenLook.look?.avoid && "avoid-tags", chosenLook.look?.lora && `LoRA ${chosenLook.look.lora.name}`, chosenLook.look?.seed !== undefined && "a fixed seed"].filter(Boolean).join(", ")}.
+                Adds {[chosenLook.look?.tags && "their image tags", chosenLook.look?.avoid && "avoid-tags", chosenLook.look?.lora && `LoRA ${chosenLook.look.lora.name}`, chosenLook.look?.seed !== undefined && "a fixed seed", chosenLook.refs.length > 0 && `${chosenLook.refs.length} reference picture${chosenLook.refs.length === 1 ? "" : "s"} (for workflows with an image input)`].filter(Boolean).join(", ")}.
               </span>
             )}
           </label>

@@ -67,3 +67,44 @@ export function applyImageLook(settings: ImageGenerationSettings, look: ImageLoo
 
 /** Whether there is anything to apply (for "use this character's look" toggles). */
 export const hasImageLook = (look: ImageLook | undefined) => !!look && Object.keys(look).length > 0;
+
+// ─── Reference pictures ───────────────────────────────────────────────────────
+
+export const MAX_REFERENCES = 4;
+
+/**
+ * The pictures to send for someone: their chosen reference set, or their avatar
+ * when they have none. Only stored assets (never a pasted outside URL) and at most four.
+ */
+export function referencesFor(who: { avatar?: string; referenceImages?: string[] } | undefined): string[] {
+  if (!who) return [];
+  const own = (who.referenceImages ?? []).filter((u) => u.startsWith("/api/assets/"));
+  const list = own.length ? own : who.avatar?.startsWith("/api/assets/") ? [who.avatar.split("?")[0]] : [];
+  return [...new Set(list)].slice(0, MAX_REFERENCES);
+}
+
+export const withReferences = (settings: ImageGenerationSettings, refs: string[]): ImageGenerationSettings =>
+  refs.length ? { ...settings, referenceImages: refs.slice(0, MAX_REFERENCES) } : settings;
+
+/**
+ * Put reference pictures into a workflow's image inputs: each picture is
+ * uploaded (by `upload`, which returns the name ComfyUI stored it under) and its
+ * node path is set to that name. Inputs beyond the pictures keep the workflow's
+ * own image; pictures beyond the inputs are not sent. Returns how many were used.
+ */
+export async function injectReferences(
+  workflow: Record<string, unknown>,
+  nodePaths: string[] | undefined,
+  refs: string[] | undefined,
+  upload: (url: string) => Promise<string>,
+): Promise<number> {
+  const paths = (nodePaths ?? []).slice(0, MAX_REFERENCES);
+  const pics = (refs ?? []).slice(0, paths.length);
+  for (let i = 0; i < pics.length; i++) {
+    const [nodeId, , key] = paths[i].split(".");
+    const node = workflow[nodeId] as { inputs?: Record<string, unknown> } | undefined;
+    if (!node?.inputs || !key) continue;
+    node.inputs[key] = await upload(pics[i]);
+  }
+  return pics.length;
+}

@@ -35,6 +35,8 @@ export interface Character {
    *  and auto-created from the `character_book` an imported card carries. */
   /** How image models should draw them: tags, avoid-tags, LoRA, fixed seed (lib/media/imageLook.ts) */
   image?: ImageLook;
+  /** Reference pictures (asset URLs, primary first) sent to workflows with image inputs */
+  referenceImages?: string[];
   lorebookId?: string;
   createdAt: string;
   updatedAt: string;
@@ -65,6 +67,8 @@ export interface Persona {
   description: string;
   /** How image models should draw you (lib/media/imageLook.ts) */
   image?: ImageLook;
+  /** Reference pictures of you (asset URLs, primary first) */
+  referenceImages?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -199,6 +203,8 @@ export interface ImageGenerationSettings {
   batchCount: number;
   /** Injected as `<lora:name:weight>` into the workflow's loraSyntaxNode */
   loras: LoraEntry[];
+  /** Pictures (asset URLs) for the workflow's reference-image inputs, primary first */
+  referenceImages?: string[];
 }
 
 export interface ImageJob {
