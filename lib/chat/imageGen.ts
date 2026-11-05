@@ -10,6 +10,7 @@
 import { useFableStore, DEFAULT_UTILITY_MODEL } from "@/lib/store";
 import { ComfyUIProvider } from "@/lib/providers/comfyui";
 import { sendJson } from "@/lib/api/client";
+import { applyImageLook } from "@/lib/media/imageLook";
 import type { ImageJob, ImageGenerationSettings } from "@/lib/types";
 
 /**
@@ -143,7 +144,9 @@ export async function generateSceneImage(
 
   // ── Queue to ComfyUI + place the card ───────────────────────────────────
   onPhase?.("queued");
-  const job = queueImage({ ...store.imageSettings, prompt }, chatId);
+  // The character's image look leads the prompt word for word (and brings its
+  // LoRA, avoid-tags and fixed seed), so the scene director cannot paraphrase it away
+  const job = queueImage(applyImageLook({ ...store.imageSettings, prompt }, character?.image), chatId);
 
   const imageMessage = {
     chatId,

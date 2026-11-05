@@ -213,8 +213,7 @@ went wrong.
 
 ## Status and roadmap
 
-Everything above works end to end. Known gap: some Image Studio controls (LoRA stack, ControlNet, refiner, aspect
-ratio, character reference) don't reach the workflow yet; prompt, size, steps, CFG, sampler, seed and batch do.
+Everything above works end to end. Each character's image look (tags, avoid, LoRA, seed) is applied to their pictures.
 
 The current plan is [`docs/plan-2026-11.md`](docs/plan-2026-11.md), drawn from the audit in
 [`docs/audit-2026-11.md`](docs/audit-2026-11.md). Next up:

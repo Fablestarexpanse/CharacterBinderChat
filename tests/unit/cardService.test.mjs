@@ -188,3 +188,17 @@ test("source labels are cleaned: printable, short, defaulting to agent", () => {
   assert.equal(cleanSource(null), "agent");
   assert.equal(cleanSource("x".repeat(200)).length, 40);
 });
+
+test("an agent can set, clean and clear a character's image look, and a persona's", () => {
+  const s = store();
+  const { id } = createCard(s, "character", { ...ASH, image: { tags: "grey coat", seed: 7 } }, "agent");
+  assert.deepEqual(getCard(s, "character", id).data.extensions.fablechat.image, { tags: "grey coat", seed: 7 }, "create takes a top-level image");
+  updateCard(s, "character", id, { image: { tags: "red scarf", lora: { name: "" }, seed: -5 } }, "agent");
+  assert.deepEqual(s.getRow("characters", id).data.image, { tags: "red scarf" }, "malformed parts are dropped");
+  updateCard(s, "character", id, { image: null }, "agent");
+  assert.equal(s.getRow("characters", id).data.image, undefined);
+  const p = createCard(s, "persona", { spec: "persona_card_v1", name: "Kira", description: "A courier." }, "agent");
+  updateCard(s, "persona", p.id, { image: { tags: "courier jacket" } }, "agent");
+  assert.deepEqual(s.getRow("personas", p.id).data.image, { tags: "courier jacket" });
+  assert.throws(() => updateCard(s, "persona", p.id, { image: "tags" }, "agent"), /must be an object/);
+});

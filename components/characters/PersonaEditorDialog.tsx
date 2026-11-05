@@ -12,6 +12,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { AvatarPicker } from "@/components/ui/AvatarPicker";
 import { Trash2 } from "lucide-react";
 import { Field } from "@/components/ui/field";
+import { ImageLookFields, toLookDraft, fromLookDraft } from "@/components/characters/ImageLookFields";
 
 // ─── Inner form (mounted fresh per open, keyed by target id) ─────────────────
 
@@ -29,8 +30,11 @@ function EditorForm({
   const [name,        setName]        = useState(editing?.name ?? "");
   const [avatar,      setAvatar]      = useState(editing?.avatar ?? "");
   const [description, setDescription] = useState(editing?.description ?? "");
+  const [initialLook]                 = useState(() => toLookDraft(editing?.image));
+  const [look,        setLook]        = useState(initialLook);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const dirty = name !== (editing?.name ?? "") || avatar !== (editing?.avatar ?? "") || description !== (editing?.description ?? "");
+  const dirty = name !== (editing?.name ?? "") || avatar !== (editing?.avatar ?? "") || description !== (editing?.description ?? "")
+    || JSON.stringify(look) !== JSON.stringify(initialLook);
   const guard = useDiscardGuard(dirty, onClose, closeRef);
 
   const handleSave = () => {
@@ -38,6 +42,7 @@ function EditorForm({
       name:        name.trim(),
       avatar:      avatar.trim() || undefined,
       description: description.trim(),
+      image:       fromLookDraft(look),
     };
     if (editing) updatePersona(editing.id, data);
     else addPersona(data);
@@ -74,6 +79,7 @@ function EditorForm({
             placeholder="A freelance courier working the lower city. Quick on her feet, slow to trust…"
           />
         </Field>
+        <ImageLookFields value={look} onChange={setLook} who={name.trim() || "you"} />
       </div>
 
       {/* Footer */}

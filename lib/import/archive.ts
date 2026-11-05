@@ -96,7 +96,7 @@ export async function applyArchive(
         if (store.personas.some((p) => same(p.name, card.name) && same(p.description, card.description))) { tally.duplicates++; break; }
         // The store makes the first persona active when there is none; an existing
         // choice is never touched.
-        store.addPersona({ name: card.name, description: card.description });
+        store.addPersona({ name: card.name, description: card.description, ...(card.image ? { image: card.image } : {}) });
         tally.personas++;
         break;
       }

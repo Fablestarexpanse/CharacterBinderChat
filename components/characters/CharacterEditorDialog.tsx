@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useDiscardGuard, DiscardBar, type CloseRelay } from "@/components/ui/discardGuard";
+import { ImageLookFields, toLookDraft, fromLookDraft, type LookDraft } from "@/components/characters/ImageLookFields";
 import { useFableStore } from "@/lib/store";
 import type { Character } from "@/lib/types";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -34,7 +35,11 @@ interface FormState {
   creator:                 string;
   creatorNotes:            string;
   lorebookId:              string;  // "" = none
+  image:                   LookDraft;
 }
+
+/** The form fields that are plain text (everything but the image look) */
+type TextKey = Exclude<keyof FormState, "image">;
 
 const GREETING_SEPARATOR = "\n---\n";
 
@@ -54,6 +59,7 @@ function toFormState(source: Partial<Character> | null): FormState {
     creator:                 source?.creator ?? "",
     creatorNotes:            source?.creatorNotes ?? "",
     lorebookId:              source?.lorebookId ?? "",
+    image:                   toLookDraft(source?.image),
   };
 }
 
@@ -73,7 +79,7 @@ function EditorForm({ editing, draft, closeRef }: { editing: Character | null; d
   const guard = useDiscardGuard(dirty, closeCharacterEditor, closeRef);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const set = (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+  const set = (key: TextKey) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
 
   /**
@@ -83,7 +89,7 @@ function EditorForm({ editing, draft, closeRef }: { editing: Character | null; d
   const applyQuickImport = ({ fields, tags }: QuickImportResult) => {
     setForm((f) => {
       const next = { ...f };
-      const add = (key: keyof FormState, value: string | undefined) => {
+      const add = (key: TextKey, value: string | undefined) => {
         if (!value?.trim()) return;
         next[key] = next[key].trim() ? `${next[key].trim()}\n\n${value.trim()}` : value.trim();
       };
@@ -120,6 +126,7 @@ function EditorForm({ editing, draft, closeRef }: { editing: Character | null; d
       // Not editable here, but part of the card: carried through from what was
       // opened so importing then saving does not silently drop platform data.
       lorebookId:   form.lorebookId || undefined,
+      image:        fromLookDraft(form.image),
       characterVersion: (editing ?? draft)?.characterVersion,
       cardExtensions:   (editing ?? draft)?.cardExtensions,
     };
@@ -190,6 +197,8 @@ function EditorForm({ editing, draft, closeRef }: { editing: Character | null; d
             {lorebooks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         </Field>
+
+        <ImageLookFields value={form.image} onChange={(image) => setForm((f) => ({ ...f, image }))} who={form.name.trim() || "them"} />
 
         <details className="rounded-lg border border-[var(--border)] px-3 py-2">
           <summary className="cursor-pointer select-none text-xs font-medium text-[var(--foreground)]">

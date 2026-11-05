@@ -8,6 +8,7 @@
 // previous version, and an event the tab announces with an Undo. An agent that
 // misjudges can be reversed; nothing here is a one-way door.
 
+import { cleanImageLook } from "@/lib/media/imageLook";
 import type { FableStore } from "@/lib/db/store";
 import type { Character, LoreEntry } from "@/lib/types";
 import { uniqueSlugId } from "@/lib/store/defaults";
@@ -75,7 +76,7 @@ export function getCard(store: FableStore, type: CardType, id: string): object {
       );
     }
     case "lorebook": return lorebookToCard({ name: row.name, description: row.description as string | undefined, entries: (row.entries as LoreEntry[]) ?? [] });
-    case "persona":  return personaToCard({ name: row.name, description: String(row.description ?? "") });
+    case "persona":  return personaToCard({ name: row.name, description: String(row.description ?? ""), image: cleanImageLook(row.image) });
     case "scenario": return scenarioToCard({ name: row.name, scenario: String(row.scenario ?? ""), firstMessage: row.firstMessage as string | undefined });
   }
 }
@@ -172,7 +173,7 @@ export function createCard(store: FableStore, type: CardType, payload: unknown, 
     case "lorebook": primary = bookRow(store, imported.book); touches.push({ collection: "lorebooks", id: primary.id, row: primary }); break;
     case "persona": {
       const id = uniqueSlugId("persona", imported.name, (i) => !!store.getRow("personas", i));
-      primary = { id, name: imported.name, description: imported.description, createdAt: nowIso(), updatedAt: nowIso() };
+      primary = { id, name: imported.name, description: imported.description, ...(imported.image ? { image: imported.image } : {}), createdAt: nowIso(), updatedAt: nowIso() };
       touches.push({ collection: "personas", id, row: primary });
       break;
     }
@@ -209,6 +210,8 @@ const CHARACTER_FIELDS: Record<string, { to: string; kind: "string" | "strings" 
   alternate_greetings: { to: "alternateGreetings", kind: "strings" }, tags: { to: "tags", kind: "strings" },
   creator: { to: "creator", kind: "string" }, character_version: { to: "characterVersion", kind: "string" },
   extensions: { to: "cardExtensions", kind: "object" },
+  // FableChat's own: how image models draw them (tags, avoid, lora, seed)
+  image: { to: "image", kind: "object" },
 };
 
 const isStrings = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
@@ -241,10 +244,11 @@ export function updateCard(store: FableStore, type: CardType, id: string, change
       }
       const ok = spec.kind === "string" ? typeof value === "string"
         : spec.kind === "strings" ? isStrings(value)
-        : !!value && typeof value === "object" && !Array.isArray(value);
+        : (field === "image" && value === null) || (!!value && typeof value === "object" && !Array.isArray(value));
       if (!ok) throw new CardError(`"${field}" must be ${spec.kind === "string" ? "a string" : spec.kind === "strings" ? "an array of strings" : "an object"}`);
       // An empty string clears an optional field rather than storing ""
-      row[spec.to] = typeof value === "string" && field !== "name" && field !== "description" && value.trim() === "" ? undefined : value;
+      row[spec.to] = field === "image" ? cleanImageLook(value)
+        : typeof value === "string" && field !== "name" && field !== "description" && value.trim() === "" ? undefined : value;
     }
     if (typeof row.name !== "string" || !row.name.trim()) throw new CardError("name cannot be empty");
     if (typeof row.description !== "string" || !String(row.description).trim()) throw new CardError("description cannot be empty");
@@ -263,10 +267,16 @@ export function updateCard(store: FableStore, type: CardType, id: string, change
     }
     if (!String(row.name).trim()) throw new CardError("name cannot be empty");
   } else {
-    const allowed: Record<string, string> = type === "persona" ? { name: "name", description: "description" } : { name: "name", scenario: "scenario", first_mes: "firstMessage" };
+    const allowed: Record<string, string> = type === "persona" ? { name: "name", description: "description", image: "image" } : { name: "name", scenario: "scenario", first_mes: "firstMessage" };
     for (const [field, value] of Object.entries(c)) {
       const to = allowed[field];
       if (!to) fail(field, Object.keys(allowed));
+      if (to === "image") {
+        if (value !== null && (typeof value !== "object" || Array.isArray(value))) throw new CardError('"image" must be an object (tags, avoid, lora, seed) or null');
+        row.image = cleanImageLook(value);
+        if (row.image === undefined) delete row.image;
+        continue;
+      }
       if (typeof value !== "string") throw new CardError(`"${field}" must be a string`);
       row[to] = to === "firstMessage" && !value.trim() ? undefined : value;
     }

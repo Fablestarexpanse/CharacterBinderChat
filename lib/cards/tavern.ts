@@ -8,6 +8,7 @@
 // coerceCardData, and the lorebook/persona/scenario card shapes. The mappings to
 // and from Character are original. License notice: THIRD_PARTY_NOTICES.md.
 
+import { cleanImageLook, type ImageLook } from "@/lib/media/imageLook";
 import type { Character, LoreEntry } from "@/lib/types";
 
 export interface CharacterBookEntry {
@@ -93,9 +94,32 @@ export function characterToCard(character: Character, book?: CharacterBook): Tav
       tags:                      character.tags ?? [],
       creator:                   character.creator ?? "",
       character_version:         character.characterVersion ?? "1.0",
-      extensions:                character.cardExtensions ?? {},
+      extensions:                withImageLook(character.cardExtensions, character.image),
     },
   };
+}
+
+/**
+ * A card's extensions with FableChat's image look under `fablechat.image`,
+ * keeping whatever a platform (or an earlier FableChat field) put there.
+ */
+export function withImageLook(extensions: Record<string, unknown> | undefined, look: ImageLook | undefined): Record<string, unknown> {
+  const ext = { ...(extensions ?? {}) };
+  const ours = { ...((ext.fablechat && typeof ext.fablechat === "object" && !Array.isArray(ext.fablechat) ? ext.fablechat : {}) as Record<string, unknown>) };
+  delete ours.image;
+  if (look) ours.image = look;
+  if (Object.keys(ours).length) ext.fablechat = ours; else delete ext.fablechat;
+  return ext;
+}
+
+/** The image look carried in a card's extensions, and the extensions without it (so it is not stored twice). */
+export function splitImageLook(extensions: Record<string, unknown> | undefined): { look?: ImageLook; rest?: Record<string, unknown> } {
+  if (!extensions) return {};
+  const ours = extensions.fablechat && typeof extensions.fablechat === "object" && !Array.isArray(extensions.fablechat)
+    ? extensions.fablechat as Record<string, unknown> : undefined;
+  const look = cleanImageLook(ours?.image);
+  const rest = withImageLook(extensions, undefined);
+  return { look, rest: Object.keys(rest).length ? rest : undefined };
 }
 
 /** A FableChat lorebook as an embeddable CharacterBook. */
@@ -160,7 +184,10 @@ export function cardToCharacterDraft(json: unknown): Partial<Character> | null {
     creator:                 nonEmpty(str(data, "creator")),
     creatorNotes:            nonEmpty(str(data, "creator_notes")),
     characterVersion:        nonEmpty(str(data, "character_version")),
-    cardExtensions:          extensions && Object.keys(extensions).length > 0 ? extensions : undefined,
+    // A card carries it in extensions; FableChat's own flat JSON (and an agent's
+    // create call) may carry it as a top-level field
+    image:                   splitImageLook(extensions).look ?? cleanImageLook(data.image),
+    cardExtensions:          splitImageLook(extensions).rest,
   };
 }
 
@@ -221,8 +248,9 @@ export function lorebookToCard(book: { name: string; description?: string; entri
 }
 
 /** FableChat keeps one description for a persona; the card's other fields stay empty. */
-export function personaToCard(p: { name: string; description: string }) {
+export function personaToCard(p: { name: string; description: string; image?: ImageLook }) {
   return {
+    ...(p.image ? { extensions: withImageLook(undefined, p.image) } : {}),
     spec: "persona_card_v1" as const,
     name: p.name,
     description: p.description,

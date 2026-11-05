@@ -106,7 +106,7 @@ export function InspectorPanel() {
         {inspectorTab === "memory"       && <MemoryTab />}
         {inspectorTab === "graph"        && <GraphTab />}
         {inspectorTab === "lore"         && <LoreTab />}
-        {inspectorTab === "image-studio" && <ImageStudioTab />}
+        {inspectorTab === "image-studio" && <ImageStudioTab lookOf={character ? `character:${character.id}` : undefined} />}
       </div>
     </aside>
   );

@@ -117,7 +117,7 @@ async function applyCard(
     }
 
     case "persona": {
-      const id = store.addPersona({ name: card.name, description: card.description });
+      const id = store.addPersona({ name: card.name, description: card.description, ...(card.image ? { image: card.image } : {}) });
       store.setActivePersona(id);
       ui.setActiveSection("characters");
       return { file: file.name, ok: true, message: `persona "${card.name}" imported and set active.` };

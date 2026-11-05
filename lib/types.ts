@@ -2,6 +2,8 @@
 
 import type { ProviderType } from "@/lib/llm/callers";
 
+import type { ImageLook } from "@/lib/media/imageLook";
+
 export type MessageRole = "user" | "assistant" | "system";
 
 export interface Character {
@@ -31,6 +33,8 @@ export interface Character {
   cardExtensions?: Record<string, unknown>;
   /** The lorebook that belongs to this character. Embedded in their exported card,
    *  and auto-created from the `character_book` an imported card carries. */
+  /** How image models should draw them: tags, avoid-tags, LoRA, fixed seed (lib/media/imageLook.ts) */
+  image?: ImageLook;
   lorebookId?: string;
   createdAt: string;
   updatedAt: string;
@@ -59,6 +63,8 @@ export interface Persona {
   avatar?: string;
   /** Who the user is in the story — appearance, role, backstory */
   description: string;
+  /** How image models should draw you (lib/media/imageLook.ts) */
+  image?: ImageLook;
   createdAt: string;
   updatedAt: string;
 }

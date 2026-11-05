@@ -11,7 +11,8 @@
 
 import type { Character, LoreEntry } from "@/lib/types";
 import { decodeCardPng, isPng } from "@/lib/cards/png";
-import { cardData, cardToCharacterDraft } from "@/lib/cards/tavern";
+import { cardData, cardToCharacterDraft, splitImageLook } from "@/lib/cards/tavern";
+import type { ImageLook } from "@/lib/media/imageLook";
 import { detectPlatform } from "@/lib/cards/platforms";
 import { convertCardFrom } from "@/lib/cards/convert";
 
@@ -26,7 +27,7 @@ export interface ImportedLorebook {
 export type ImportedCard =
   | { kind: "character"; draft: Partial<Character>; embeddedBook?: ImportedLorebook }
   | { kind: "lorebook"; book: ImportedLorebook }
-  | { kind: "persona"; name: string; description: string }
+  | { kind: "persona"; name: string; description: string; image?: ImageLook }
   | { kind: "scenario"; name: string; book: ImportedLorebook; firstMessage?: string }
   | { kind: "unsupported"; reason: string };
 
@@ -117,7 +118,7 @@ export function parseLorebook(
 }
 
 /** persona_card_v1 → name + combined description. */
-function parsePersonaCard(json: Obj): { name: string; description: string } | null {
+function parsePersonaCard(json: Obj): { name: string; description: string; image?: ImageLook } | null {
   const name = str(json, "name");
   if (!name?.trim()) return null;
   const parts: string[] = [];
@@ -127,7 +128,9 @@ function parsePersonaCard(json: Obj): { name: string; description: string } | nu
     const v = str(json, field);
     if (v?.trim()) parts.push(`${field[0].toUpperCase()}${field.slice(1)}: ${v.trim()}`);
   }
-  return { name, description: parts.join("\n\n") };
+  const ext = json.extensions && typeof json.extensions === "object" && !Array.isArray(json.extensions) ? json.extensions as Obj : undefined;
+  const image = splitImageLook(ext).look;
+  return { name, description: parts.join("\n\n"), ...(image ? { image } : {}) };
 }
 
 /**

@@ -18,13 +18,14 @@ const FULL = {
   systemPrompt: "Stay terse.", postHistoryInstructions: "Never narrate {{user}}'s actions.",
   alternateGreetings: ["Late again.", "You're early."], creator: "me", creatorNotes: "v2 draft", characterVersion: "2.1",
   cardExtensions: { talkativeness: "0.4", world: "harbor" },
+  image: { tags: "silver hair, scar on jaw", avoid: "glasses", lora: { name: "ash_v2", trigger: "a5h", weight: 0.8 }, seed: 1234 },
   createdAt: "", updatedAt: "",
 };
 
 test("a character survives export to a card and import back, every field intact", () => {
   const draft = cardToCharacterDraft(characterToCard(FULL));
   for (const k of ["name", "description", "personality", "scenario", "firstMessage", "tags", "exampleDialogue",
-    "systemPrompt", "postHistoryInstructions", "alternateGreetings", "creator", "creatorNotes", "characterVersion", "cardExtensions"]) {
+    "systemPrompt", "postHistoryInstructions", "alternateGreetings", "creator", "creatorNotes", "characterVersion", "cardExtensions", "image"]) {
     assert.deepEqual(draft[k], FULL[k], k);
   }
 });
@@ -108,4 +109,26 @@ test("a plain character's prompt is unchanged by the new fields", () => {
   const p = buildSystemPrompt({ character: { id: "x", name: "Plain", description: "d", tags: [], createdAt: "", updatedAt: "" } });
   for (const marker of ["[Character Instructions]", "[Example Dialogue]", "[Reminder]"]) assert.ok(!p.includes(marker), marker);
   assert.equal(p.includes("User"), false, "no stray persona text");
+});
+
+test("the image look travels under extensions.fablechat, beside other platforms' data, and is not stored twice", () => {
+  const card = characterToCard({ ...FULL, cardExtensions: { ...FULL.cardExtensions, fablechat: { other: 1 } } });
+  assert.deepEqual(card.data.extensions.fablechat, { other: 1, image: FULL.image });
+  assert.equal(card.data.extensions.talkativeness, "0.4", "other platforms' extensions survive");
+  const back = cardToCharacterDraft(card);
+  assert.deepEqual(back.image, FULL.image);
+  assert.deepEqual(back.cardExtensions, { talkativeness: "0.4", world: "harbor", fablechat: { other: 1 } }, "the look is lifted out, the rest kept");
+  const none = characterToCard({ ...FULL, image: undefined });
+  assert.equal(none.data.extensions.fablechat, undefined, "no look, no empty fablechat block");
+  const hostile = cardToCharacterDraft({ spec: "chara_card_v2", data: { name: "X", description: "d", extensions: { fablechat: { image: { tags: 5, seed: -3, lora: { name: "" } } } } } });
+  assert.equal(hostile.image, undefined, "a malformed look from a card is dropped, not stored");
+});
+
+test("a persona card carries its look and imports it back", async () => {
+  const { personaToCard } = await import("../../lib/cards/tavern.ts");
+  const look = { tags: "short dark hair, courier jacket" };
+  const back = convertPayload(personaToCard({ name: "Kira", description: "A courier.", image: look }), "persona");
+  assert.equal(back.kind, "persona");
+  assert.deepEqual(back.image, look);
+  assert.equal(convertPayload(personaToCard({ name: "Kira", description: "A courier." }), "persona").image, undefined);
 });

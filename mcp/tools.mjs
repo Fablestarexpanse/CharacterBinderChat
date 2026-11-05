@@ -37,6 +37,12 @@ const characterFields = {
   tags: z.array(z.string()).optional(),
   creator: z.string().optional(),
   creator_notes: z.string().optional(),
+  image: z.object({
+    tags: z.string().optional().describe("Short comma-separated tags for image models, used word for word in every image of them"),
+    avoid: z.string().optional().describe("Tags to keep out of their images"),
+    lora: z.object({ name: z.string(), trigger: z.string().optional(), weight: z.number().optional() }).optional().describe("A LoRA trained on this character"),
+    seed: z.number().int().optional().describe("A fixed seed, for more consistent faces at the cost of variety"),
+  }).optional().describe("How image models should draw them"),
 };
 
 const WRITE_NOTE = " The change is written to FableChat's server and appears in any open tab within a few seconds. It is recorded and can be reversed with undo_change.";
@@ -126,8 +132,8 @@ export function buildTools(call) {
       title: "Update a card",
       description:
         "Change fields of an existing card; fields you leave out are untouched, and an empty string clears an optional field. " +
-        "Character fields: name, description, personality, scenario, first_mes, mes_example, system_prompt, post_history_instructions, alternate_greetings, tags, creator, creator_notes. " +
-        "Lorebook: name, description, entries (replaces all entries). Persona: name, description. Scenario: name, scenario, first_mes. " +
+        "Character fields: name, description, personality, scenario, first_mes, mes_example, system_prompt, post_history_instructions, alternate_greetings, tags, creator, creator_notes, image ({tags, avoid, lora: {name, trigger, weight}, seed}; null clears it). " +
+        "Lorebook: name, description, entries (replaces all entries). Persona: name, description, image. Scenario: name, scenario, first_mes. " +
         "An unknown field is an error that lists the allowed ones." + WRITE_NOTE,
       inputSchema: { type: cardType, id: z.string(), changes: z.record(z.string(), z.unknown()).describe("Field names to new values") },
       annotations: destructive,

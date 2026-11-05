@@ -9,6 +9,7 @@ import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { dimensionsForRatio, ComfyUIProvider } from "@/lib/providers/comfyui";
 import { queueImage } from "@/lib/chat/imageGen";
+import { applyImageLook, hasImageLook } from "@/lib/media/imageLook";
 import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { useEffect, useState } from "react";
 import {
@@ -26,7 +27,11 @@ import type { WorkflowSummary } from "@/lib/api/dto";
 const SAMPLERS = ["euler", "euler_a", "dpmpp_2m", "dpmpp_2m_karras", "ddim", "lcm"];
 const ASPECT_RATIOS: AspectRatio[] = ["1:1", "16:9", "9:16", "4:3", "3:4", "2:1", "custom"];
 
-export function ImageStudioTab() {
+/**
+ * `lookOf`: whose image look to apply by default ("character:<id>"), e.g. the
+ * character the chat inspector is showing. The full Image Studio page passes none.
+ */
+export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
   const { imageSettings, setImageSettings, imageJobs, providerSettings, activeChatId } =
     useFableStore();
   const [newLora, setNewLora] = useState("");
@@ -62,10 +67,20 @@ export function ImageStudioTab() {
     return () => { cancelled = true; };
   }, []);
 
+  // Whose look (image tags, avoid, LoRA, seed) to apply. Only those who have one are offered.
+  const { characters, personas } = useFableStore();
+  const lookOptions = [
+    ...characters.filter((c) => hasImageLook(c.image)).map((c) => ({ key: `character:${c.id}`, label: c.name, look: c.image })),
+    ...personas.filter((p) => hasImageLook(p.image)).map((p) => ({ key: `persona:${p.id}`, label: `${p.name} (you)`, look: p.image })),
+  ];
+  const [lookChoice, setLookChoice] = useState<string | null>(null);
+  const lookKey = lookChoice ?? (lookOptions.some((o) => o.key === lookOf) ? lookOf! : "");
+  const chosenLook = lookOptions.find((o) => o.key === lookKey);
+
   const handleGenerate = () => {
     // queueImage returns immediately; connection check, queueing and polling
     // all happen in the background and land through the store.
-    queueImage(imageSettings, activeChatId ?? undefined);
+    queueImage(applyImageLook(imageSettings, chosenLook?.look), activeChatId ?? undefined);
   };
 
   // Choosing a ratio resolves to real pixels; typing a dimension by hand flips
@@ -308,6 +323,23 @@ export function ImageStudioTab() {
               </div>
             )}
           </div>
+        )}
+
+        {/* Whose look */}
+        {lookOptions.length > 0 && (
+          <label className="block text-xs">
+            <span className="font-medium text-[var(--foreground)]">Draw as</span>
+            <select aria-label="Draw as" value={lookKey} onChange={(e) => setLookChoice(e.target.value)}
+              className="mt-1 h-8 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-xs">
+              <option value="">Nobody in particular</option>
+              {lookOptions.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+            </select>
+            {chosenLook && (
+              <span className="mt-1 block text-[10px] text-[var(--muted-fg)]">
+                Adds {[chosenLook.look?.tags && "their image tags", chosenLook.look?.avoid && "avoid-tags", chosenLook.look?.lora && `LoRA ${chosenLook.look.lora.name}`, chosenLook.look?.seed !== undefined && "a fixed seed"].filter(Boolean).join(", ")}.
+              </span>
+            )}
+          </label>
         )}
 
         {/* Generate */}
