@@ -86,11 +86,11 @@ npm run dev
 <details>
 <summary><strong>More screenshots</strong></summary>
 
-**Library**
+**Library — every card in one place**
 
 ![Library](docs/screenshot-library.png)
 
-**Knowledge graph — extracted facts with supersession history**
+**Knowledge graph — facts with supersession history, one pinned and one locked**
 
 ![Memory tab](docs/screenshot-memory.png)
 
@@ -98,7 +98,19 @@ npm run dev
 
 ![Core Memory tab](docs/screenshot-core-memory.png)
 
-**Provider settings**
+**Peek Prompt — exactly what the model receives**
+
+![Peek Prompt](docs/screenshot-peek.png)
+
+**Dark mode with a custom accent, and the story web**
+
+![Dark mode](docs/screenshot-dark.png)
+
+**On a phone — chat, inspector sheet, menu drawer**
+
+![Phone layout](docs/screenshot-phone.png)
+
+**Settings — appearance, memory, backup and providers**
 
 ![Settings](docs/screenshot-settings.png)
 
