@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useFableStore, DEFAULT_UTILITY_MODEL } from "@/lib/store";
 import { useUiStore } from "@/lib/store/ui";
+import { useNarrow } from "@/lib/hooks/useNarrow";
 import { useModelCatalog } from "@/lib/hooks/useModelCatalog";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -38,7 +39,9 @@ export function ChatHeader() {
     activeChatId, chats, characters, setChatModel, clearChat, isGenerating,
     customModels, toggleMemberPresence, setActiveChatId,
   } = useFableStore();
-  const { inspectorOpen, setInspectorOpen } = useUiStore();
+  const { inspectorOpen: wideOpen, setInspectorOpen, inspectorSheetOpen, setInspectorSheetOpen } = useUiStore();
+  const narrow = useNarrow();
+  const inspectorOpen = narrow ? inspectorSheetOpen : wideOpen;
 
   const chat      = chats.find((c) => c.id === activeChatId);
   const character = characters.find((c) => c.id === chat?.characterId);
@@ -119,7 +122,7 @@ export function ChatHeader() {
   );
 
   return (
-    <div className="flex items-center gap-3 px-4 h-14 border-b border-[var(--border)] bg-[var(--card)] flex-shrink-0">
+    <div className="flex flex-wrap md:flex-nowrap items-center gap-x-3 gap-y-1.5 px-3 md:px-4 py-2 md:py-0 md:h-14 border-b border-[var(--border)] bg-[var(--card)] flex-shrink-0">
       {/* Back to the chat list — clearing the active chat is what shows it */}
       <button
         onClick={() => setActiveChatId(null)}
@@ -130,7 +133,8 @@ export function ChatHeader() {
       </button>
 
       {/* Character info / group members with presence toggles */}
-      <div className="flex items-center gap-2.5 flex-1 min-w-0">
+      {/* Narrow screens: title on its own row, controls below */}
+      <div className="flex items-center gap-2.5 flex-1 min-w-0 basis-[calc(100%-2.5rem)] md:basis-auto">
         {memberIds.length >= 2 ? (
           <div className="flex items-center gap-1.5 min-w-0">
             {memberIds.map((id) => {
@@ -187,15 +191,15 @@ export function ChatHeader() {
       </div>
 
       {/* Model selector */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex items-center">
+      <div className="flex items-center gap-2 min-w-0 flex-1 md:flex-none">
+        <div className="relative flex items-center min-w-0">
           {loadingModels && (
             <Loader2 className="h-3 w-3 animate-spin text-[var(--muted-fg)] absolute left-2 pointer-events-none z-10" />
           )}
           <select
             value={currentModel}
             onChange={handleModelChange}
-            className={`h-8 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs text-[var(--foreground)] pr-2 focus:outline-none focus:ring-1 focus:ring-[var(--purple)] focus:border-[var(--purple)] ${
+            className={`h-8 min-w-0 max-w-full rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs text-[var(--foreground)] pr-2 focus:outline-none focus:ring-1 focus:ring-[var(--purple)] focus:border-[var(--purple)] ${
               loadingModels ? "pl-6" : "pl-2"
             }`}
             style={{ maxWidth: "200px" }}
@@ -214,7 +218,7 @@ export function ChatHeader() {
         </div>
 
         {/* Context bar */}
-        <div className="flex items-center gap-1.5 text-xs text-[var(--muted-fg)] min-w-[80px]">
+        <div className="hidden sm:flex items-center gap-1.5 text-xs text-[var(--muted-fg)] min-w-[80px]">
           <div className="h-1.5 w-16 rounded-full bg-[var(--border)] overflow-hidden">
             <div
               className="h-full rounded-full bg-[var(--purple)] transition-all"
@@ -226,7 +230,7 @@ export function ChatHeader() {
       </div>
 
       {/* Action buttons */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-0.5 md:gap-1 flex-shrink-0">
         <Button variant="ghost" size="icon" title="Peek prompt — see exactly what the model receives" onClick={() => setPeekOpen(true)}>
           <Eye className="h-4 w-4" />
         </Button>
@@ -265,7 +269,7 @@ export function ChatHeader() {
           variant="ghost"
           size="icon"
           title={inspectorOpen ? "Hide inspector" : "Show inspector"}
-          onClick={() => setInspectorOpen(!inspectorOpen)}
+          onClick={() => (narrow ? setInspectorSheetOpen : setInspectorOpen)(!inspectorOpen)}
         >
           {inspectorOpen ? (
             <PanelRightClose className="h-4 w-4" />

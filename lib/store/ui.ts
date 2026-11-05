@@ -28,11 +28,22 @@ interface UiStore {
   activeSection: SidebarSection;
   setActiveSection: (s: SidebarSection) => void;
 
+  /**
+   * Narrow screens: the sidebar drawer is open for this place (`section|chatId`).
+   * Keyed rather than a boolean so that navigating anywhere closes it with no
+   * effect needed: the key no longer matches, so it is not shown.
+   */
+  navOpenAt: string | null;
+  setNavOpenAt: (at: string | null) => void;
+
   // Inspector
   inspectorTab: InspectorTab;
   setInspectorTab: (t: InspectorTab) => void;
   inspectorOpen: boolean;
   setInspectorOpen: (v: boolean) => void;
+  /** Narrow screens show the inspector as a sheet over the chat, closed until asked for */
+  inspectorSheetOpen: boolean;
+  setInspectorSheetOpen: (v: boolean) => void;
   /** Which group member the inspector panel is examining */
   inspectorMemberId: string | null;
   setInspectorMemberId: (id: string | null) => void;
@@ -67,11 +78,15 @@ interface UiStore {
 export const useUiStore = create<UiStore>()((set) => ({
   activeSection: "chats",
   setActiveSection: (s) => set({ activeSection: s }),
+  navOpenAt: null,
+  setNavOpenAt: (at) => set({ navOpenAt: at }),
 
   inspectorTab: "character",
   setInspectorTab: (t) => set({ inspectorTab: t }),
   inspectorOpen: true,
   setInspectorOpen: (v) => set({ inspectorOpen: v }),
+  inspectorSheetOpen: false,
+  setInspectorSheetOpen: (v) => set({ inspectorSheetOpen: v }),
   inspectorMemberId: null,
   setInspectorMemberId: (id) => set({ inspectorMemberId: id }),
 

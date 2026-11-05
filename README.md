@@ -39,6 +39,7 @@ The result: characters that remember, grow, and stay consistent over hundreds of
 | **Branching** | "Branch from here" on any message copies the chat up to it, plus the memory the story had at that point (not today's). Each reply records a memory snapshot, so branches from new messages are exact; older ones are flagged approximate. |
 | **Memory curation** | Edit a fact's wording, **pin** it (always in the prompt) or **lock** it (extraction can't replace it) from Memory → Facts. Editing locks automatically. |
 | **Local access control** | Binds `127.0.0.1`. Other devices are refused unless you set `FABLE_PASSWORD`. Cross-site writes are refused. The OpenRouter key is stored encrypted on the server, not in the browser. |
+| **Phones and narrow windows** | Below 768 px the sidebar becomes a drawer behind a menu button and the inspector opens as a sheet over the chat; nothing scrolls sideways. |
 | **Appearance** | Settings → Appearance: light / dark / match-system, nine accent presets or any custom color. Saved per browser. |
 | **System Status** | Sidebar shows real-time connection status + loaded model per provider. |
 | **Image Generation** | `/image <prompt>` renders real images through your local ComfyUI — no launch flags needed, FableChat proxies the connection server-side. Workflow templates live in `workflows/*.json` (API format with a `_meta.fablechat` node mapping). Per-chat generation settings (temperature / top-p / max tokens) live behind the gear icon in the chat header. |
@@ -279,7 +280,6 @@ Every sidebar section is a working screen: Characters, Chats, Groups, Lorebooks,
 Not yet built:
 
 - **Some image-studio controls are decorative**: the LoRA stack, ControlNet, refiner, aspect-ratio and character-reference controls don't reach the workflow yet — prompt, dimensions, steps, CFG, sampler, seed and batch do.
-- **Narrow screens**: below about 768 px the layout does not adapt yet (the sidebar and inspector do not collapse).
 
 See `docs/audit-2026-11.md` for the full list and `docs/plan-2026-11.md` for the order of work.
 
@@ -304,7 +304,7 @@ See `docs/audit-2026-11.md` for the full list and `docs/plan-2026-11.md` for the
 - [x] Full backup and restore; one-click launcher; local access control and encrypted keys
 - [x] Asset store for images (originals kept, resized on request, smaller database)
 - [x] Library page: search, tags, bulk actions, archive export; editors ask before discarding changes
-- [ ] Mobile layout
+- [x] Narrow-screen layout (sidebar as a drawer, inspector as a sheet)
 - [ ] GPU / VRAM monitoring
 - [ ] Export chat as story document
 

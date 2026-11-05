@@ -153,11 +153,12 @@ export function LorebooksView() {
                     </button>
                   )}
                   <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <Badge variant="default" title="Estimated tokens if every enabled entry fires at once">
+                    {/* Hidden on phones so the name keeps its room; the entry count shows when expanded */}
+                    <Badge variant="default" className="hidden sm:inline-flex" title="Estimated tokens if every enabled entry fires at once">
                       <Zap className="h-2.5 w-2.5 mr-0.5" />
                       {tokens}t max
                     </Badge>
-                    <Badge variant={enabled.length > 0 ? "green" : "default"}>
+                    <Badge variant={enabled.length > 0 ? "green" : "default"} className="hidden sm:inline-flex">
                       {enabled.length}/{book.entries.length} on
                     </Badge>
                     <ExportButtons png={false} run={(f) => exportLorebook(book, f)} />

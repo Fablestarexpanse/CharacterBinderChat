@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { useUiStore } from "@/lib/store/ui";
 
-const NAV_ITEMS: { id: SidebarSection; label: string; icon: React.ElementType }[] = [
+export const NAV_ITEMS: { id: SidebarSection; label: string; icon: React.ElementType }[] = [
   { id: "characters", label: "Library", icon: Library },
   { id: "chats", label: "Chats", icon: MessageSquare },
   { id: "groups", label: "Groups", icon: Group },
@@ -43,7 +43,7 @@ const NAV_ITEMS: { id: SidebarSection; label: string; icon: React.ElementType }[
 
 export function Sidebar() {
   const { setActiveChatId, chats, characters, activeChatId } = useFableStore();
-  const { activeSection, setActiveSection, setChatBuilderOpen } = useUiStore();
+  const { activeSection, setActiveSection, setChatBuilderOpen, setNavOpenAt } = useUiStore();
 
   // All chats, newest first. This list is the only way to open a chat, so it
   // must never be capped — a slice(0, 8) here once made older chats
@@ -72,7 +72,7 @@ export function Sidebar() {
           variant="purple"
           size="sm"
           className="w-full justify-start gap-2"
-          onClick={() => setChatBuilderOpen(true)}
+          onClick={() => { setNavOpenAt(null); setChatBuilderOpen(true); }}
         >
           <Plus className="h-3.5 w-3.5" />
           New Chat

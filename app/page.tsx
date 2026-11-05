@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import { useFableStore } from "@/lib/store";
 import { Sidebar } from "@/components/sidebar/Sidebar";
+import { MobileBar, NavDrawer } from "@/components/sidebar/NavDrawer";
+import { useNarrow } from "@/lib/hooks/useNarrow";
 import { ChatArea } from "@/components/chat/ChatArea";
 import { ChatsView } from "@/components/sections/ChatsView";
 import { InspectorPanel } from "@/components/inspector/InspectorPanel";
@@ -28,6 +30,7 @@ import { sendJson } from "@/lib/api/client";
 export default function Home() {
   const { activeChatId, syncReady, lastSyncError } = useFableStore();
   const { activeSection } = useUiStore();
+  const narrow = useNarrow();
   // The persisted store rehydrates from localStorage before React's first
   // client render, so any returning user's state differs from the SSR HTML
   // (which only knows the seeds) — a guaranteed hydration mismatch. This is
@@ -67,7 +70,7 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden">
+    <div className="flex h-dvh w-screen overflow-hidden">
       {/* Hydrates from SQLite on load, then mirrors edits back (debounced) */}
       <StateSync />
       {/* Keeps the OpenRouter key encrypted on the server, out of localStorage */}
@@ -82,9 +85,12 @@ export default function Home() {
         </div>
       )}
       {!ready ? null : <>
-      <Sidebar />
+      {/* Below 768 px the sidebar is a drawer opened from a slim top bar */}
+      {narrow ? <NavDrawer /> : <Sidebar />}
 
-      <main className="flex flex-1 min-w-0 overflow-hidden">
+      <div className="flex flex-1 min-w-0 flex-col overflow-hidden">
+      {narrow && <MobileBar />}
+      <main className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
         {activeSection === "chats" && (activeChatId ? <ChatArea /> : <ChatsView />)}
         {activeSection === "characters" && <LibraryView />}
         {activeSection === "settings" && <SettingsView />}
@@ -98,6 +104,7 @@ export default function Home() {
 
         {showInspector && <InspectorPanel />}
       </main>
+      </div>
 
       {/* Global — openable from the Library and the inspector */}
       <CharacterEditorDialog />
