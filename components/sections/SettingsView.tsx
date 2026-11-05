@@ -15,6 +15,7 @@ import { ACCENT_PRESETS, accentHex, normalizeHex, type ThemeMode } from "@/lib/t
 import { CheckCircle, XCircle, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { PromptsCard } from "@/components/settings/PromptsCard";
 import { MediaConnectionsCard } from "@/components/settings/MediaConnectionsCard";
+import { ContactCard } from "@/components/settings/ContactCard";
 
 // ─── Per-provider test state ──────────────────────────────────────────────────
 
@@ -437,6 +438,8 @@ export function SettingsView() {
         <AppearanceCard />
 
         <MemoryCard />
+
+        <ContactCard />
 
         <MediaConnectionsCard />
 

@@ -20,7 +20,9 @@ export type PromptId =
   | "memory.reflection"
   | "image.scene-director"
   | "image.scene-request"
-  | "chat.text-message";
+  | "chat.text-message"
+  | "chat.photo-offer"
+  | "image.photo";
 
 export interface PromptVariable {
   name: string;
@@ -63,6 +65,25 @@ export const PROMPTS: readonly PromptDef[] = [
     template: `[Texting]
 {{character_name}} and {{user_label}} are not together right now: this exchange is by phone text message. Reply as {{character_name}} would text: short and in their own voice, a few lines at most. No narration of actions or surroundings and no *asterisks*, only what they would type.`,
     variables: [characterNameVar, userLabelVar],
+  },
+  {
+    id: "chat.photo-offer",
+    title: "Offering to send a photo",
+    group: "Chat",
+    usedFor: "Added to the chat prompt only for a character you allowed to send photos (and only while Contact & media is on).",
+    template: `[Photos]
+{{character_name}} can send {{user_label}} a photo of themselves when it genuinely fits the moment: write it on its own line as [photo: what the photo shows]. At most one per reply, and only when {{character_name}} would actually send one.`,
+    variables: [characterNameVar, userLabelVar],
+  },
+  {
+    id: "image.photo",
+    title: "Photo message picture",
+    group: "Images",
+    usedFor: "Turns what a photo message shows into the image prompt. The character's image tags are added in front of it.",
+    template: `{{what}}, candid phone photo, natural light, realistic`,
+    variables: [
+      { name: "what", required: true, description: "What the photo shows: the character's [photo: …] words, or what you asked for.", sample: "standing by the boarded window, rain outside" },
+    ],
   },
   {
     id: "memory.extraction",

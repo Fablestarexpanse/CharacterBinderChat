@@ -38,10 +38,11 @@ interface FormState {
   lorebookId:              string;  // "" = none
   image:                   LookDraft;
   referenceImages:         string[];
+  contactPhotos:           boolean;
 }
 
 /** The form fields that are plain text (everything but the image look) */
-type TextKey = Exclude<keyof FormState, "image" | "referenceImages">;
+type TextKey = Exclude<keyof FormState, "image" | "referenceImages" | "contactPhotos">;
 
 const GREETING_SEPARATOR = "\n---\n";
 
@@ -63,6 +64,7 @@ function toFormState(source: Partial<Character> | null): FormState {
     lorebookId:              source?.lorebookId ?? "",
     image:                   toLookDraft(source?.image),
     referenceImages:         source?.referenceImages ?? [],
+    contactPhotos:           !!source?.contact?.photos,
   };
 }
 
@@ -131,6 +133,7 @@ function EditorForm({ editing, draft, closeRef }: { editing: Character | null; d
       lorebookId:   form.lorebookId || undefined,
       image:        fromLookDraft(form.image),
       referenceImages: form.referenceImages.length ? form.referenceImages : undefined,
+      contact:      form.contactPhotos ? { ...(editing ?? draft)?.contact, photos: true } : (() => { const c = { ...(editing ?? draft)?.contact }; delete c.photos; return Object.keys(c).length ? c : undefined; })(),
       characterVersion: (editing ?? draft)?.characterVersion,
       cardExtensions:   (editing ?? draft)?.cardExtensions,
     };
@@ -206,6 +209,18 @@ function EditorForm({ editing, draft, closeRef }: { editing: Character | null; d
           <ReferencePictures value={form.referenceImages} onChange={(referenceImages) => setForm((f) => ({ ...f, referenceImages }))}
             avatar={form.avatar} who={form.name.trim() || "them"} />
         </ImageLookFields>
+
+        <label className="flex items-start gap-3 cursor-pointer rounded-lg border border-[var(--border)] px-3 py-2">
+          <input type="checkbox" checked={form.contactPhotos} onChange={(e) => setForm((f) => ({ ...f, contactPhotos: e.target.checked }))}
+            aria-label="May send you photos" className="mt-0.5 h-4 w-4 accent-[var(--purple)] cursor-pointer" />
+          <span>
+            <span className="block text-xs font-medium text-[var(--foreground)]">May send you photos</span>
+            <span className="block text-[11px] text-[var(--muted-fg)] mt-0.5">
+              {form.name.trim() || "They"} may choose to send a photo in a reply, drawn as set above. Needs Contact &amp; media
+              turned on in Settings; off, they are never told they could.
+            </span>
+          </span>
+        </label>
 
         <details className="rounded-lg border border-[var(--border)] px-3 py-2">
           <summary className="cursor-pointer select-none text-xs font-medium text-[var(--foreground)]">

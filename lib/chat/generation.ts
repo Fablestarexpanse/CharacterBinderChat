@@ -6,6 +6,8 @@
 
 import { hasHistoryContent, historyContent, replyChannel } from "@/lib/chat/channel";
 import { clientPromptTemplate } from "@/lib/chat/promptOverrides";
+import { contactSettings, startPhoto, takePhotoMarkers } from "@/lib/chat/photos";
+import { mayOfferPhotos } from "@/lib/media/contact";
 import { renderTemplate } from "@/lib/prompts/render";
 import { useFableStore } from "@/lib/store";
 import { getJson, sendJson } from "@/lib/api/client";
@@ -195,6 +197,14 @@ export async function assemblePrompt(chatId: string, speakerCharId: string | und
   // ── Group scene block ───────────────────────────────────────────────────
   // The speaker needs to know who else is in the room, and that other
   // characters' lines in the history are not theirs to continue.
+  // Photos: only for a character you allowed, while Contact & media is on.
+  // Otherwise the model is never told it could send one.
+  if (character && mayOfferPhotos(await contactSettings(), character)) {
+    systemPrompt += "\n\n" + renderTemplate(await clientPromptTemplate("chat.photo-offer"), {
+      character_name: character.name, user_label: persona?.name ?? "User",
+    });
+  }
+
   // Answering a text: say so, in the user's editable words (Settings → Prompts)
   if (replyChannel(chat.messages) === "text" && character) {
     systemPrompt += "\n\n" + renderTemplate(await clientPromptTemplate("chat.text-message"), {
@@ -375,6 +385,15 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
         fit.usedTokens + estimateTokens(accumulated.slice(prefill.length)) + 4,
         fit.contextMax
       );
+      // A "[photo: …]" from a character allowed to send photos becomes a photo
+      // on this message. From anyone else it stays as text and nothing is made.
+      if (character && mayOfferPhotos(await contactSettings(), character)) {
+        const { text, photo } = takePhotoMarkers(accumulated);
+        if (photo) {
+          store.updateMessageContent(chatId, assistantMsgId, text);
+          void startPhoto(chatId, assistantMsgId, character, photo);
+        }
+      }
       // Extraction waits until the exchange settles — see schedulePending.
       schedulePendingExtraction(chatId, speakerCharId, assistantMsgId);
     } else if (!failed && assistantMsgId) {

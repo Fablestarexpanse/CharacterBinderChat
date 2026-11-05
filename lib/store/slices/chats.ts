@@ -4,7 +4,7 @@ import type { StateCreator } from "zustand";
 import type { FableStore } from "../index";
 import { expandMacros } from "@/lib/cards/tavern";
 import type {
-  Character, Chat, GenerationParams, MemoryTrace, Message, PersistedAppState, Persona, ProviderId,
+  Character, Chat, GenerationParams, MemoryTrace, Message, PersistedAppState, Persona, ProviderId, Attachment,
 } from "@/lib/types";
 
 export interface ChatsSlice {
@@ -29,6 +29,10 @@ export interface ChatsSlice {
   setMessageMemoryTrace: (chatId: string, messageId: string, trace: MemoryTrace) => void;
   /** Flag a message as a provider-failure notice (excluded from prompts) */
   markMessageError: (chatId: string, messageId: string) => void;
+  /** Change one attachment on a message (status, url, prompt…); adds it if new */
+  setAttachment: (chatId: string, messageId: string, attachment: Attachment) => void;
+  /** Drop an attachment; a message left with nothing at all is removed too */
+  removeAttachment: (chatId: string, messageId: string, attachmentId: string) => void;
   /** Repoint an image-card message at a new job (retry / re-roll) */
   setMessageImageJob: (chatId: string, messageId: string, jobId: string) => void;
   /** Collapse / expand an image card in the transcript */
@@ -227,6 +231,21 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
   markMessageError: (chatId, messageId) =>
     set((s) => patchMessage(s, chatId, messageId, (m) => ({ ...m, error: true }))),
 
+  setAttachment: (chatId, messageId, attachment) =>
+    set((s) => patchMessage(s, chatId, messageId, (m) => {
+      const list = m.attachments ?? [];
+      const at = list.findIndex((a) => a.id === attachment.id);
+      return { ...m, attachments: at === -1 ? [...list, attachment] : list.map((a, i) => (i === at ? attachment : a)) };
+    })),
+  removeAttachment: (chatId, messageId, attachmentId) =>
+    set((s) => {
+      const msg = s.chats.find((c) => c.id === chatId)?.messages.find((m) => m.id === messageId);
+      const left = (msg?.attachments ?? []).filter((a) => a.id !== attachmentId);
+      if (msg && left.length === 0 && !msg.content.trim()) {
+        return { chats: s.chats.map((c) => (c.id === chatId ? { ...c, messages: c.messages.filter((m) => m.id !== messageId), updatedAt: new Date().toISOString() } : c)) };
+      }
+      return patchMessage(s, chatId, messageId, (m) => ({ ...m, attachments: left.length ? left : undefined }));
+    }),
   setMessageImageJob: (chatId, messageId, jobId) =>
     set((s) => patchMessage(s, chatId, messageId, (m) => ({ ...m, imageJobId: jobId }))),
 

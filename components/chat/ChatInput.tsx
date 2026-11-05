@@ -18,7 +18,9 @@ import {
   Square,
   Wand2,
   Smartphone,
+  Camera,
 } from "lucide-react";
+import { askForPhoto, contactSettings } from "@/lib/chat/photos";
 import { useUiStore } from "@/lib/store/ui";
 
 export function ChatInput() {
@@ -32,6 +34,20 @@ export function ChatInput() {
   // Group chats: who replies next. null = auto (name-mention, else round-robin)
   const [nextSpeaker, setNextSpeaker] = useState<string | null>(null);
   const chat = chats.find((c) => c.id === activeChatId);
+  // "Ask for a photo": a small row above the box. null = closed; the string is what you asked for.
+  const [photoAsk, setPhotoAsk] = useState<{ open: boolean; what: string; allowed: boolean | null }>({ open: false, what: "", allowed: null });
+  const photoFrom = characters.find((c) => c.id === (nextSpeaker ?? chat?.characterId));
+  const openPhotoAsk = async () => {
+    if (photoAsk.open) { setPhotoAsk({ open: false, what: "", allowed: null }); return; }
+    setPhotoAsk({ open: true, what: "", allowed: null });
+    const s = await contactSettings();
+    setPhotoAsk((p) => ({ ...p, allowed: s.enabled }));
+  };
+  const sendPhotoAsk = () => {
+    if (!activeChatId || !photoFrom) return;
+    void askForPhoto(activeChatId, photoFrom, photoAsk.what, textMode ? "text" : "scene");
+    setPhotoAsk({ open: false, what: "", allowed: null });
+  };
   const present = chat ? presentMemberIds(chat) : [];
   const isGroup = present.length >= 2;
 
@@ -145,6 +161,26 @@ export function ChatInput() {
 
   return (
     <div className="px-4 pb-4 pt-2 flex-shrink-0">
+      {photoAsk.open && (
+        <div role="group" aria-label="Ask for a photo" className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2">
+          {photoAsk.allowed === null ? <span className="text-xs text-[var(--muted-fg)]">…</span>
+            : !photoAsk.allowed ? (
+              <>
+                <span className="text-xs text-[var(--muted-fg)] flex-1">Photos are off. Turn on Contact &amp; media in Settings to ask for one.</span>
+                <Button variant="outline" size="sm" onClick={() => { setPhotoAsk({ open: false, what: "", allowed: null }); setActiveSection("settings"); }}>Open Settings</Button>
+              </>
+            ) : (
+              <>
+                <Camera className="h-3.5 w-3.5 text-[var(--purple-fg)]" />
+                <input autoFocus value={photoAsk.what} onChange={(e) => setPhotoAsk((p) => ({ ...p, what: e.target.value }))}
+                  onKeyDown={(e) => { if (e.key === "Enter") sendPhotoAsk(); if (e.key === "Escape") setPhotoAsk({ open: false, what: "", allowed: null }); }}
+                  placeholder={`A photo from ${photoFrom?.name ?? "them"} of… (optional)`} aria-label="What the photo shows"
+                  className="h-8 flex-1 min-w-[10rem] rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 text-xs" />
+                <Button variant="purple" size="sm" onClick={sendPhotoAsk} disabled={!photoFrom}>Ask</Button>
+              </>
+            )}
+        </div>
+      )}
       {/* Group scene: pick who replies (tap with empty input = speak now) */}
       {isGroup && (
         <div className="flex items-center gap-1.5 mb-2 px-1">
@@ -236,6 +272,16 @@ export function ChatInput() {
               onClick={() => setInputValue("/image ")}
             >
               <ImageIcon className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-7 w-7 ${photoAsk.open ? "bg-[var(--purple-light)] text-[var(--purple-fg)]" : ""}`}
+              title={`Ask ${photoFrom?.name ?? "them"} for a photo`}
+              aria-label="Ask for a photo"
+              onClick={openPhotoAsk}
+            >
+              <Camera className="h-3.5 w-3.5" />
             </Button>
             <Button
               variant="ghost"

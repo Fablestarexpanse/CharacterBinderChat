@@ -3,6 +3,7 @@
 import type { ProviderType } from "@/lib/llm/callers";
 
 import type { ImageLook } from "@/lib/media/imageLook";
+import type { CharacterContact } from "@/lib/media/contact";
 
 export type MessageRole = "user" | "assistant" | "system";
 
@@ -37,6 +38,8 @@ export interface Character {
   image?: ImageLook;
   /** Reference pictures (asset URLs, primary first) sent to workflows with image inputs */
   referenceImages?: string[];
+  /** What they may do on their own (lib/media/contact.ts); all off unless set */
+  contact?: CharacterContact;
   lorebookId?: string;
   createdAt: string;
   updatedAt: string;
@@ -91,6 +94,8 @@ export interface Attachment {
   seed?: number;
   /** The image job while it is being made */
   jobId?: string;
+  /** Waiting for you to approve (or change) the prompt before anything is generated */
+  awaitingReview?: boolean;
 }
 
 export interface Message {

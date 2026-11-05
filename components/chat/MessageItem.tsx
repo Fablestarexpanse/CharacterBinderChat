@@ -148,7 +148,6 @@ export function MessageItem({ message }: MessageItemProps) {
             <Smartphone className="h-3 w-3" />text
           </span>
         )}
-        {message.attachments && message.attachments.length > 0 && <Attachments items={message.attachments} />}
         {(message.content.length > 0 || !message.attachments?.length) && (
         <div
           className={`prose-chat text-sm text-[var(--foreground)] max-w-2xl ${
@@ -173,6 +172,7 @@ export function MessageItem({ message }: MessageItemProps) {
           )}
         </div>
         )}
+        {message.attachments && message.attachments.length > 0 && <Attachments message={message} />}
         </>
         )}
 
