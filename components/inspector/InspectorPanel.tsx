@@ -11,15 +11,18 @@ import { CoreMemoryTab } from "./CoreMemoryTab";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/lib/store/ui";
 import { useNarrow } from "@/lib/hooks/useNarrow";
-import { X } from "lucide-react";
+import { X, User, Brain, Database, BookOpen, Network, Image as ImageIcon, type LucideIcon } from "lucide-react";
 
-const TABS: { id: InspectorTab; label: string }[] = [
-  { id: "character",    label: "Character" },
-  { id: "core-memory",  label: "Core Mem" },
-  { id: "memory",       label: "Memory" },
-  { id: "lore",         label: "Lore" },
-  { id: "graph",        label: "Web" },
-  { id: "image-studio", label: "Image Studio" },
+// Every tab visible at once: a 3×2 grid instead of a strip that scrolled
+// sideways, which hid Memory, Lore, Web and Image Studio behind a scrollbar
+// most people never noticed.
+const TABS: { id: InspectorTab; label: string; icon: LucideIcon; hint: string }[] = [
+  { id: "character",    label: "Character",   icon: User,      hint: "Who they are, how they feel about you" },
+  { id: "core-memory",  label: "Core Mem",    icon: Brain,     hint: "Mood, relationship, thoughts and summary: always in the prompt" },
+  { id: "memory",       label: "Memory",      icon: Database,  hint: "Facts (pin, lock, edit, history), relationships and entities" },
+  { id: "lore",         label: "Lore",        icon: BookOpen,  hint: "Lorebooks active in this chat" },
+  { id: "graph",        label: "Web",         icon: Network,   hint: "The story as a mind map" },
+  { id: "image-studio", label: "Images",      icon: ImageIcon, hint: "Generate an image of this scene" },
 ];
 
 export function InspectorPanel() {
@@ -75,19 +78,23 @@ export function InspectorPanel() {
       )}
 
       {/* Tab bar */}
-      <div className="flex border-b border-[var(--border)] bg-[var(--card)] px-2 pt-2 gap-0.5 flex-shrink-0 overflow-x-auto">
-        {TABS.map((tab) => (
+      <div role="tablist" aria-label="Inspector sections" className="grid grid-cols-3 gap-1 border-b border-[var(--border)] bg-[var(--card)] p-2 flex-shrink-0">
+        {TABS.map(({ id, label, icon: Icon, hint }) => (
           <button
-            key={tab.id}
-            onClick={() => setInspectorTab(tab.id)}
+            key={id}
+            role="tab"
+            aria-selected={inspectorTab === id}
+            title={hint}
+            onClick={() => setInspectorTab(id)}
             className={cn(
-              "px-2.5 py-1.5 text-xs rounded-t-lg transition-colors cursor-pointer whitespace-nowrap",
-              inspectorTab === tab.id
+              "flex items-center justify-center gap-1.5 rounded-lg px-1.5 py-1.5 text-xs transition-colors cursor-pointer whitespace-nowrap",
+              inspectorTab === id
                 ? "bg-[var(--purple-light)] text-[var(--purple-fg)] font-semibold"
                 : "text-[var(--muted-fg)] hover:text-[var(--foreground)] hover:bg-[var(--muted)]"
             )}
           >
-            {tab.label}
+            <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+            {label}
           </button>
         ))}
       </div>

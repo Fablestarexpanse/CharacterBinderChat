@@ -13,8 +13,8 @@
   --sidebar-bg: #f8f8fc;
   --sidebar-border: #ebebf2;
   --radius: 8px;
-  --scrollbar: #d8d8e8;
-  --scrollbar-hover: #c0c0d8;
+  --scrollbar: #b4b4ca;
+  --scrollbar-hover: #8e8eaa;
   --prose-em: #5a5a7a;
   color-scheme: light;
 }
@@ -29,8 +29,8 @@
   --muted-fg: #9a9ab5;
   --sidebar-bg: #101018;
   --sidebar-border: #262634;
-  --scrollbar: #3a3a4e;
-  --scrollbar-hover: #4c4c64;
+  --scrollbar: #555570;
+  --scrollbar-hover: #72728f;
   --prose-em: #b4b4d0;
   color-scheme: dark;
 }
@@ -76,11 +76,14 @@ body {
   overflow: hidden;
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar { width: 5px; height: 5px; }
+/* Scrollbars: thin but visible, in both themes. The standard properties win in
+   current Chrome, Edge and Firefox; the -webkit rules cover Safari. A 5 px bar
+   in a colour one step off the background was close to invisible. */
+* { scrollbar-width: thin; scrollbar-color: var(--scrollbar) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); background-clip: content-box; }
 
 /* Chat message prose */
 .prose-chat { line-height: 1.7; }

@@ -76,7 +76,7 @@ npm run dev
 | **Knowledge graph** | Entities, facts with supersession and semantic de-duplication, relationship stats (affection / trust / desire / connection), commitments, episodic scene cards, reflections, running jokes and nicknames, and a story clock. Retrieval uses local Ollama embeddings when available and falls back to lexical ranking. |
 | **Emotional dynamics** | Stats move non-linearly: headroom near the extremes, loss aversion on drops in trust and affection, blended mood, and post-rupture inertia, so a betrayal heals slowly and stays in the prompt. |
 | **Lorebooks & scenarios** | Keyword-triggered world lore with priorities, always-on entries and a token budget. Scenarios are reusable scene setups with their own opening message. |
-| **Inspector** | A side panel with Character · Core Mem · Memory (Relationships, Facts with history, Entities with duplicate merge) · Lore · Web (the story as a mind map) · Image Studio. Every reply has a 🧠 view of the memory that shaped it. |
+| **Inspector** | A side panel with Character · Core Mem · Memory (Relationships, Facts with history, Entities with duplicate merge) · Lore · Web (the story as a mind map) · Images. All six tabs are visible at once. Every reply has a 🧠 view of the memory that shaped it. |
 | **Memory curation** | Edit a fact, **pin** it (always in the prompt) or **lock** it (extraction can't replace it). Editing locks automatically. |
 | **Peek Prompt** | The eye icon shows exactly what the model receives: the last prompt sent, or a live preview built by the same code. |
 | **Branching** | "Branch from here" on any message copies the chat up to that point together with the memory it had *then*. Branches from newer messages are exact; older ones are flagged approximate. |

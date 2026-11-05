@@ -145,6 +145,13 @@ export function CoreMemoryTab() {
         </div>
       </div>
 
+      {/* Untouched defaults look like a broken panel; say what fills them */}
+      {version === 1 && (
+        <div className="rounded-lg border border-dashed border-[var(--border)] px-2.5 py-2 text-[11px] text-[var(--muted-fg)]">
+          Nothing remembered yet. Send a message: after each reply the character&apos;s mood, feelings about you and the story so far are rewritten here.
+        </div>
+      )}
+
       {error && (
         <div className="text-[10px] text-red-500 bg-red-50 rounded px-2 py-1">{error}</div>
       )}
