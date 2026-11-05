@@ -4,6 +4,9 @@
 // a time; isGenerating lives in the store so every component sees it, while
 // the AbortController stays module-local (not serialisable).
 
+import { hasHistoryContent, historyContent, replyChannel } from "@/lib/chat/channel";
+import { clientPromptTemplate } from "@/lib/chat/promptOverrides";
+import { renderTemplate } from "@/lib/prompts/render";
 import { useFableStore } from "@/lib/store";
 import { getJson, sendJson } from "@/lib/api/client";
 import { createChatProvider, resolveRouteCredentials } from "@/lib/providers/factory";
@@ -192,6 +195,13 @@ export async function assemblePrompt(chatId: string, speakerCharId: string | und
   // ── Group scene block ───────────────────────────────────────────────────
   // The speaker needs to know who else is in the room, and that other
   // characters' lines in the history are not theirs to continue.
+  // Answering a text: say so, in the user's editable words (Settings → Prompts)
+  if (replyChannel(chat.messages) === "text" && character) {
+    systemPrompt += "\n\n" + renderTemplate(await clientPromptTemplate("chat.text-message"), {
+      character_name: character.name, user_label: persona?.name ?? "User",
+    });
+  }
+
   if (isGroup && character) {
     const othersHere = present
       .filter((id) => id !== character.id)
@@ -216,14 +226,17 @@ export async function assemblePrompt(chatId: string, speakerCharId: string | und
     m.role === "user"
       ? persona?.name ?? "User"
       : store.characters.find((c) => c.id === m.characterId)?.name ?? "Narrator";
+  // Texts are marked "(by text)" and attachments described ("[sent a photo: …]"),
+  // so the model knows how each line arrived and what was shown.
   const fullHistory: Array<{ role: MessageRole; content: string }> = chat.messages
-    .filter((m) => m.content.trim().length > 0 && !m.imageJobId && !m.error)
+    .filter((m) => hasHistoryContent(m) && !m.imageJobId && !m.error)
     .map((m) => {
-      if (!isGroup) return { role: m.role as MessageRole, content: m.content };
+      const content = historyContent(m);
+      if (!isGroup) return { role: m.role as MessageRole, content };
       const own = m.role === "assistant" && m.characterId === character?.id;
       return own
-        ? { role: "assistant" as MessageRole, content: m.content }
-        : { role: "user" as MessageRole, content: `${speakerLabel(m)}: ${m.content}` };
+        ? { role: "assistant" as MessageRole, content }
+        : { role: "user" as MessageRole, content: `${speakerLabel(m)}: ${content}` };
     });
   // ── Prefill ─────────────────────────────────────────────────────────────
   // A trailing assistant turn is how every backend here expresses "continue
@@ -315,11 +328,13 @@ export async function generateAssistantReply(chatId: string, speakerId?: string)
     // ── Create placeholder assistant message + stream into it ───────────────
     // Seeded with the prefill so the bubble reads correctly from the first
     // frame — the model continues it rather than repeating it.
+    const channel = replyChannel(useFableStore.getState().chats.find((c) => c.id === chatId)?.messages ?? []);
     assistantMsgId = store.addMessage(chatId, {
       chatId,
       role:        "assistant",
       content:     prefill,
       characterId: character?.id,
+      ...(channel === "text" ? { channel } : {}),
     });
     // Provenance: record exactly which memory was injected into this reply's
     // prompt, so the message can answer "why did you say that?"

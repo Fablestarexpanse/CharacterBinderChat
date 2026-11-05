@@ -19,7 +19,8 @@ export type PromptId =
   | "memory.episode"
   | "memory.reflection"
   | "image.scene-director"
-  | "image.scene-request";
+  | "image.scene-request"
+  | "chat.text-message";
 
 export interface PromptVariable {
   name: string;
@@ -33,7 +34,7 @@ export interface PromptVariable {
 export interface PromptDef {
   id: PromptId;
   title: string;
-  group: "Memory" | "Images";
+  group: "Chat" | "Memory" | "Images";
   /** One line: when the app sends it */
   usedFor: string;
   /** Shown above the editor when set: what a bad edit breaks */
@@ -54,6 +55,15 @@ const characterNameVar: PromptVariable = { name: "character_name", description: 
 const userLabelVar: PromptVariable = { name: "user_label", description: "Your persona's name (\"User\" without one).", sample: "Kira" };
 
 export const PROMPTS: readonly PromptDef[] = [
+  {
+    id: "chat.text-message",
+    title: "Replying by text message",
+    group: "Chat",
+    usedFor: "Added to the chat prompt when you send a message as a text: tells the character to answer the way they would text.",
+    template: `[Texting]
+{{character_name}} and {{user_label}} are not together right now: this exchange is by phone text message. Reply as {{character_name}} would text: short and in their own voice, a few lines at most. No narration of actions or surroundings and no *asterisks*, only what they would type.`,
+    variables: [characterNameVar, userLabelVar],
+  },
   {
     id: "memory.extraction",
     title: "Memory extraction",

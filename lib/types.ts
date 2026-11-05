@@ -73,12 +73,35 @@ export interface Persona {
   updatedAt: string;
 }
 
+/** How a message was sent in the story: in person (the default) or by phone */
+export type MessageChannel = "scene" | "text";
+
+/** A photo, clip or voice note carried by a message, stored as an asset once it is ready */
+export interface Attachment {
+  id: string;
+  kind: "image" | "video" | "audio";
+  status: "pending" | "ready" | "failed";
+  /** Asset URL (/api/assets/<hash>) once ready */
+  url?: string;
+  error?: string;
+  /** What it shows, in words: the prompt it was made from (and what the model is told was sent) */
+  prompt?: string;
+  negativePrompt?: string;
+  workflow?: string;
+  seed?: number;
+  /** The image job while it is being made */
+  jobId?: string;
+}
+
 export interface Message {
   id: string;
   chatId: string;
   role: MessageRole;
   content: string;
   characterId?: string;
+  /** Omitted for in-person messages, so older chats read unchanged */
+  channel?: MessageChannel;
+  attachments?: Attachment[];
   imageJobId?: string;
   timestamp: string;
   tokens?: number;

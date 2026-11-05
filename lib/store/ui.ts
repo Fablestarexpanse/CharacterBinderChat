@@ -71,6 +71,9 @@ interface UiStore {
   dismissRemoteNotice: (key: number) => void;
 
   // Composer
+  /** Chats whose composer sends texts (phone messages in the story) rather than in-person lines */
+  textModeChats: Record<string, boolean>;
+  setTextMode: (chatId: string, on: boolean) => void;
   inputValue: string;
   setInputValue: (v: string) => void;
 }
@@ -111,6 +114,10 @@ export const useUiStore = create<UiStore>()((set) => ({
       remoteNotices: [...s.remoteNotices, ...notices.map((n) => ({ ...n, key: ++noticeKey }))].slice(-5),
     })),
   dismissRemoteNotice: (key) => set((s) => ({ remoteNotices: s.remoteNotices.filter((n) => n.key !== key) })),
+
+  textModeChats: {},
+
+  setTextMode: (chatId, on) => set((s) => ({ textModeChats: { ...s.textModeChats, [chatId]: on } })),
 
   inputValue: "",
   setInputValue: (v) => set({ inputValue: v }),

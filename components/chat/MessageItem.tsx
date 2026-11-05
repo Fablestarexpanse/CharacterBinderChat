@@ -9,6 +9,7 @@ import { branchChat } from "@/lib/chat/branch";
 import { regenerateLastReply } from "@/lib/chat/generation";
 import { generateSceneImage } from "@/lib/chat/imageGen";
 import { ImageCard } from "@/components/chat/ImageCard";
+import { Attachments } from "@/components/chat/Attachments";
 import { formatTime } from "@/lib/utils";
 import type { Message, MemoryTrace } from "@/lib/types";
 import {
@@ -24,6 +25,7 @@ import {
   GitBranch,
   Clock,
   Loader2,
+  Smartphone,
 } from "lucide-react";
 
 interface MessageItemProps {
@@ -54,6 +56,7 @@ export function MessageItem({ message }: MessageItemProps) {
   const [imagining, setImagining] = useState(false);
 
   const isUser = message.role === "user";
+  const isText = message.channel === "text";
   const character = characters.find((c) => c.id === message.characterId);
   // The user speaks AS their persona — show its name and portrait, not "You"
   const persona = isUser ? personas.find((p) => p.id === activePersonaId) : undefined;
@@ -139,9 +142,19 @@ export function MessageItem({ message }: MessageItemProps) {
             </div>
           </div>
         ) : (
+        <>
+        {isText && (
+          <span className="inline-flex items-center gap-1 text-[10px] text-[var(--muted-fg)]" title="Sent as a text message in the story">
+            <Smartphone className="h-3 w-3" />text
+          </span>
+        )}
+        {message.attachments && message.attachments.length > 0 && <Attachments items={message.attachments} />}
+        {(message.content.length > 0 || !message.attachments?.length) && (
         <div
           className={`prose-chat text-sm text-[var(--foreground)] max-w-2xl ${
-            isUser
+            isText
+              ? `px-3 py-2 rounded-2xl ${isUser ? "bg-[var(--purple)] text-white rounded-br-sm" : "bg-[var(--muted)] rounded-bl-sm"}`
+              : isUser
               ? "bg-[var(--purple-light)] text-[var(--purple-fg)] px-3 py-2 rounded-2xl rounded-tr-sm"
               : ""
           }`}
@@ -159,6 +172,8 @@ export function MessageItem({ message }: MessageItemProps) {
             ))
           )}
         </div>
+        )}
+        </>
         )}
 
         {/* Action buttons — visible on hover */}

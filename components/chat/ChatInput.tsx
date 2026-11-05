@@ -17,12 +17,14 @@ import {
   Send,
   Square,
   Wand2,
+  Smartphone,
 } from "lucide-react";
 import { useUiStore } from "@/lib/store/ui";
 
 export function ChatInput() {
   const { activeChatId, chats, characters, personas, activePersonaId, setActivePersona, addMessage, isGenerating } = useFableStore();
-  const { inputValue, setInputValue, setActiveSection } = useUiStore();
+  const { inputValue, setInputValue, setActiveSection, textModeChats, setTextMode } = useUiStore();
+  const textMode = !!(activeChatId && textModeChats[activeChatId]);
 
   const activePersona = personas.find((p) => p.id === activePersonaId);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -56,7 +58,7 @@ export function ChatInput() {
     // memory can be written now (re-rolling instead would have cancelled it).
     flushPendingExtraction();
 
-    addMessage(activeChatId, { chatId: activeChatId, role: "user", content: userContent });
+    addMessage(activeChatId, { chatId: activeChatId, role: "user", content: userContent, ...(textMode ? { channel: "text" as const } : {}) });
     generateAssistantReply(activeChatId, nextSpeaker ?? undefined);
   };
 
@@ -216,7 +218,7 @@ export function ChatInput() {
           placeholder={
             isGenerating
               ? "Generating response…"
-              : "Message… (try /image a cyberpunk alley at night)"
+              : textMode ? "Text message…" : "Message… (try /image a cyberpunk alley at night)"
           }
           disabled={isGenerating}
           rows={1}
@@ -234,6 +236,17 @@ export function ChatInput() {
               onClick={() => setInputValue("/image ")}
             >
               <ImageIcon className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-7 w-7 ${textMode ? "bg-[var(--purple-light)] text-[var(--purple-fg)]" : ""}`}
+              title={textMode ? "Sending texts: you and the character are apart. Click to talk in person" : "Talk in person. Click to send texts instead, as if by phone"}
+              aria-pressed={textMode}
+              aria-label="Send as text message"
+              onClick={() => activeChatId && setTextMode(activeChatId, !textMode)}
+            >
+              <Smartphone className="h-3.5 w-3.5" />
             </Button>
             <Button
               variant="ghost"
