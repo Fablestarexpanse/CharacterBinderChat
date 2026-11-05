@@ -30,6 +30,7 @@ import type { PersistedAppState } from "@/lib/types";
 import { diffState, snapshot, type Baseline, type SyncedName } from "@/lib/sync/stateDiff";
 import { mergeRemote, type RemoteChanges } from "@/lib/sync/remote";
 import { useUiStore } from "@/lib/store/ui";
+import { addDemoStory } from "@/lib/demo";
 
 const POLL_MS = 3000;      // how often an open, visible tab asks what changed elsewhere
 const DEBOUNCE_MS = 800;   // trailing quiet-period before a save
@@ -294,6 +295,12 @@ export function startSync(): () => void {
         baseRev = typeof (data as { rev?: unknown }).rev === "number" ? (data as { rev: number }).rev : 0;
         epoch = typeof (data as { epoch?: unknown }).epoch === "string" ? (data as { epoch: string }).epoch : null;
       } else {
+        // A brand-new install opens on the demo story. Only when the server has
+        // never been written to (an emptied library has rev > 0, so deleting the
+        // demo is permanent) and this tab holds nothing of its own.
+        const serverRev = typeof (data as { rev?: unknown }).rev === "number" ? (data as { rev: number }).rev : 0;
+        const local = useFableStore.getState();
+        if (serverRev === 0 && SYNCED_COLLECTIONS.every((key) => (local[key]?.length ?? 0) === 0)) addDemoStory();
         // First run: seed the durable copy from local state
         await saveFull();
       }

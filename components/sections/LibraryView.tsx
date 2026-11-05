@@ -11,6 +11,7 @@ import { useMemo, useRef, useState } from "react";
 import {
   BookOpen, Check, CheckSquare, Clapperboard, Download, MessageSquare, Plus, Search, Square, Trash2, Upload,
   UserCircle2, Users, X,
+  Sparkles,
 } from "lucide-react";
 import { useFableStore } from "@/lib/store";
 import { useUiStore } from "@/lib/store/ui";
@@ -27,6 +28,7 @@ import { exportArchive, exportCharacter, exportLorebook, exportPersona, exportSc
 import { PLATFORM_LIST, type PlatformId } from "@/lib/cards/platforms";
 import { chatsUsingCharacter, charactersUsingLorebook, plural } from "@/lib/chat/references";
 import type { Character } from "@/lib/types";
+import { addDemoStory } from "@/lib/demo";
 
 type Tab = "characters" | "personas" | "lorebooks" | "scenarios";
 type Sort = "updated" | "name" | "created";
@@ -303,6 +305,12 @@ export function LibraryView() {
             <div className="text-xs text-[var(--muted-fg)] mt-1">
               Create one, or import PNG/JSON cards or a CharacterBinder archive — or drop files anywhere in the window.
             </div>
+            {tab === "characters" && (
+              <Button variant="outline" size="sm" className="mt-3" onClick={() => { addDemoStory(); setActiveSection("chats"); }}
+                title="Ronan, a persona, a small lorebook and a chat a few lines in">
+                <Sparkles className="h-3.5 w-3.5 mr-1" />Add the demo story
+              </Button>
+            )}
           </Card>
         ) : visible.length === 0 ? (
           <div className="text-sm text-[var(--muted-fg)] py-6 text-center">Nothing matches{query ? ` “${query}”` : ""}{tag ? ` with the tag “${tag}”` : ""}.</div>

@@ -39,6 +39,11 @@ The launcher checks Node, installs dependencies the first time, builds the app, 
 a second one; after an update it rebuilds by itself. Keep its window open while you use FableChat; Ctrl+C stops it. If
 port 3000 is busy it uses the next free one and says so.
 
+The first time it opens, you land in a **demo story**: Ronan, a mercenary in a rain-soaked cyberpunk city, waiting
+for you (as Kira, a courier) with a small lorebook and a chat a few lines in. Pick a model in the chat header and reply
+to see memory form in the inspector. Edit or delete any of it; once deleted it stays deleted, and **Library → Add the
+demo story** brings it back.
+
 The first run downloads about 300 MB and takes a minute or two. If it fails mentioning `node-gyp`, the message says
 which build tools to install.
 
