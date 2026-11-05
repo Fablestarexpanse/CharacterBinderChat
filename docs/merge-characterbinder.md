@@ -72,7 +72,7 @@ CharacterBinder's job is split into three pieces and each goes where it belongs:
 
 **Phase 4 — migration done; three extras deliberately skipped.**
 - **Archive import.** Drop or pick a CharacterBinder "Archive All" `.zip` on the
-  Characters screen (or anywhere in the window) and the whole collection comes
+  Library screen (or anywhere in the window) and the whole collection comes
   across: characters (art becomes the avatar, embedded lorebooks created and
   linked, all card fields kept), lorebooks, personas, scenarios. Characters are
   saved directly rather than opened for review one by one. Re-running is safe:
@@ -116,10 +116,9 @@ preset and global instructions. Neither is something an agent edits.
 - **The separate Library screen and IndexedDB.**
 
 ## Known limits of phase 1
-- An exported PNG embeds the character's **avatar**, which FableChat stores
-  downscaled to 512px JPEG. Original full-resolution art is not kept, so an
-  imported-then-exported card has smaller art than the source. The export says so
-  when a character has no art at all.
+- ~~Exported PNGs carried downscaled 512px art.~~ Fixed by the asset store (plan 1.1):
+  the original upload is kept and an exported card embeds it at full resolution. The
+  export still says so when a character has no art at all.
 - `fable_drawer2/` and the eval harness mirror `promptBuilder.ts` by hand
   (see its header); `tests/memory-eval/long-chat.mjs` does not yet know about the
   new card sections. They only matter for characters that use the new fields.
