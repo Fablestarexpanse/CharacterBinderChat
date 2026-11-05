@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useUiStore } from "@/lib/store/ui";
 import { importCardFiles, type ImportResult } from "@/lib/import/applyCards";
 import { FileDown, Check, AlertTriangle } from "lucide-react";
 
@@ -20,7 +21,10 @@ export function DropImport() {
   const depth = useRef(0);
 
   useEffect(() => {
-    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
+    // The Workflows screen takes its own drops (a ComfyUI export is JSON too,
+    // and is not a card), so this window-wide importer steps aside there.
+    const hasFiles = (e: DragEvent) =>
+      Array.from(e.dataTransfer?.types ?? []).includes("Files") && useUiStore.getState().activeSection !== "workflows";
 
     const onDragEnter = (e: DragEvent) => {
       if (!hasFiles(e)) return;

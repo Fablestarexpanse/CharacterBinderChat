@@ -53,8 +53,9 @@ export function ImageStudioTab() {
     let cancelled = false;
     getJson<{ workflows?: WorkflowSummary[] }>("/api/workflows")
       // A template that failed to parse is listed with an `error` and has no
-      // usable controls, so it is not offered as a choice.
-      .then((d) => { if (!cancelled) setWorkflows((d.workflows ?? []).filter((w) => !w.error)); })
+      // usable controls, so it is not offered as a choice; nor is a video
+      // workflow, which makes clips rather than the still this tab expects.
+      .then((d) => { if (!cancelled) setWorkflows((d.workflows ?? []).filter((w) => !w.error && w.purpose !== "video")); })
       // The picker falls back to the saved slug, so this stays non-fatal —
       // but a silent catch made a broken endpoint look like "no workflows".
       .catch((e: Error) => console.warn("[/api/workflows] list failed:", e.message));

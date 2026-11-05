@@ -47,6 +47,12 @@ export interface DrawerFact {
 /** GET /api/workflows — one ComfyUI template in the workflows/ directory. */
 export interface WorkflowSummary {
   slug:        string;
+  /** Shipped in workflows/ (read-only) or imported by the user (stored in the database) */
+  source:      "bundled" | "imported";
+  /** What it is for, when its mapping says */
+  purpose:     "portrait" | "photo" | "scene" | "video" | null;
+  /** Node types it uses: checked against ComfyUI's installed nodes */
+  classTypes:  string[];
   title:       string;
   description: string | null;
   nodeCount:   number;

@@ -1,66 +1,39 @@
-import { promises as fs } from "fs";
-import path from "path";
-import { routeError } from "@/lib/api/server";
-import type { WorkflowSummary } from "@/lib/api/dto";
+import { NextRequest } from "next/server";
+import { routeError, badRequest, guard } from "@/lib/api/server";
+import { listWorkflows, saveImported } from "@/lib/server/workflows";
+import type { WorkflowMapping } from "@/lib/media/workflowDetect";
 
 export const dynamic = "force-dynamic";
 
-// ─── GET /api/workflows ───────────────────────────────────────────────────────
-// Index the workflows/ directory. The picker used to be a hand-maintained
-// array in the Image Studio, so dropping a template into the folder never
-// surfaced it and deleting one left a dead option. This reads the truth.
-
-type Node = { class_type?: string; inputs?: Record<string, unknown> };
+// ─── /api/workflows ───────────────────────────────────────────────────────────
+// GET  → { workflows }: the bundled files in workflows/ and the user's imports.
+//        Read from the truth each time (the picker was once a hand-kept array).
+// POST { title, description?, workflow, mapping } → import a ComfyUI API-format
+//        export; refused with the reason if it is not one.
 
 export async function GET() {
   try {
-    const dir = path.join(process.cwd(), "workflows");
-    let files: string[];
-    try {
-      files = (await fs.readdir(dir)).filter((f) => f.endsWith(".json"));
-    } catch {
-      return Response.json({ workflows: [] });
-    }
-
-    const workflows: WorkflowSummary[] = [];
-    for (const file of files.sort()) {
-      const slug = file.replace(/\.json$/, "");
-      try {
-        const raw  = await fs.readFile(path.join(dir, file), "utf8");
-        const json = JSON.parse(raw) as Record<string, unknown>;
-        const meta = (json._meta as {
-          title?: string;
-          description?: string;
-          fablechat?: Record<string, string | null>;
-        } | undefined) ?? {};
-
-        const nodes = Object.entries(json).filter(([k]) => k !== "_meta");
-        const sampler = nodes
-          .map(([, v]) => v as Node)
-          .find((n) => n.class_type === "KSampler" || n.class_type === "KSamplerAdvanced");
-
-        workflows.push({
-          slug,
-          title:       meta.title ?? slug,
-          description: meta.description ?? null,
-          nodeCount:   nodes.length,
-          controls: Object.entries(meta.fablechat ?? {})
-            .filter(([, v]) => !!v)
-            .map(([k]) => k.replace(/Node$/, "")),
-          steps: typeof sampler?.inputs?.steps === "number" ? sampler.inputs.steps as number : null,
-          cfg:   typeof sampler?.inputs?.cfg   === "number" ? sampler.inputs.cfg   as number : null,
-        });
-      } catch (e) {
-        // A malformed template should show up as broken, not vanish silently
-        workflows.push({
-          slug, title: slug, description: null, nodeCount: 0, controls: [],
-          steps: null, cfg: null, error: e instanceof Error ? e.message : String(e),
-        });
-      }
-    }
-
-    return Response.json({ workflows });
+    return Response.json({ workflows: await listWorkflows() });
   } catch (err) {
     return routeError("[workflows GET]", err);
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const denied = guard(req);
+    if (denied) return denied;
+    const body = (await req.json()) as { title?: unknown; description?: unknown; workflow?: unknown; mapping?: unknown };
+    if (typeof body.title !== "string") return badRequest("title is required");
+    if (body.workflow === undefined) return badRequest("workflow is required");
+    if (JSON.stringify(body.workflow).length > 2_000_000) return badRequest("that workflow is too large (2 MB at most)");
+    const r = await saveImported({
+      title: body.title, description: typeof body.description === "string" ? body.description : undefined,
+      workflow: body.workflow, mapping: (body.mapping ?? {}) as WorkflowMapping,
+    });
+    if (!r.ok) return badRequest(r.error);
+    return Response.json({ ok: true, slug: r.slug });
+  } catch (err) {
+    return routeError("[workflows POST]", err);
   }
 }
