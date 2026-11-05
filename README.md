@@ -266,7 +266,8 @@ extensionless imports. There are no browser tests in CI yet; UI and sync changes
 
 The Python reference implementation of Drawer 2, whose 77-test suite documents the intended bi-temporal semantics,
 lives in `../fable_drawer2/`. `tests/unit/schema.test.mjs` and `tests/api/bitemporal.test.mjs` hold the TypeScript
-port to it. Conventions for working on the code are in [`AGENTS.md`](AGENTS.md).
+port to it. Conventions for working on the code are in [`AGENTS.md`](AGENTS.md). What still needs a real GPU, model or phone to confirm is listed in
+[`docs/testing-locally.md`](docs/testing-locally.md).
 
 ### Project layout
 
