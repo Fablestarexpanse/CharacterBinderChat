@@ -81,13 +81,15 @@ async function clipNow(chatId: string, messageId: string, attachmentId: string, 
   const st = useFableStore.getState();
   const att = findAttachment(chatId, messageId, attachmentId);
   const character = st.characters.find((c) => c.id === characterId);
-  if (!att || att.kind !== "video" || !att.from || !character) return;
-  const what = (motion ?? att.prompt ?? "").trim();
-  if (!what) return;
+  if (!att || att.kind !== "video" || !att.from) return;
   const update = (patch: Partial<Attachment>) => {
     const cur = findAttachment(chatId, messageId, attachmentId);
     if (cur) useFableStore.getState().setAttachment(chatId, messageId, { ...cur, ...patch });
   };
+  // Try again must say why it cannot, not do nothing
+  if (!character) { update({ status: "failed", awaitingReview: false, error: "The character who sent this clip no longer exists." }); return; }
+  const what = (motion ?? att.prompt ?? "").trim();
+  if (!what) { update({ status: "failed", awaitingReview: false, error: "There is nothing to say what happens in the clip." }); return; }
   update({ status: "pending", awaitingReview: false, error: undefined, prompt: what });
 
   // The master switch decides, here as for photos: nothing is made while it is off

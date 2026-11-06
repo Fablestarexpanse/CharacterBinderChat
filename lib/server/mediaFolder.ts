@@ -75,7 +75,8 @@ export function safeSegment(name: string, fallback = "media"): string {
   return s;
 }
 
-const EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif", "video/mp4": "mp4", "video/webm": "webm" };
+const EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif", "video/mp4": "mp4", "video/webm": "webm",
+  "audio/wav": "wav", "audio/mpeg": "mp3", "audio/ogg": "ogg", "audio/flac": "flac" };
 
 /**
  * Write a copy of a stored picture or clip, when a folder is set.
@@ -92,7 +93,7 @@ export async function saveCopy(bytes: Uint8Array, mime: string, hash: string, op
   const d = opts.now ?? new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-  const kind = mime.startsWith("video/") ? "clip" : "photo";
+  const kind = mime.startsWith("video/") ? "clip" : mime.startsWith("audio/") ? "voice" : "photo";
   const file = path.join(dir, `${stamp}_${who ? `${who}_` : ""}${kind}_${hash.slice(0, 8)}.${EXT[mime] ?? "bin"}`);
   try {
     await fs.mkdir(dir, { recursive: true });

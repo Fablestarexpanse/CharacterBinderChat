@@ -7,7 +7,7 @@
 // and noise. Uploading asks you to confirm the voice is yours, one you have
 // permission to use, or a made-up one. Preview speaks a line in that voice.
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AudioLines, Play, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DEMO_VOICES, type CharacterVoice } from "@/lib/media/voice";
@@ -28,6 +28,8 @@ export function VoiceFields({ value, onChange, who }: { value: CharacterVoice | 
   const [busy, setBusy] = useState<"upload" | "preview" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  // The last preview's address is released when a new one replaces it or the editor closes
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
   const [line, setLine] = useState(`Hi. It's ${who === "them" ? "me" : who}. Did you miss me?`);
 
   const pick = async (file: File | undefined) => {
@@ -57,7 +59,6 @@ export function VoiceFields({ value, onChange, who }: { value: CharacterVoice | 
         const j = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
       setPreviewUrl(URL.createObjectURL(await res.blob()));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

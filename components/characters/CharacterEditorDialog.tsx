@@ -139,7 +139,8 @@ function EditorForm({ editing, draft, closeRef }: { editing: Character | null; d
       lorebookId:   form.lorebookId || undefined,
       image:        fromLookDraft(form.image),
       referenceImages: form.referenceImages.length ? form.referenceImages : undefined,
-      contact:      form.contact.photos || form.contact.canContact ? form.contact : undefined,
+      // Both switches off still keeps their calls, timing and limits, for when you turn them back on
+      contact:      form.contact.photos || form.contact.canContact || (editing ?? draft)?.contact ? form.contact : undefined,
       voice:        form.voice && (form.voice.sample || form.voice.demo) ? form.voice : undefined,
       characterVersion: (editing ?? draft)?.characterVersion,
       cardExtensions:   (editing ?? draft)?.cardExtensions,

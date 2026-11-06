@@ -8,7 +8,7 @@
 
 import { getStore } from "@/lib/db";
 import { decryptSecret, loadKey } from "@/lib/server/secrets";
-import { resized } from "@/lib/server/assets";
+import { readJsonCapped, resized } from "@/lib/server/assets";
 import type { ProviderType } from "@/lib/llm/callers";
 import path from "node:path";
 
@@ -50,7 +50,7 @@ export async function describeImage(backend: VisionBackend, hash: string, bytes:
       body: JSON.stringify({ model: modelId, stream: false, messages: [{ role: "user", content: prompt, images: [data] }] }),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    const j = (await res.json().catch(() => null)) as { message?: { content?: string }; error?: string } | null;
+    const j = (await readJsonCapped(res).catch(() => null)) as { message?: { content?: string }; error?: string } | null;
     if (!res.ok || typeof j?.message?.content !== "string") throw new Error(j?.error ?? `Ollama HTTP ${res.status}`);
     text = j.message.content;
   } else {
@@ -69,7 +69,7 @@ export async function describeImage(backend: VisionBackend, hash: string, bytes:
       }),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    const j = (await res.json().catch(() => null)) as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } | string } | null;
+    const j = (await readJsonCapped(res).catch(() => null)) as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } | string } | null;
     const content = j?.choices?.[0]?.message?.content;
     if (!res.ok || typeof content !== "string") {
       const detail = typeof j?.error === "string" ? j.error : j?.error?.message;

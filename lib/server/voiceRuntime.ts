@@ -13,7 +13,8 @@
 // Processes are spawned directly (never through a shell), as AGENTS.md asks.
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import { DEMO_VOICES } from "@/lib/media/voice";
 import fs from "node:fs";
 import path from "node:path";
 import { getStore } from "@/lib/db";
@@ -21,18 +22,27 @@ import { getStore } from "@/lib/db";
 /** The fork, pinned: its engine fixes (delayed end-of-speech, vocal isolation) are what we use */
 export const ENGINE_GIT = "git+https://github.com/SanDiegoDude/VibeVoice@6cd02ae62dc722bc616c893fed8c7aebecfcc02b";
 /** What the engine itself imports (its pyproject also lists gradio, av, aiortc, openai for the demo app) */
+// Pinned to the versions setup was proven with (2026-11-05, Windows 11, CUDA 12.8): a new release of
+// any of them cannot change what gets installed. Raise them together, after a run.
 const ENGINE_NEEDS = [
-  "accelerate==1.6.0", "transformers==4.51.3", "diffusers", "tqdm", "numpy", "scipy", "librosa", "soundfile",
-  "huggingface_hub", "ml-collections", "absl-py", "rotary-embedding-torch", "einops",
+  "accelerate==1.6.0", "transformers==4.51.3", "diffusers==0.39.0", "tqdm==4.70.1", "numpy==2.4.6", "scipy==1.17.1",
+  "librosa==0.11.0", "soundfile==0.14.0", "huggingface_hub==0.36.2", "ml-collections==1.1.0", "absl-py==2.5.1",
+  "rotary-embedding-torch==0.9.1", "einops==0.8.2",
 ];
+/** PyTorch, pinned the same way (`==2.11.0` also matches the CUDA build, 2.11.0+cu128) */
+const TORCH = ["torch==2.11.0", "torchaudio==2.11.0"];
+/** uv, when it is not already installed: its official installer at a fixed version, checked before it runs */
+const UV_VERSION = "0.6.14";
+const UV_INSTALLER = process.platform === "win32"
+  ? { url: `https://astral.sh/uv/${UV_VERSION}/install.ps1`, sha256: "fe542676776660e2db520f3b428274530c2c258b9ba3acfdc7aa80bd992eabfe", file: "install.ps1" }
+  : { url: `https://astral.sh/uv/${UV_VERSION}/install.sh`, sha256: "de3669cd810357c33a9737c4ba4dc10f3c2ac9152ea5703438b06f942345b761", file: "install.sh" };
 const DEMO_VOICES_BASE = "https://raw.githubusercontent.com/SanDiegoDude/VibeVoice/6cd02ae62dc722bc616c893fed8c7aebecfcc02b/demo/voices";
-export const DEMO_VOICES = [
-  "en-Alice_woman", "en-Carter_man", "en-Frank_man", "en-Maya_woman", "in-Samuel_man", "en-Mary_woman_bgm",
-];
+/** The demo voice files to fetch: one list, the one the editors offer (lib/media/voice.ts) */
+const DEMO_FILES = DEMO_VOICES.map((d) => d.id.replace(/^demo:/, ""));
 
 export const VOICE_MODELS = [
-  { id: "microsoft/VibeVoice-1.5B", label: "VibeVoice 1.5B", gb: 5.4, vramGb: 7, note: "Recommended: good quality, fits beside ComfyUI on a 24 GB card." },
-  { id: "vibevoice/VibeVoice-7B", label: "VibeVoice 7B", gb: 18.7, vramGb: 18, note: "Best quality; needs about 18 GB of graphics memory, so other GPU work has to be idle." },
+  { id: "microsoft/VibeVoice-1.5B", revision: "c00898d257e6b46004e3e2866a47534085fb685a", label: "VibeVoice 1.5B", gb: 5.4, vramGb: 7, note: "Recommended: good quality, fits beside ComfyUI on a 24 GB card." },
+  { id: "vibevoice/VibeVoice-7B", revision: "505114ae6ad17be74df98e6939707434ec49c187", label: "VibeVoice 7B", gb: 18.7, vramGb: 18, note: "Best quality; needs about 18 GB of graphics memory, so other GPU work has to be idle." },
 ] as const;
 /** Besides the model: PyTorch with CUDA (~3 GB), the engine and its libraries (~1 GB), vocal isolation (~0.9 GB) */
 export const RUNTIME_EXTRA_GB = 5.4;
@@ -67,6 +77,9 @@ const voicesDir = (folder: string) => path.join(folder, "voices");
 const hfHome = (folder: string) => path.join(folder, "hf-cache");
 /** VibeVoice's processor loads its text tokenizer from this repo; only the tokenizer files are fetched, not the weights */
 const TOKENIZER_REPO = "Qwen/Qwen2.5-1.5B";
+const TOKENIZER_REVISION = "8faed761d45a263340a0528343f099c05c9a4323";
+/** The vocal-isolation model the fork uses (its repo and file), at a fixed revision */
+const ISOLATION = { repo: "KimberleyJSN/melbandroformer", file: "MelBandRoformer.ckpt", revision: "ac9b0614ab3cd7f77219e18ba494dfd93956c348" };
 const repoVoiceDir = () => path.join(process.cwd(), "voice");
 
 export const baseUrl = (r: VoiceRuntime = getRuntime()) => `http://127.0.0.1:${r.port}/v1`;
@@ -121,8 +134,11 @@ function run(cmd: string, args: string[], opts: { cwd?: string; env?: Record<str
 }
 
 function which(name: string): string | null {
-  const exts = isWin ? [".exe", ".cmd", ""] : [""];
+  // Only real executables (a .cmd cannot be spawned without a shell), and only from absolute PATH
+  // entries: an empty or relative entry would mean "the current folder"
+  const exts = isWin ? [".exe"] : [""];
   for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (!dir || !path.isAbsolute(dir)) continue;
     for (const e of exts) {
       const p = path.join(dir, name + e);
       try { if (fs.statSync(p).isFile()) return p; } catch { /* keep looking */ }
@@ -139,8 +155,15 @@ async function getUv(folder: string): Promise<string> {
   // The official installer script for the platform, run without a shell, into our folder only
   fs.mkdirSync(path.dirname(local), { recursive: true });
   const env = { UV_INSTALL_DIR: path.dirname(local), UV_NO_MODIFY_PATH: "1", INSTALLER_NO_MODIFY_PATH: "1" };
-  if (isWin) await run("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm https://astral.sh/uv/install.ps1 | iex"], { env });
-  else await run("/bin/sh", ["-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"], { env });
+  const res = await fetch(UV_INSTALLER.url, { signal: AbortSignal.timeout(60_000) });
+  if (!res.ok) throw new Error(`could not download the uv installer (HTTP ${res.status})`);
+  const script = Buffer.from(await res.arrayBuffer());
+  const got = createHash("sha256").update(script).digest("hex");
+  if (got !== UV_INSTALLER.sha256) throw new Error(`the uv ${UV_VERSION} installer is not the one FableChat expects (sha256 ${got}); not running it`);
+  const file = path.join(path.dirname(local), UV_INSTALLER.file);
+  fs.writeFileSync(file, script);
+  if (isWin) await run("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", file], { env });
+  else await run("/bin/sh", [file], { env });
   if (!fs.existsSync(local)) throw new Error("uv could not be installed");
   return local;
 }
@@ -171,7 +194,7 @@ export function startSetup(folder: string, model: string): { ok: true } | { ok: 
       if (!fs.existsSync(venvPython(r.folder!))) await run(uv, ["venv", "--python", "3.11", "--seed", path.join(r.folder!, "venv")]);
       const py = venvPython(r.folder!);
       step(2);
-      await run(uv, ["pip", "install", "--python", py, "torch", "torchaudio",
+      await run(uv, ["pip", "install", "--python", py, ...TORCH,
         ...(hasNvidia() ? ["--index-url", "https://download.pytorch.org/whl/cu128"] : [])]);
       step(3);
       // The engine alone, then only what the model needs: its package also lists the Gradio demo's
@@ -179,17 +202,24 @@ export function startSetup(folder: string, model: string): { ok: true } | { ok: 
       await run(uv, ["pip", "install", "--python", py, "--no-deps", ENGINE_GIT]);
       await run(uv, ["pip", "install", "--python", py, ...ENGINE_NEEDS]);
       step(4);
-      await run(py, ["-c", "import sys; from huggingface_hub import snapshot_download; snapshot_download(sys.argv[1], local_dir=sys.argv[2])", model, modelDir(r.folder!, model)]);
-      await run(py, ["-c", "import sys; from huggingface_hub import snapshot_download; snapshot_download(sys.argv[1], allow_patterns=['tokenizer*', 'vocab.json', 'merges.txt', 'config.json', 'generation_config.json'])", TOKENIZER_REPO],
+      // Every download at a fixed revision: a change upstream cannot change what you get
+      const revision = VOICE_MODELS.find((m) => m.id === model)!.revision;
+      await run(py, ["-c", "import sys; from huggingface_hub import snapshot_download; snapshot_download(sys.argv[1], revision=sys.argv[3], local_dir=sys.argv[2])", model, modelDir(r.folder!, model), revision]);
+      await run(py, ["-c", "import sys; from huggingface_hub import snapshot_download; snapshot_download(sys.argv[1], revision=sys.argv[2], allow_patterns=['tokenizer*', 'vocab.json', 'merges.txt', 'config.json', 'generation_config.json'])", TOKENIZER_REPO, TOKENIZER_REVISION],
         { env: { HF_HOME: hfHome(r.folder!) } });
       // Vocal isolation (cleans voice samples): the fork fetches it on first use, but the server runs
       // offline, so it is fetched here, into the folder the fork looks in
-      await run(py, ["-c", "from vibevoice.utils.vocal_isolation import get_model_path; print(get_model_path())"],
+      await run(py, ["-c", [
+        "import sys, os; from huggingface_hub import hf_hub_download; import vibevoice.utils.vocal_isolation as v",
+        "d = os.path.abspath(v.DEFAULT_MODEL_DIR); os.makedirs(d, exist_ok=True)",
+        "assert (v.HUGGINGFACE_MODEL_ID, v.MODEL_FILENAME) == (sys.argv[1], sys.argv[2]), 'the engine expects a different isolation model'",
+        "print(hf_hub_download(sys.argv[1], sys.argv[2], revision=sys.argv[3], local_dir=d))",
+      ].join("; "), ISOLATION.repo, ISOLATION.file, ISOLATION.revision],
         { env: { HF_HOME: hfHome(r.folder!), PYTHONIOENCODING: "utf-8" } });
       step(5);
       const demo = path.join(voicesDir(r.folder!), "demo");
       fs.mkdirSync(demo, { recursive: true });
-      for (const v of DEMO_VOICES) {
+      for (const v of DEMO_FILES) {
         const target = path.join(demo, `${v}.wav`);
         if (fs.existsSync(target)) continue;
         const res = await fetch(`${DEMO_VOICES_BASE}/${v}.wav`);

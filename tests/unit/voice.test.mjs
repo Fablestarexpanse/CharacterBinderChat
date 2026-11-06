@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 
 const { cleanVoice, hasVoice, DEMO_VOICES } = await import("../../lib/media/voice.ts");
 const { FableStore } = await import("../../lib/db/store.ts");
-const { sniffAudio } = await import("../../lib/db/assets.ts");
+const { sniffAudio, sniffVideo } = await import("../../lib/db/assets.ts");
 
 const asset = "/api/assets/" + "c".repeat(64);
 
@@ -30,6 +30,13 @@ test("sound files are recognised by their bytes and stored only where audio was 
   assert.equal(sniffAudio(mp3), "audio/mpeg");
   assert.equal(sniffAudio(new Uint8Array([0x4f, 0x67, 0x67, 0x53, 0])), "audio/ogg");
   assert.equal(sniffAudio(new Uint8Array([0x66, 0x4c, 0x61, 0x43, 0])), "audio/flac");
+  assert.equal(sniffAudio(new Uint8Array([0xff, 0xfb, 0x90, 0x64])), "audio/mpeg", "an MP3 frame without a tag (MPEG-1 layer III, 128 kbit/s, 44.1 kHz)");
+  assert.equal(sniffAudio(new Uint8Array([0xff, 0xff, 0xff, 0xff])), null, "eleven set bits are not a frame");
+  const box = (brand) => new Uint8Array([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, ...[...brand].map((c) => c.charCodeAt(0)), 0, 0, 0, 0]);
+  assert.equal(sniffVideo(box("isom")), "video/mp4");
+  assert.equal(sniffVideo(box("qt  ")), "video/mp4");
+  assert.equal(sniffVideo(box("heic")), null, "a HEIC photo is not a clip");
+  assert.equal(sniffVideo(box("avif")), null, "an AVIF picture is not a clip");
   const s = new FableStore(":memory:");
   assert.throws(() => s.putAsset(wav), /not an image/, "an avatar upload refuses a WAV");
   assert.equal(s.putAsset(wav, { audio: true }).mime, "audio/wav");

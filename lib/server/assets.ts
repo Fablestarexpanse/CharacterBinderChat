@@ -18,10 +18,14 @@ export function snapWidth(requested: number): number | null {
   return WIDTHS.find((w) => w >= requested) ?? WIDTHS[WIDTHS.length - 1];
 }
 
-/** Read a request body, refusing it as soon as it passes `max` bytes (a missing or false Content-Length does not help). */
-export async function readBodyCapped(req: Request, max: number): Promise<Uint8Array> {
+/**
+ * Read a request (or an upstream response) body, refusing it as soon as it passes
+ * `max` bytes (a missing or false Content-Length does not help).
+ */
+export async function readBodyCapped(req: { headers: Headers; body: ReadableStream<Uint8Array> | null }, max: number, what = "that file"): Promise<Uint8Array> {
+  const tooBig = () => new Error(`${what} is larger than the ${max >= 1048576 ? `${Math.round(max / 1048576)} MB` : `${Math.round(max / 1024)} KB`} limit`);
   const declared = Number(req.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > max) throw new Error(`that file is larger than the ${Math.round(max / 1048576)} MB limit`);
+  if (Number.isFinite(declared) && declared > max) throw tooBig();
   if (!req.body) return new Uint8Array(0);
   const reader = req.body.getReader();
   const parts: Uint8Array[] = [];
@@ -30,13 +34,27 @@ export async function readBodyCapped(req: Request, max: number): Promise<Uint8Ar
     const { done, value } = await reader.read();
     if (done) break;
     total += value.length;
-    if (total > max) { await reader.cancel(); throw new Error(`that file is larger than the ${Math.round(max / 1048576)} MB limit`); }
+    if (total > max) { await reader.cancel(); throw tooBig(); }
     parts.push(value);
   }
   const out = new Uint8Array(total);
   let at = 0;
   for (const p of parts) { out.set(p, at); at += p.length; }
   return out;
+}
+
+/** Upstream JSON (a model's reply, a service's status) is small: this is far more than any of it needs */
+export const MAX_JSON_BYTES = 4 * 1024 * 1024;
+
+/** A JSON body, read with a cap. Null when it is not JSON; throws when it is over the cap. */
+export async function readJsonCapped<T = unknown>(r: { headers: Headers; body: ReadableStream<Uint8Array> | null }, max = MAX_JSON_BYTES, what = "the reply"): Promise<T | null> {
+  const bytes = await readBodyCapped(r, max, what);
+  try { return JSON.parse(new TextDecoder().decode(bytes)) as T; } catch { return null; }
+}
+
+/** Only web addresses are fetched from a URL another service handed back (not file:, data: or anything else) */
+export function isWebUrl(u: string): boolean {
+  try { const p = new URL(u).protocol; return p === "http:" || p === "https:"; } catch { return false; }
 }
 
 type Sharp = (input: Buffer) => { rotate: () => Sharp2; };

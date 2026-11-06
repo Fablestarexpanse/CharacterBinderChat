@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useFableStore } from "@/lib/store";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -119,19 +119,22 @@ export function ChatInput() {
   // Picked, pasted or dropped: shown above the box until you send (with or
   // without words) or take it off. It is read by the picture reader before
   // the character answers (lib/chat/userPictures.ts).
-  const [picture, setPicture] = useState<{ file: File; preview: string } | null>(null);
+  // Staged for one chat: switching chats does not carry it into another conversation
+  const [staged, setPicture] = useState<{ chatId: string; file: File; preview: string } | null>(null);
+  const picture = staged && staged.chatId === activeChatId ? staged : null;
+  // Each preview address is released when it is replaced, taken off, or the box goes away
+  useEffect(() => {
+    const url = staged?.preview;
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [staged]);
   const [pictureError, setPictureError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const takePicture = (file: File | undefined | null) => {
-    if (!file || !file.type.startsWith("image/")) return;
-    if (picture) URL.revokeObjectURL(picture.preview);
-    setPicture({ file, preview: URL.createObjectURL(file) });
+    if (!file || !file.type.startsWith("image/") || !activeChatId) return;
+    setPicture({ chatId: activeChatId, file, preview: URL.createObjectURL(file) });
     setPictureError(null);
   };
-  const dropPicture = () => {
-    if (picture) URL.revokeObjectURL(picture.preview);
-    setPicture(null);
-  };
+  const dropPicture = () => setPicture(null);
   const sendWithPicture = async () => {
     if (!picture || !activeChatId || isGenerating || !activePersona) return;
     const text = inputValue.trim();

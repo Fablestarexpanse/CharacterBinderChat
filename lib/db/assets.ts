@@ -30,13 +30,24 @@ export function sniffImage(bytes: Uint8Array): "image/png" | "image/jpeg" | "ima
   return null;
 }
 
+/** ISO major brands of MP4 and QuickTime video (not HEIC/AVIF stills, not M4A audio) */
+const VIDEO_BRANDS = new Set(["isom", "iso2", "iso3", "iso4", "iso5", "iso6", "mp41", "mp42", "mp71", "avc1", "dash", "M4V ", "M4VH", "M4VP", "qt  ", "3gp4", "3gp5", "3gp6", "3g2a"]);
+
+/** An MPEG audio frame header, not just eleven set bits: a valid version, layer, bitrate and sample rate */
+function mpegFrame(b: Uint8Array): boolean {
+  if (b.length < 4 || b[0] !== 0xff || (b[1] & 0xe0) !== 0xe0) return false;
+  const version = (b[1] >> 3) & 3, layer = (b[1] >> 1) & 3, bitrate = b[2] >> 4, rate = (b[2] >> 2) & 3;
+  return version !== 1 && layer !== 0 && bitrate !== 0 && bitrate !== 15 && rate !== 3;
+}
+
 /**
  * A clip's type, from the bytes: MP4/MOV (an ISO "ftyp" box) or WebM (EBML). Only
  * accepted where the caller asked for video, so an avatar can never be a movie.
  */
 export function sniffVideo(bytes: Uint8Array): "video/mp4" | "video/webm" | null {
   const b = bytes;
-  if (b.length >= 12 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) return "video/mp4";
+  // An "ftyp" box alone is not enough: HEIC and AVIF pictures have one too. Its major brand says what the file is.
+  if (b.length >= 12 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70 && VIDEO_BRANDS.has(String.fromCharCode(b[8], b[9], b[10], b[11]))) return "video/mp4";
   if (b.length >= 4 && b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) return "video/webm";
   return null;
 }
@@ -45,7 +56,7 @@ export function sniffVideo(bytes: Uint8Array): "video/mp4" | "video/webm" | null
 export function sniffAudio(bytes: Uint8Array): "audio/wav" | "audio/mpeg" | "audio/ogg" | "audio/flac" | null {
   const b = bytes;
   if (b.length >= 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x41 && b[10] === 0x56 && b[11] === 0x45) return "audio/wav";
-  if (b.length >= 3 && ((b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33) || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0))) return "audio/mpeg";
+  if ((b.length >= 3 && b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33) || mpegFrame(b)) return "audio/mpeg";
   if (b.length >= 4 && b[0] === 0x4f && b[1] === 0x67 && b[2] === 0x67 && b[3] === 0x53) return "audio/ogg";
   if (b.length >= 4 && b[0] === 0x66 && b[1] === 0x4c && b[2] === 0x61 && b[3] === 0x43) return "audio/flac";
   return null;

@@ -6,6 +6,7 @@
 // player. A refused workflow names the model files ComfyUI lacks.
 
 import zlib from "node:zlib";
+import { MAX_VIDEO_BYTES, readBodyCapped, readJsonCapped } from "@/lib/server/assets";
 import { listWorkflows, getWorkflow } from "@/lib/server/workflows";
 import { injectReferences } from "@/lib/media/imageLook";
 import { isReferenceWorkflow } from "@/lib/media/clipRefs";
@@ -77,7 +78,7 @@ export async function testVideoClip(baseUrl: string, opts: { timeoutMs?: number 
     form.append("image", new Blob([testFrame() as BlobPart], { type: "image/png" }), "fablechat-video-test.png");
     form.append("overwrite", "true");
     const res = await fetch(`${baseUrl}/upload/image`, { method: "POST", body: form, signal: AbortSignal.timeout(30_000) });
-    const j = (await res.json().catch(() => null)) as { name?: string; subfolder?: string } | null;
+    const j = (await readJsonCapped(res).catch(() => null)) as { name?: string; subfolder?: string } | null;
     if (!res.ok || !j?.name) throw new Error(`ComfyUI did not accept the test frame (HTTP ${res.status}).`);
     return j.subfolder ? `${j.subfolder}/${j.name}` : j.name;
   });
@@ -92,7 +93,7 @@ export async function testVideoClip(baseUrl: string, opts: { timeoutMs?: number 
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt, client_id: "fablechat-video-test" }), signal: AbortSignal.timeout(30_000),
   });
-  const qj = (await queued.json().catch(() => null)) as { prompt_id?: string; error?: { message?: string }; node_errors?: unknown } | null;
+  const qj = (await readJsonCapped(queued).catch(() => null)) as { prompt_id?: string; error?: { message?: string }; node_errors?: unknown } | null;
   if (!queued.ok || !qj?.prompt_id) {
     const missing = missingFiles(qj?.node_errors);
     return {
@@ -107,14 +108,14 @@ export async function testVideoClip(baseUrl: string, opts: { timeoutMs?: number 
   const deadline = started + (opts.timeoutMs ?? 20 * 60 * 1000);
   while (Date.now() < deadline) {
     const h = await fetch(`${baseUrl}/history/${qj.prompt_id}`, { signal: AbortSignal.timeout(10_000) }).catch(() => null);
-    const entry = h?.ok ? ((await h.json()) as Record<string, { status?: { status_str?: string; completed?: boolean }; outputs?: Record<string, { images?: Array<{ filename: string; subfolder: string; type: string }>; videos?: Array<{ filename: string; subfolder: string; type: string }> }> }>)[qj.prompt_id] : undefined;
+    const entry = h?.ok ? (((await readJsonCapped(h)) ?? {}) as Record<string, { status?: { status_str?: string; completed?: boolean }; outputs?: Record<string, { images?: Array<{ filename: string; subfolder: string; type: string }>; videos?: Array<{ filename: string; subfolder: string; type: string }> }> }>)[qj.prompt_id] : undefined;
     if (entry?.status?.status_str === "error") return { ok: false, label: `ComfyUI started the test clip with "${slug}" but it failed. The ComfyUI console says why.` };
     if (entry?.status?.completed) {
       const file = Object.values(entry.outputs ?? {}).flatMap((o) => [...(o.videos ?? []), ...(o.images ?? [])]).find((f) => f.type !== "temp" && /\.(mp4|webm|mov|mkv)$/i.test(f.filename));
       if (!file) return { ok: false, label: `"${slug}" finished but saved no clip (no Save Video output?).` };
       const view = await fetch(`${baseUrl}/view?${new URLSearchParams({ filename: file.filename, subfolder: file.subfolder, type: file.type })}`, { signal: AbortSignal.timeout(60_000) });
       if (!view.ok) return { ok: false, label: `The clip was made but could not be read back (HTTP ${view.status}).` };
-      const bytes = Buffer.from(await view.arrayBuffer());
+      const bytes = Buffer.from(await readBodyCapped(view, MAX_VIDEO_BYTES, "the clip"));
       const mime = /\.webm$/i.test(file.filename) ? "video/webm" : "video/mp4";
       const secs = Math.round((Date.now() - started) / 1000);
       return { ok: true, label: `Made a ${(TEST_FRAMES / 24).toFixed(1)}-second test clip with "${slug}" in ${secs} s.`, sample: { type: "video", dataUrl: `data:${mime};base64,${bytes.toString("base64")}` } };

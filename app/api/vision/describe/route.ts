@@ -1,3 +1,4 @@
+import { readJsonCapped } from "@/lib/server/assets";
 import { NextRequest } from "next/server";
 import { routeError, badRequest, guard, upstreamError } from "@/lib/api/server";
 import { getStore } from "@/lib/db";
@@ -24,10 +25,12 @@ export async function POST(req: NextRequest) {
   try {
     const denied = guard(req);
     if (denied) return denied;
-    const body = (await req.json()) as {
+    let body: {
       assetUrl?: unknown; test?: unknown; providerType?: unknown; providerBaseUrl?: unknown; modelId?: unknown;
       characterName?: unknown; userLabel?: unknown;
-    };
+    } | null;
+    try { body = await readJsonCapped(req, 64 * 1024, "the request"); } catch (e) { return badRequest(e instanceof Error ? e.message : "the request is too large"); }
+    if (!body || typeof body !== "object") return badRequest("the body must be JSON");
     if (!isProviderType(body.providerType)) return badRequest(`providerType must be one of: ${PROVIDER_TYPES.join(", ")}`);
     if (typeof body.modelId !== "string" || !body.modelId.trim()) return badRequest("choose the model that reads pictures (modelId)");
     const base = parseProviderBase(typeof body.providerBaseUrl === "string" ? body.providerBaseUrl : "https://openrouter.ai");

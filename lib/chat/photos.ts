@@ -86,13 +86,15 @@ async function photoNow(chatId: string, messageId: string, attachmentId: string,
   const msg = st.chats.find((c) => c.id === chatId)?.messages.find((m) => m.id === messageId);
   const att = msg?.attachments?.find((a) => a.id === attachmentId);
   const character = st.characters.find((c) => c.id === characterId);
-  if (!msg || !att || !character) return;
-  const prompt = (promptOverride ?? att.prompt ?? "").trim();
-  if (!prompt) return;
+  if (!msg || !att) return;
   const update = (patch: Partial<Attachment>) => {
     const cur = useFableStore.getState().chats.find((c) => c.id === chatId)?.messages.find((m) => m.id === messageId)?.attachments?.find((a) => a.id === attachmentId);
     if (cur) useFableStore.getState().setAttachment(chatId, messageId, { ...cur, ...patch });
   };
+  // Try again must say why it cannot, not do nothing
+  if (!character) { update({ status: "failed", awaitingReview: false, error: "The character who took this photo no longer exists." }); return; }
+  const prompt = (promptOverride ?? att.prompt ?? "").trim();
+  if (!prompt) { update({ status: "failed", awaitingReview: false, error: "There is no prompt to take the photo from." }); return; }
   update({ status: "pending", awaitingReview: false, error: undefined, prompt });
 
   const workflows = character.image?.likeness

@@ -1,3 +1,4 @@
+import { readJsonCapped } from "@/lib/server/assets";
 import { NextRequest } from "next/server";
 import { routeError, badRequest, guard } from "@/lib/api/server";
 import { getStore } from "@/lib/db";
@@ -17,7 +18,9 @@ export async function POST(req: NextRequest) {
   try {
     const denied = guard(req);
     if (denied) return denied;
-    const body = (await req.json()) as { text?: unknown; voice?: unknown; lines?: unknown };
+    let body: { text?: unknown; voice?: unknown; lines?: unknown } | null;
+    try { body = await readJsonCapped(req, 256 * 1024, "the request"); } catch (e) { return badRequest(e instanceof Error ? e.message : "the request is too large"); }
+    if (!body || typeof body !== "object") return badRequest("the body must be JSON");
     const lines: SpeakLine[] = Array.isArray(body.lines)
       ? body.lines.slice(0, 200).map((l) => ({ text: String((l as { text?: unknown })?.text ?? ""), voice: (l as { voice?: SpeakLine["voice"] })?.voice }))
       : [{ text: String(body.text ?? ""), voice: body.voice as SpeakLine["voice"] }];

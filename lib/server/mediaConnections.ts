@@ -9,6 +9,7 @@ import { getStore } from "@/lib/db";
 import { decryptSecret, encryptSecret, loadKey } from "@/lib/server/secrets";
 import { testVideoClip } from "@/lib/server/videoTest";
 import { ensureRunning, voiceHeaders } from "@/lib/server/voiceRuntime";
+import { MAX_UPLOAD_BYTES, isWebUrl, readBodyCapped, readJsonCapped } from "@/lib/server/assets";
 import {
   cleanDefaults, providerInfo, validateConnection,
   type MediaConnection, type MediaConnectionView, type MediaDefaults,
@@ -108,7 +109,7 @@ const TEST_SPEECH = "Hello. This is a test of your voice connection in FableChat
 
 /** The service's own words when it refuses, not just a status code. */
 async function upstreamMessage(res: Response): Promise<string> {
-  const text = await res.text().catch(() => "");
+  const text = await readBodyCapped(res, 64 * 1024, "the error").then((b) => new TextDecoder().decode(b)).catch(() => "");
   try {
     const j = JSON.parse(text) as { error?: { message?: string } | string; detail?: unknown; message?: string };
     const msg = typeof j.error === "string" ? j.error : j.error?.message ?? j.message
@@ -121,7 +122,7 @@ async function upstreamMessage(res: Response): Promise<string> {
 /** ComfyUI reports "cuda:0 NVIDIA GeForce RTX 4090 : cudaMallocAsync"; keep the card's name. */
 export const gpuName = (raw: string) => raw.replace(/^[a-z]+:\d+\s*/i, "").split(" : ")[0].trim();
 
-const toDataUrl = (bytes: ArrayBuffer, type: string) => `data:${type};base64,${Buffer.from(bytes).toString("base64")}`;
+const toDataUrl = (bytes: Uint8Array, type: string) => `data:${type};base64,${Buffer.from(bytes).toString("base64")}`;
 
 /** A half-second 440 Hz tone as a 16 kHz mono WAV: something a transcriber must accept. */
 export function testTone(): Uint8Array {
@@ -144,7 +145,7 @@ export async function testConnection(c: MediaConnection, key: string | null): Pr
       case "comfyui": {
         const res = await fetch(`${c.baseUrl}/system_stats`, { signal: AbortSignal.timeout(8000) });
         if (!res.ok) return { ok: false, label: `ComfyUI answered ${await upstreamMessage(res)}` };
-        const s = (await res.json()) as { system?: { comfyui_version?: string }; devices?: Array<{ name?: string; vram_total?: number }> };
+        const s = ((await readJsonCapped(res)) ?? {}) as { system?: { comfyui_version?: string }; devices?: Array<{ name?: string; vram_total?: number }> };
         const gpu = s.devices?.[0];
         const vram = gpu?.vram_total ? ` · ${(gpu.vram_total / 2 ** 30).toFixed(0)} GB` : "";
         const version = s.system?.comfyui_version ? ` ${s.system.comfyui_version}` : "";
@@ -165,13 +166,14 @@ export async function testConnection(c: MediaConnection, key: string | null): Pr
           signal: AbortSignal.timeout(120_000),
         });
         if (!res.ok) return { ok: false, label: `The image service answered ${await upstreamMessage(res)}` };
-        const j = (await res.json()) as { data?: Array<{ b64_json?: string; url?: string }> };
+        const j = ((await readJsonCapped(res, 64 * 1024 * 1024)) ?? {}) as { data?: Array<{ b64_json?: string; url?: string }> };
         const first = j.data?.[0];
         if (first?.b64_json) return { ok: true, label: "Made a test image.", sample: { type: "image", dataUrl: `data:image/png;base64,${first.b64_json}` } };
         if (first?.url) {
+          if (!isWebUrl(first.url)) return { ok: false, label: "The service answered with an image address FableChat will not fetch." };
           const img = await fetch(first.url, { signal: AbortSignal.timeout(30_000) });
           if (!img.ok) return { ok: false, label: `The image was made but could not be downloaded (${img.status}).` };
-          return { ok: true, label: "Made a test image.", sample: { type: "image", dataUrl: toDataUrl(await img.arrayBuffer(), img.headers.get("content-type") ?? "image/png") } };
+          return { ok: true, label: "Made a test image.", sample: { type: "image", dataUrl: toDataUrl(await readBodyCapped(img, MAX_UPLOAD_BYTES, "the image"), img.headers.get("content-type") ?? "image/png") } };
         }
         return { ok: false, label: "The service answered, but with no image in the reply." };
       }
@@ -185,8 +187,8 @@ export async function testConnection(c: MediaConnection, key: string | null): Pr
           signal: AbortSignal.timeout(900_000),
         });
         if (!res.ok) return { ok: false, label: `The voice server answered ${await upstreamMessage(res)}` };
-        const bytes = await res.arrayBuffer();
-        if (bytes.byteLength < 1000) return { ok: false, label: "The voice server answered, but sent no audio." };
+        const bytes = await readBodyCapped(res, MAX_UPLOAD_BYTES, "the audio");
+        if (bytes.length < 1000) return { ok: false, label: "The voice server answered, but sent no audio." };
         return { ok: true, label: `Spoke a test sentence in ${Math.round((Date.now() - started) / 1000)} s (the first one also loads the model).`, sample: { type: "audio", dataUrl: toDataUrl(bytes, "audio/wav") } };
       }
       case "openai-speech": {
@@ -196,8 +198,8 @@ export async function testConnection(c: MediaConnection, key: string | null): Pr
           signal: AbortSignal.timeout(60_000),
         });
         if (!res.ok) return { ok: false, label: `The voice service answered ${await upstreamMessage(res)}` };
-        const bytes = await res.arrayBuffer();
-        if (bytes.byteLength < 100) return { ok: false, label: "The voice service answered, but sent no audio." };
+        const bytes = await readBodyCapped(res, MAX_UPLOAD_BYTES, "the audio");
+        if (bytes.length < 100) return { ok: false, label: "The voice service answered, but sent no audio." };
         return { ok: true, label: "Spoke a test sentence.", sample: { type: "audio", dataUrl: toDataUrl(bytes, res.headers.get("content-type") ?? "audio/mpeg") } };
       }
       case "elevenlabs": {
@@ -208,7 +210,7 @@ export async function testConnection(c: MediaConnection, key: string | null): Pr
           signal: AbortSignal.timeout(60_000),
         });
         if (!res.ok) return { ok: false, label: `ElevenLabs answered ${await upstreamMessage(res)}` };
-        return { ok: true, label: "Spoke a test sentence.", sample: { type: "audio", dataUrl: toDataUrl(await res.arrayBuffer(), res.headers.get("content-type") ?? "audio/mpeg") } };
+        return { ok: true, label: "Spoke a test sentence.", sample: { type: "audio", dataUrl: toDataUrl(await readBodyCapped(res, MAX_UPLOAD_BYTES, "the audio"), res.headers.get("content-type") ?? "audio/mpeg") } };
       }
       case "openai-stt": {
         const form = new FormData();
