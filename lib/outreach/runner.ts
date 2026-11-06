@@ -9,7 +9,7 @@ import { useUiStore } from "@/lib/store/ui";
 import { getJson } from "@/lib/api/client";
 import { contactSettings } from "@/lib/chat/photos";
 import { generateAssistantReply } from "@/lib/chat/generation";
-import { decideOutreach, hoursText, reachOutBy, type ChatSignals } from "@/lib/outreach/rules";
+import { decideOutreach, decideRandomCall, hoursText, reachOutBy, type ChatSignals } from "@/lib/outreach/rules";
 import { ringIn } from "@/lib/chat/calls";
 import { playTextChime } from "@/lib/chat/sounds";
 import type { Character, Chat, Message } from "@/lib/types";
@@ -42,6 +42,20 @@ export function sentToday(chats: Chat[], now: Date, characterId: string): { all:
   return { all, mine };
 }
 
+/** Calls this character made on their own: how many since local midnight, and when the last one was */
+export function theirCalls(chats: Chat[], now: Date, characterId: string): { today: number; lastAt: number | null } {
+  const midnight = new Date(now); midnight.setHours(0, 0, 0, 0);
+  let today = 0, lastAt: number | null = null;
+  for (const c of chats) for (const m of c.messages) {
+    // Each call they place leaves one line carrying its outreach: answered ("started"), missed or declined
+    if (!m.callEvent || !m.outreach || m.characterId !== characterId || m.role !== "assistant") continue;
+    const t = Date.parse(m.timestamp);
+    if (t >= midnight.getTime()) today++;
+    if (lastAt === null || t > lastAt) lastAt = t;
+  }
+  return { today, lastAt };
+}
+
 /** The chat a character reaches out in: their most recent one-to-one chat. */
 export function chatFor(chats: Chat[], character: Character): Chat | undefined {
   return chats
@@ -68,6 +82,15 @@ export async function outreachTick(now = new Date()): Promise<string> {
       if (!chat) continue;
       const base = chatSignals(chat);
       const count = sentToday(st.chats, now, character.id);
+      // Now and then, just because: a call at a random time, at the pace you set for them
+      const random = decideRandomCall(now, settings, character.contact,
+        { ...theirCalls(st.chats, now, character.id), lastUserAt: base.lastUserAt, sentAll: count.all }, Math.random);
+      if (random.send) {
+        if (useUiStore.getState().call || useFableStore.getState().isGenerating || useUiStore.getState().sendingPicture) return "busy";
+        const silence = base.lastUserAt ? hoursText(now.getTime() - base.lastUserAt) : "a while";
+        await ringIn(chat.id, character.id, { trigger: random.trigger, reason: random.reason, silence, userNote: settings.userNote || undefined });
+        return `${character.name}: calling (now and then)`;
+      }
       // The hard limits first, before fetching anything: a probe with a reason that always applies
       const probe = decideOutreach(now, settings, character.contact, { ...base, openPromise: "probe", ruptureNote: null }, count);
       if (!probe.send) { held.push(`${character.name}: ${probe.why}`); continue; }

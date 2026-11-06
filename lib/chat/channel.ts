@@ -54,3 +54,39 @@ export function historyContent(m: Pick<Message, "content" | "channel" | "attachm
 /** Whether a message has anything for the model at all (text, or an attachment that is ready). */
 export const hasHistoryContent = (m: Pick<Message, "content" | "attachments" | "callEvent">) =>
   !!m.callEvent || m.content.trim().length > 0 || (m.attachments ?? []).some((a) => a.status === "ready");
+
+// ── "I text Ronan 'thinking of you'" ─────────────────────────────────────────
+// Written as a story line, a text is still a text: the message is turned into a
+// phone text holding just the words sent, so it shows (and reaches the model)
+// as one. Only a line that is clearly that: a texting verb, someone in the
+// chat (or him/her/them), then the words in quotes or after a colon.
+
+const VERB = String.raw`(?:texts?|texted|texting|txts?|messages?|messaged|send(?:s)?\s+(?:a\s+)?(?:text|message)\s+to|sends?\s+(?:a\s+)?(?:text|message)|sent\s+(?:a\s+)?(?:text|message)(?:\s+to)?)`;
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * The words of a text, if `input` is a line saying you text someone in the chat.
+ * Returns who (an id from `people`, or null for him/her/them) and what was sent.
+ */
+export function parseTextIntent(input: string, people: Array<{ id: string; name: string }>): { to: string | null; text: string } | null {
+  const line = input.trim();
+  if (!line || line.length > 2000) return null;
+  const names = people.filter((p) => p.name.trim()).map((p) => ({ id: p.id, re: esc(p.name.trim()), first: esc(p.name.trim().split(/\s+/)[0]) }));
+  const who = [...names.flatMap((n) => [n.re, n.first]), "him", "her", "them"].join("|");
+  // [narration] I text NAME [narration] "words"   or   … NAME: words   or   I send NAME a text: "words"
+  const re = new RegExp(String.raw`^[*(_\s]*(?:[^"“”]*?\b)?(?:i\s+|we\s+)?(?:${VERB}\s+(?:to\s+)?(${who})|send\s+(${who})\s+(?:a\s+)?(?:text|message))\b([^"“”:]*?)[*)_\s]*(?::\s*["“]?|,?\s*(?:saying|that says|:)?\s*["“])([\s\S]+?)["”]?[*)_\s.]*$`, "i");
+  const m = re.exec(line);
+  if (!m) return null;
+  const target = (m[1] ?? m[2] ?? "").toLowerCase();
+  let text = m[4].trim();
+  // A quoted text ends at its closing quote; anything after it is not part of the words
+  const close = text.search(/["”]/);
+  if (close >= 0) {
+    // More story after the closing quote ("…and put my phone away"): leave the line as you wrote it rather than drop those words
+    if (!/^[\s.!?,*)_]*$/.test(text.slice(close + 1))) return null;
+    text = text.slice(0, close).trim();
+  }
+  if (!text) return null;
+  const found = names.find((n) => new RegExp(`^(?:${n.re}|${n.first})$`, "i").test(target));
+  return { to: found?.id ?? null, text };
+}

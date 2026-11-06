@@ -82,3 +82,48 @@ test("sounds are on by default and only an explicit false turns them off", async
   assert.equal(cleanContactSettings({ sounds: false }).sounds, false);
   assert.equal(cleanContactSettings({ sounds: "no" }).sounds, true);
 });
+
+test("calls now and then: at the pace you set, inside every hard limit, spread over waking hours", async () => {
+  const { decideRandomCall, wakingMinutes, reachOutBy } = await import("../../lib/outreach/rules.ts");
+  const C2 = { canContact: true, calls: true, randomCalls: { perDay: 3, gapHours: 2 } };
+  const now = at(15);
+  const idle = { today: 0, lastAt: null, lastUserAt: now.getTime() - 60 * 60_000, sentAll: 0 };
+  const lucky = () => 0, unlucky = () => 0.999;
+  assert.equal(decideRandomCall(now, S, C2, idle, lucky).send, true, "control: it would ring");
+  assert.equal(decideRandomCall(now, S, C2, idle, lucky).trigger, "random-call");
+  assert.equal(reachOutBy("random-call", C2), "call");
+  assert.equal(decideRandomCall(now, S, C2, idle, unlucky).send, false, "most minutes it does not");
+  for (const [why, s, c, calls, t] of [
+    ["master off", { ...S, enabled: false }, C2, idle, now],
+    ["paused", { ...S, paused: true }, C2, idle, now],
+    ["do not disturb", { ...S, userStatus: "dnd" }, C2, idle, now],
+    ["may not call", S, { ...C2, calls: false }, idle, now],
+    ["may not contact", S, { ...C2, canContact: false }, idle, now],
+    ["only story calls", S, { ...C2, randomCalls: undefined }, idle, now],
+    ["quiet hours", S, C2, { ...idle, lastUserAt: at(23, 30).getTime() - 3_600_000 }, at(23, 30)],
+    ["overall daily limit", S, C2, { ...idle, sentAll: 3 }, now],
+    ["their calls today", S, C2, { ...idle, today: 3 }, now],
+    ["too soon after their last call", S, C2, { ...idle, lastAt: now.getTime() - 90 * 60_000 }, now],
+    ["you are writing right now", S, C2, { ...idle, lastUserAt: now.getTime() - 5 * 60_000 }, now],
+    ["never talked", S, C2, { ...idle, lastUserAt: null }, now],
+  ]) assert.equal(decideRandomCall(t, s, c, calls, lucky).send, false, why);
+  assert.equal(decideRandomCall(now, S, C2, { ...idle, lastAt: now.getTime() - 3 * 3_600_000 }, lucky).send, true, "past the gap it may ring again");
+  assert.equal(wakingMinutes(23 * 60, 8 * 60), 15 * 60, "23:00 to 08:00 quiet leaves 15 waking hours");
+  // The chance per minute is perDay over waking minutes: 3 a day over 900 minutes
+  const edge = 3 / 900;
+  assert.equal(decideRandomCall(now, S, C2, idle, () => edge * 0.99).send, true);
+  assert.equal(decideRandomCall(now, S, C2, idle, () => edge * 1.01).send, false);
+  // Simulated over a long stretch it averages about perDay a day
+  let calls = 0, last = null; const days = 200;
+  let seed = 7; const rnd = () => ((seed = (seed * 48271) % 2147483647) / 2147483647);
+  for (let d = 0; d < days; d++) {
+    let today = 0;
+    for (let m = 0; m < 1440; m++) {
+      const t = new Date(2026, 0, 1 + d, 0, m);
+      const r = decideRandomCall(t, S, C2, { today, lastAt: last, lastUserAt: t.getTime() - 3_600_000, sentAll: today }, rnd);
+      if (r.send) { today++; calls++; last = t.getTime(); }
+    }
+  }
+  const perDay = calls / days;
+  assert.ok(perDay > 1.8 && perDay <= 3, `about up to 3 a day (got ${perDay.toFixed(2)})`);
+});

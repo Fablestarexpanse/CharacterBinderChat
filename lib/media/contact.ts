@@ -4,7 +4,7 @@
 // reaches out, and no prompt tells the model it could. Stored on the server
 // (app_kv) so a later server-side outreach reads the same switches.
 
-import type { CharacterOutreach, OutreachSettings, StoryTrigger } from "@/lib/outreach/rules";
+import type { CharacterOutreach, OutreachSettings, RandomCalls, StoryTrigger } from "@/lib/outreach/rules";
 
 export interface ContactSettings extends OutreachSettings {
   /** Master switch: Settings → Contact & media */
@@ -49,6 +49,8 @@ export interface CharacterContact extends CharacterOutreach {
   photos?: boolean;
   /** May phone you (when they reach out about a rupture or a long absence) */
   calls?: boolean;
+  /** Also phones now and then, at random times, as often as this allows (needs `calls`) */
+  randomCalls?: RandomCalls;
 }
 
 export const STORY_TRIGGERS: ReadonlyArray<{ id: StoryTrigger; label: string; hint: string }> = [

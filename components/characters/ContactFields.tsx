@@ -5,7 +5,7 @@
 // Settings → Contact & media is off.
 
 import { STORY_TRIGGERS, type CharacterContact } from "@/lib/media/contact";
-import type { ContactMode, StoryTrigger } from "@/lib/outreach/rules";
+import { RANDOM_CALL_DAY, RANDOM_CALL_GAP, type ContactMode, type StoryTrigger } from "@/lib/outreach/rules";
 
 const WAITS = [30, 60, 120, 240, 480, 1440];
 const waitLabel = (m: number) => (m < 60 ? `${m} minutes` : m === 1440 ? "a day" : `${m / 60} hour${m === 60 ? "" : "s"}`);
@@ -30,8 +30,34 @@ export function ContactFields({ value, onChange, who }: { value: CharacterContac
       {value.canContact && (
         <label className="flex items-start gap-3 cursor-pointer">
           <input type="checkbox" checked={!!value.calls} onChange={(e) => set({ calls: e.target.checked })} aria-label="May call you" className="mt-0.5 h-4 w-4 accent-[var(--purple)] cursor-pointer" />
-          <span><span className="block text-xs font-medium">May call you</span><span className="block text-[11px] text-[var(--muted-fg)]">For what would not wait for a text (making up after trust broke, or a long silence), {who} phones instead: your screen rings and you answer or decline.</span></span>
+          <span><span className="block text-xs font-medium">May call you</span><span className="block text-[11px] text-[var(--muted-fg)]">For what would not wait for a text (making up after trust broke, or a long silence), {who} phones instead: their chat rings in Recent Chats and you answer or decline.</span></span>
         </label>
+      )}
+      {value.canContact && value.calls && (
+        <div className="space-y-1 border-l-2 border-[var(--border)] pl-4">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <label className="flex items-center gap-2"><span className="font-medium">Also call</span>
+              <select aria-label="Calls now and then" value={value.randomCalls?.perDay ?? 0}
+                onChange={(e) => { const n = Number(e.target.value); set({ randomCalls: n ? { perDay: n, gapHours: value.randomCalls?.gapHours ?? 2 } : undefined }); }} className={sel}>
+                <option value={0}>only when the story calls for it</option>
+                {RANDOM_CALL_DAY.map((n) => <option key={n} value={n}>now and then, up to {n} a day</option>)}
+              </select>
+            </label>
+            {value.randomCalls && (
+              <label className="flex items-center gap-2"><span>at least</span>
+                <select aria-label="Hours between calls" value={value.randomCalls.gapHours}
+                  onChange={(e) => set({ randomCalls: { ...value.randomCalls!, gapHours: Number(e.target.value) } })} className={sel}>
+                  {RANDOM_CALL_GAP.map((h) => <option key={h} value={h}>{h === 1 ? "an hour" : `${h} hours`} apart</option>)}
+                </select>
+              </label>
+            )}
+          </div>
+          <p className="text-[11px] text-[var(--muted-fg)]">
+            {value.randomCalls
+              ? `At random times outside quiet hours, about ${value.randomCalls.perDay === 1 ? "once" : `${value.randomCalls.perDay} times`} a day, never while you are in the middle of writing. Story calls still happen too, and every call counts toward the overall daily limit.`
+              : `${who} calls only when something in the story calls for it.`}
+          </p>
+        </div>
       )}
       {value.canContact && (
         <div className="space-y-3 border-l-2 border-[var(--border)] pl-4">

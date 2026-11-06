@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { replyChannel, historyContent, hasHistoryContent, attachmentNote } = await import("../../lib/chat/channel.ts");
+const { replyChannel, historyContent, hasHistoryContent, attachmentNote, parseTextIntent } = await import("../../lib/chat/channel.ts");
 
 test("a reply goes out the way your last message came in; errors are not counted", () => {
   assert.equal(replyChannel([]), "scene");
@@ -37,4 +37,24 @@ test("phone calls: lines said on a call and the call's start, end and misses rea
   assert.ok(hasHistoryContent({ content: "", callEvent: { kind: "missed" } }), "a missed call is part of the story even with no words");
   assert.equal(replyChannel([{ role: "user", channel: "call", content: "" }]), "call", "a call you started is answered on the call");
   assert.deepEqual([callLength(0), callLength(42), callLength(151), callLength(725)], ["0:00", "0:42", "2:31", "12:05"]);
+});
+
+test("a line saying you text someone becomes that text; anything else stays as written", () => {
+  const P = [{ id: "r", name: "Ronan" }, { id: "f", name: "Fenna Vale" }];
+  const t = (s) => parseTextIntent(s, P);
+  assert.deepEqual(t('i text ronan "hi thinking of you"'), { to: "r", text: "hi thinking of you" });
+  assert.deepEqual(t('*I pull out my phone and text Ronan* "you up?"'), { to: "r", text: "you up?" });
+  assert.deepEqual(t("I text him: on my way"), { to: null, text: "on my way" }, "him/her/them: the chat decides who");
+  assert.deepEqual(t('I send Ronan a text: "miss you"'), { to: "r", text: "miss you" });
+  assert.deepEqual(t('I send a text to Ronan saying "running late"'), { to: "r", text: "running late" });
+  assert.deepEqual(t('I texted Fenna "see you at the gate"'), { to: "f", text: "see you at the gate" }, "a first name is enough");
+  assert.deepEqual(t("text Ronan: on my way"), { to: "r", text: "on my way" });
+  for (const s of [
+    '"Hi," I say, smiling at Ronan.',
+    "I think about texting Ronan later.",
+    "Ronan, text me when you get there.",
+    'I text Ronan "hi" and then put my phone away.',
+    'I text Kaspar "hi"',
+    "",
+  ]) assert.equal(t(s), null, s || "(empty)");
 });

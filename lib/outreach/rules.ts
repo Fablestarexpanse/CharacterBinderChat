@@ -8,7 +8,7 @@
 
 export type ContactMode = "story" | "timed" | "both";
 export type StoryTrigger = "promise" | "repair" | "question" | "absence";
-export type TimedTrigger = "morning" | "evening" | "checkin";
+export type TimedTrigger = "morning" | "evening" | "checkin" | "random-call";
 export type Trigger = StoryTrigger | TimedTrigger;
 
 export interface OutreachSettings {
@@ -126,11 +126,74 @@ export const toMinutes = (hhmm: string) => {
 };
 export const fromMinutes = (n: number) => `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
 
+// ── Calls now and then ──────────────────────────────────────────────────────
+// Besides the calls the story asks for (reachOutBy below), a character can
+// phone at random times, as often as you set: up to `perDay` calls a day, at
+// least `gapHours` apart. The chance is spread over your waking hours, so on
+// average they call about `perDay` times without a schedule you could predict.
+
+export interface RandomCalls {
+  /** Most calls a day (1 to 8) */
+  perDay: number;
+  /** Hours at least between two of their calls */
+  gapHours: number;
+}
+
+export const RANDOM_CALL_DAY = [1, 2, 3, 5, 8] as const;
+export const RANDOM_CALL_GAP = [1, 2, 4, 8, 12] as const;
+/** A random call never lands while you are in the middle of writing to them */
+export const RANDOM_CALL_IDLE_MINUTES = 15;
+
+export function cleanRandomCalls(raw: unknown): RandomCalls | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  const perDay = Number(r.perDay), gapHours = Number(r.gapHours);
+  if (!Number.isInteger(perDay) || perDay < 1 || perDay > 8) return undefined;
+  return { perDay, gapHours: Number.isFinite(gapHours) && gapHours >= 1 && gapHours <= 24 ? gapHours : 2 };
+}
+
+/** Minutes a day outside quiet hours */
+export function wakingMinutes(start: number, end: number): number {
+  if (start === end) return 1440;
+  return start < end ? 1440 - (end - start) : 1440 - (1440 - start + end);
+}
+
+/**
+ * Does this character ring now, just because? Checked once a minute. The same
+ * hard limits as every outreach (master switch, pause, Do not disturb, their
+ * permission to contact and to call, quiet hours, the overall daily limit),
+ * then their own pace. `rand` is Math.random, passed in to keep this pure.
+ */
+export function decideRandomCall(
+  now: Date,
+  s: OutreachSettings,
+  c: (CharacterOutreach & { calls?: boolean; randomCalls?: RandomCalls }) | undefined,
+  calls: { today: number; lastAt: number | null; lastUserAt: number | null; sentAll: number },
+  rand: () => number,
+): Decision {
+  if (!s.enabled) return { send: false, why: "Contact & media is off" };
+  if (s.paused) return { send: false, why: "paused" };
+  if (s.userStatus === "dnd") return { send: false, why: "you are on Do not disturb" };
+  if (!c?.canContact || !c.calls) return { send: false, why: "this character may not call you" };
+  const plan = cleanRandomCalls(c.randomCalls);
+  if (!plan) return { send: false, why: "no calls now and then" };
+  if (inQuietHours(now, s.quietStart, s.quietEnd)) return { send: false, why: "quiet hours" };
+  if (calls.sentAll >= s.dailyLimit) return { send: false, why: "today's limit is reached" };
+  if (calls.today >= plan.perDay) return { send: false, why: "they have called as often as you allowed today" };
+  if (calls.lastUserAt === null) return { send: false, why: "you have not talked yet" };
+  if (now.getTime() - calls.lastUserAt < RANDOM_CALL_IDLE_MINUTES * 60_000) return { send: false, why: "you are talking right now" };
+  if (calls.lastAt !== null && now.getTime() - calls.lastAt < plan.gapHours * 3_600_000) return { send: false, why: "they called not long ago" };
+  // Spread the day's calls over the waking minutes left in the day
+  const chance = plan.perDay / wakingMinutes(s.quietStart, s.quietEnd);
+  if (rand() >= chance) return { send: false, why: "not this minute" };
+  return { send: true, trigger: "random-call", reason: "they felt like hearing your voice" };
+}
+
 /**
  * How a character reaches out once the rules say they will: a phone call for
  * what would not wait for a text (repairing a rupture, a long silence), when
  * you allowed them to call; otherwise a text. Pure, like the rest.
  */
 export function reachOutBy(trigger: Trigger, contact: (CharacterOutreach & { calls?: boolean }) | undefined): "call" | "text" {
-  return contact?.calls && (trigger === "repair" || trigger === "absence") ? "call" : "text";
+  return contact?.calls && (trigger === "repair" || trigger === "absence" || trigger === "random-call") ? "call" : "text";
 }

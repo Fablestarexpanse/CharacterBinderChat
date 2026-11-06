@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { sendPicture } from "@/lib/chat/userPictures";
+import { parseTextIntent } from "@/lib/chat/channel";
 import { askForPhoto, contactSettings } from "@/lib/chat/photos";
 import { useUiStore } from "@/lib/store/ui";
 
@@ -81,6 +82,16 @@ export function ChatInput() {
     // memory can be written now (re-rolling instead would have cancelled it).
     flushPendingExtraction();
 
+    // "I text Ronan "thinking of you"": a story line that is a text becomes the text itself,
+    // and the box stays on texts for the rest of the conversation
+    const people = characters.filter((c) => (isGroup ? present.includes(c.id) : c.id === chat?.characterId));
+    const asText = parseTextIntent(userContent, people);
+    if (asText) {
+      if (!textMode) setTextMode(activeChatId, true);
+      addMessage(activeChatId, { chatId: activeChatId, role: "user", content: asText.text, channel: "text" });
+      generateAssistantReply(activeChatId, asText.to ?? nextSpeaker ?? undefined);
+      return;
+    }
     addMessage(activeChatId, { chatId: activeChatId, role: "user", content: userContent, ...(textMode ? { channel: "text" as const } : {}) });
     generateAssistantReply(activeChatId, nextSpeaker ?? undefined);
   };
