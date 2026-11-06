@@ -66,7 +66,10 @@ function AttachmentView({ a, message, onView }: { a: Attachment; message: Messag
         <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} aria-label={`${what} prompt`}
           className="w-full rounded-lg border border-[var(--border)] bg-[var(--card)] p-2 text-xs" />
         <div className="flex gap-2 justify-end">
-          <Button variant="outline" size="sm" onClick={() => removeAttachment(message.chatId, message.id, a.id)}><X className="h-3 w-3 mr-1" />Skip</Button>
+          {/* Skipping a Redo keeps the picture you already have; skipping a first take removes it */}
+          <Button variant="outline" size="sm" onClick={() => a.url ? set({ awaitingReview: false }) : removeAttachment(message.chatId, message.id, a.id)}>
+            <X className="h-3 w-3 mr-1" />{a.url ? "Keep this one" : "Skip"}
+          </Button>
           <Button variant="purple" size="sm" onClick={() => run(draft)} disabled={!draft.trim()}>
             {a.kind === "video" ? <><Clapperboard className="h-3 w-3 mr-1" />Make the clip</> : <><Camera className="h-3 w-3 mr-1" />Take the {what}</>}
           </Button>

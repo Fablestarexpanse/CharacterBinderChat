@@ -8,6 +8,7 @@
 // the picture still goes and you can describe it yourself on the message.
 
 import { useFableStore } from "@/lib/store";
+import { useUiStore } from "@/lib/store/ui";
 import { sendJson } from "@/lib/api/client";
 import { uploadImage } from "@/lib/chat/assets";
 import { generateAssistantReply, flushPendingExtraction } from "@/lib/chat/generation";
@@ -70,12 +71,21 @@ async function readNow(chatId: string, messageId: string, attachmentId: string):
  * read, so the character answers knowing what it shows.
  */
 export async function sendPicture(chatId: string, file: Blob, text: string, channel: MessageChannel, speakerId?: string): Promise<void> {
-  const url = await uploadImage(file);
-  flushPendingExtraction();
-  const att: Attachment = { id: newId(), kind: "image", status: "pending", url, fromUser: true };
-  const messageId = useFableStore.getState().addMessage(chatId, {
-    chatId, role: "user", content: text.trim(), attachments: [att], ...(channel !== "scene" ? { channel } : {}),
-  });
-  await readPicture(chatId, messageId, att.id);
+  const ui = useUiStore.getState();
+  if (ui.sendingPicture) throw new Error("A picture is still being sent.");
+  // From the upload until the reply starts, sending, calling and outreach wait (they would answer without the picture)
+  ui.setSendingPicture(true);
+  let messageId: string;
+  const att: Attachment = { id: newId(), kind: "image", status: "pending", fromUser: true };
+  try {
+    att.url = await uploadImage(file);
+    flushPendingExtraction();
+    messageId = useFableStore.getState().addMessage(chatId, {
+      chatId, role: "user", content: text.trim(), attachments: [att], ...(channel !== "scene" ? { channel } : {}),
+    });
+    await readPicture(chatId, messageId, att.id);
+  } finally {
+    useUiStore.getState().setSendingPicture(false);
+  }
   await generateAssistantReply(chatId, speakerId);
 }

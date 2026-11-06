@@ -5,6 +5,8 @@ import { useDiscardGuard, DiscardBar, type CloseRelay } from "@/components/ui/di
 import { ImageLookFields, toLookDraft, fromLookDraft, type LookDraft } from "@/components/characters/ImageLookFields";
 import { ReferencePictures } from "@/components/characters/ReferencePictures";
 import { ContactFields } from "@/components/characters/ContactFields";
+import { VoiceFields } from "@/components/characters/VoiceFields";
+import type { CharacterVoice } from "@/lib/media/voice";
 import type { CharacterContact } from "@/lib/media/contact";
 import { useFableStore } from "@/lib/store";
 import type { Character } from "@/lib/types";
@@ -41,10 +43,11 @@ interface FormState {
   image:                   LookDraft;
   referenceImages:         string[];
   contact:                 CharacterContact;
+  voice:                   CharacterVoice | undefined;
 }
 
 /** The form fields that are plain text (everything but the image look) */
-type TextKey = Exclude<keyof FormState, "image" | "referenceImages" | "contact">;
+type TextKey = Exclude<keyof FormState, "image" | "referenceImages" | "contact" | "voice">;
 
 const GREETING_SEPARATOR = "\n---\n";
 
@@ -67,6 +70,7 @@ function toFormState(source: Partial<Character> | null): FormState {
     image:                   toLookDraft(source?.image),
     referenceImages:         source?.referenceImages ?? [],
     contact:                 source?.contact ?? {},
+    voice:                   source?.voice,
   };
 }
 
@@ -136,6 +140,7 @@ function EditorForm({ editing, draft, closeRef }: { editing: Character | null; d
       image:        fromLookDraft(form.image),
       referenceImages: form.referenceImages.length ? form.referenceImages : undefined,
       contact:      form.contact.photos || form.contact.canContact ? form.contact : undefined,
+      voice:        form.voice && (form.voice.sample || form.voice.demo) ? form.voice : undefined,
       characterVersion: (editing ?? draft)?.characterVersion,
       cardExtensions:   (editing ?? draft)?.cardExtensions,
     };
@@ -211,6 +216,8 @@ function EditorForm({ editing, draft, closeRef }: { editing: Character | null; d
           <ReferencePictures value={form.referenceImages} onChange={(referenceImages) => setForm((f) => ({ ...f, referenceImages }))}
             avatar={form.avatar} who={form.name.trim() || "them"} />
         </ImageLookFields>
+
+        <VoiceFields value={form.voice} onChange={(voice) => setForm((f) => ({ ...f, voice }))} who={form.name.trim() || "them"} />
 
         <ContactFields value={form.contact} onChange={(contact) => setForm((f) => ({ ...f, contact }))} who={form.name.trim() || "they"} />
 

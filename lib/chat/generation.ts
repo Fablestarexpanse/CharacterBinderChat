@@ -286,12 +286,17 @@ export async function assemblePrompt(chatId: string, speakerCharId: string | und
 
 // ─── Generate a reply to the chat's current history ──────────────────────────
 
-export async function generateAssistantReply(chatId: string, speakerId?: string, outreach?: OutreachRequest): Promise<void> {
+/**
+ * Write the next reply. Resolves true when a reply was written, false when
+ * nothing was (a reply already being written, stopped before the first word,
+ * a failure), so callers like reaching out only announce what exists.
+ */
+export async function generateAssistantReply(chatId: string, speakerId?: string, outreach?: OutreachRequest): Promise<boolean> {
   const store = useFableStore.getState();
-  if (store.isGenerating) return;
+  if (store.isGenerating) return false;
 
   const chat = store.chats.find((c) => c.id === chatId);
-  if (!chat) return;
+  if (!chat) return false;
   const present = presentMemberIds(chat, store.characters);
   const isGroup = present.length >= 2;
   // Group: explicit speaker (if present in scene) > auto pick. 1:1: the character.
@@ -313,7 +318,7 @@ export async function generateAssistantReply(chatId: string, speakerId?: string,
                "Restore them (if it was an agent, use Undo in the notice; otherwise from a backup), or start a new chat.",
       error:   true,
     });
-    return;
+    return false;
   }
   const provider   = createChatProvider(providerId, store.providerSettings);
 
@@ -324,13 +329,18 @@ export async function generateAssistantReply(chatId: string, speakerId?: string,
       content: "⚠️ No provider available. Check Settings — make sure your provider is running and any required API key is set.",
       error:   true,
     });
-    return;
+    return false;
   }
 
   // Claim the generation slot BEFORE the awaits below — checking the guard at
   // entry but setting it after fetchCoreMemory left a window where a second
   // trigger (Enter + Regenerate) started two concurrent streams.
   store.setIsGenerating(true);
+  // Stop works from this moment, not only once the stream starts: hanging up a
+  // call (or pressing Stop) while the prompt is still being put together must
+  // cancel the reply rather than let it arrive after the fact.
+  const controller = new AbortController();
+  abortController = controller;
   let assistantMsgId: string | null = null;
   let accumulated = "";
   let failed = false;
@@ -341,7 +351,7 @@ export async function generateAssistantReply(chatId: string, speakerId?: string,
 
   try {
     const assembled = await assemblePrompt(chatId, speakerCharId, outreach);
-    if (!assembled) return;
+    if (!assembled || controller.signal.aborted) return false;
     const { history, fit, prefill, coreMemory, knownFacts, episodes, insights, sharedLanguage, lore } = assembled;
     accumulated = prefill;
     store.setChatContext(chatId, fit.usedTokens, fit.contextMax);
@@ -366,9 +376,6 @@ export async function generateAssistantReply(chatId: string, speakerId?: string,
       facts: knownFacts, episodes, insights, sharedLanguage, lore,
       storyTime: coreMemory?.story_time ?? null,
     });
-
-    const controller = new AbortController();
-    abortController = controller;
 
     try {
       for await (const token of provider.streamChat(history, modelId, assembled.params, controller.signal)) {
@@ -410,14 +417,16 @@ export async function generateAssistantReply(chatId: string, speakerId?: string,
       }
       // Extraction waits until the exchange settles — see schedulePending.
       schedulePendingExtraction(chatId, speakerCharId, assistantMsgId);
+      return true;
     } else if (!failed && assistantMsgId) {
       // Stop pressed before the first token — drop the bubble. Checking
       // `produced` rather than the text means a bubble holding only the
       // prefill goes too, instead of being saved as if the model wrote it.
       store.removeMessage(chatId, assistantMsgId);
     }
+    return false;
   } finally {
-    abortController = null;
+    if (abortController === controller) abortController = null;
     store.setIsGenerating(false);
   }
 }

@@ -10,6 +10,8 @@ test("a reply goes out the way your last message came in; errors are not counted
   assert.equal(replyChannel([{ role: "user" }, { role: "assistant" }]), "scene", "old messages have no channel: in person");
   assert.equal(replyChannel([{ role: "user", channel: "text" }, { role: "assistant", channel: "text" }]), "text");
   assert.equal(replyChannel([{ role: "user", channel: "text" }, { role: "user" }]), "scene", "the latest one decides");
+  assert.equal(replyChannel([{ role: "user", channel: "text" }, { role: "user", channel: "call", callEvent: { kind: "ended", seconds: 30 } }]), "text",
+    "hanging up is not something you said: the reply after a call goes the way your last line did");
   assert.equal(replyChannel([{ role: "user", channel: "text" }, { role: "user", error: true }]), "text");
 });
 

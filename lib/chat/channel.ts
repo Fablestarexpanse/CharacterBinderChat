@@ -8,10 +8,11 @@ import type { Attachment, CallEvent, Message, MessageChannel } from "@/lib/types
 export const channelOf = (m: Pick<Message, "channel">): MessageChannel => m.channel ?? "scene";
 
 /** A reply goes out the way the last thing you sent came in. */
-export function replyChannel(messages: Array<Pick<Message, "role" | "channel" | "error">>): MessageChannel {
+export function replyChannel(messages: Array<Pick<Message, "role" | "channel" | "error" | "callEvent">>): MessageChannel {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
-    if (m.role === "user" && !m.error) return channelOf(m);
+    // A call starting or ending is not something you said: after hanging up, the reply is not "on the phone"
+    if (m.role === "user" && !m.error && !m.callEvent) return channelOf(m);
   }
   return "scene";
 }

@@ -1,5 +1,6 @@
 // ─── Core Data Models ────────────────────────────────────────────────────────
 
+import type { CharacterVoice } from "@/lib/media/voice";
 import type { ProviderType } from "@/lib/llm/callers";
 
 import type { ImageLook } from "@/lib/media/imageLook";
@@ -38,6 +39,8 @@ export interface Character {
   image?: ImageLook;
   /** Reference pictures (asset URLs, primary first) sent to workflows with image inputs */
   referenceImages?: string[];
+  /** How they sound: a voice sample uploaded on their profile, or a demo voice (lib/media/voice.ts). Not a card field */
+  voice?: CharacterVoice;
   /** What they may do on their own (lib/media/contact.ts); all off unless set */
   contact?: CharacterContact;
   lorebookId?: string;
@@ -74,6 +77,8 @@ export interface Persona {
   image?: ImageLook;
   /** Reference pictures of you (asset URLs, primary first) */
   referenceImages?: string[];
+  /** How you sound when your lines are read aloud (lib/media/voice.ts) */
+  voice?: CharacterVoice;
   createdAt: string;
   updatedAt: string;
 }

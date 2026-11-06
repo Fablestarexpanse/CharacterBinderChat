@@ -1096,7 +1096,7 @@ export class FableStore {
 
   // ── Assets ────────────────────────────────────────────────────────────────
 
-  putAsset(bytes: Uint8Array, opts?: { video?: boolean }) { return putAsset(this.db, bytes, opts); }
+  putAsset(bytes: Uint8Array, opts?: { video?: boolean; audio?: boolean }) { return putAsset(this.db, bytes, opts); }
   getAsset(hash: string) { return getAsset(this.db, hash); }
   gcAssets(graceSeconds?: number) { return gcAssets(this.db, graceSeconds); }
   referencedAssets() { return referencedAssets(this.db); }

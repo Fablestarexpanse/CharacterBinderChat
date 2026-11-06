@@ -31,7 +31,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ hash
       if (small) return new Response(new Uint8Array(small), { headers: { ...SAFE_HEADERS, "Content-Type": "image/webp" } });
     }
     // Clips answer byte ranges, which is what lets a <video> seek
-    const range = asset.mime.startsWith("video/") ? /^bytes=(\d*)-(\d*)$/.exec(req.headers.get("range") ?? "") : null;
+    const media = asset.mime.startsWith("video/") || asset.mime.startsWith("audio/");
+    const range = media ? /^bytes=(\d*)-(\d*)$/.exec(req.headers.get("range") ?? "") : null;
     if (range) {
       const size = asset.bytes.length;
       const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2] || 0));
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ hash
       });
     }
     return new Response(new Uint8Array(asset.bytes), {
-      headers: { ...SAFE_HEADERS, "Content-Type": asset.mime, ...(asset.mime.startsWith("video/") ? { "Accept-Ranges": "bytes" } : {}) },
+      headers: { ...SAFE_HEADERS, "Content-Type": asset.mime, ...(media ? { "Accept-Ranges": "bytes" } : {}) },
     });
   } catch (err) {
     return routeError("[assets/hash GET]", err);

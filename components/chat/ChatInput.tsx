@@ -27,7 +27,10 @@ import { askForPhoto, contactSettings } from "@/lib/chat/photos";
 import { useUiStore } from "@/lib/store/ui";
 
 export function ChatInput() {
-  const { activeChatId, chats, characters, personas, activePersonaId, setActivePersona, addMessage, isGenerating } = useFableStore();
+  const { activeChatId, chats, characters, personas, activePersonaId, setActivePersona, addMessage, isGenerating: writing } = useFableStore();
+  // A picture you sent is still uploading or being read: the composer waits as it does for a reply
+  const sendingPicture = useUiStore((s) => s.sendingPicture);
+  const isGenerating = writing || sendingPicture;
   const { inputValue, setInputValue, setActiveSection, textModeChats, setTextMode } = useUiStore();
   const textMode = !!(activeChatId && textModeChats[activeChatId]);
 
@@ -308,7 +311,9 @@ export function ChatInput() {
           onKeyDown={handleKeyDown}
           onInput={handleInput}
           placeholder={
-            isGenerating
+            sendingPicture
+              ? "Sending your picture…"
+              : isGenerating
               ? "Generating response…"
               : textMode ? "Text message…" : "Message… (try /image a cyberpunk alley at night)"
           }
@@ -377,11 +382,11 @@ export function ChatInput() {
             variant="purple"
             size="icon"
             className="h-8 w-8 rounded-xl"
-            onClick={isGenerating ? stopGeneration : picture ? () => void sendWithPicture() : handleSend}
-            disabled={!isGenerating && !inputValue.trim() && !picture}
-            title={isGenerating ? "Stop generating" : "Send (Enter)"}
+            onClick={writing ? stopGeneration : picture ? () => void sendWithPicture() : handleSend}
+            disabled={sendingPicture || (!writing && !inputValue.trim() && !picture)}
+            title={sendingPicture ? "Sending your picture…" : writing ? "Stop generating" : "Send (Enter)"}
           >
-            {isGenerating
+            {writing
               ? <Square className="h-3.5 w-3.5" />
               : <Send   className="h-3.5 w-3.5" />}
           </Button>

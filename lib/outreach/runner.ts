@@ -59,6 +59,7 @@ export async function outreachTick(now = new Date()): Promise<string> {
   const settings = await contactSettings();
   if (!settings.enabled) return "off";
   if (useUiStore.getState().call) return "on a call";
+  if (useUiStore.getState().sendingPicture) return "a picture is being sent";
   running = true;
   const held: string[] = [];
   try {
@@ -82,11 +83,16 @@ export async function outreachTick(now = new Date()): Promise<string> {
       const silence = base.lastUserAt ? hoursText(now.getTime() - base.lastUserAt) : "a while";
       const request = { trigger: d.trigger, reason: d.reason, silence, userNote: settings.userNote || undefined };
       // A rupture or a long silence from someone allowed to call: the phone rings instead of a text
+      // The checks above awaited the network: you may have started a call or a reply since
+      if (useUiStore.getState().call) return "on a call";
+      if (useFableStore.getState().isGenerating || useUiStore.getState().sendingPicture) return "a reply is being written";
       if (reachOutBy(d.trigger, character.contact) === "call") {
         await ringIn(chat.id, character.id, request);
         return `${character.name}: calling (${d.trigger})`;
       }
-      await generateAssistantReply(chat.id, character.id, request);
+      const wrote = await generateAssistantReply(chat.id, character.id, request);
+      // Only a text that was written is announced (a failed or stopped one is not "a text from them")
+      if (!wrote) return `${character.name}: no text written`;
       announce(chat, character, settings.notifications, settings.sounds);
       return `${character.name}: ${d.trigger}`;
     }

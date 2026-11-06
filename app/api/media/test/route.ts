@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 // ─── POST /api/media/test ─────────────────────────────────────────────────────
 // { id }                       → test a saved connection
 // { connection, key? }         → test the form before saving (key omitted: the
-//                                stored key for that id, if any)
+//                                stored key for that id, only if the address and
+//                                service still match the saved connection)
 // Always 200 with { ok, label, sample? }: a failing service is a result to show,
 // not an error in FableChat. A real call is made, so a cloud test may cost a
 // little (one small image or one sentence of speech).
@@ -29,7 +30,11 @@ export async function POST(req: NextRequest) {
     } else {
       return badRequest("id or connection is required");
     }
-    const key = typeof body.key === "string" && body.key.trim() ? body.key.trim() : connectionKey(conn.id);
+    // A stored key goes only to the service it was entered for: a form whose address
+    // (or service) differs from the saved connection has to give the key again
+    const saved = listConnections().find((c) => c.id === conn.id);
+    const sameService = !!saved && saved.baseUrl === conn.baseUrl && saved.provider === conn.provider;
+    const key = typeof body.key === "string" && body.key.trim() ? body.key.trim() : sameService ? connectionKey(conn.id) : null;
     return Response.json(await testConnection(conn, key));
   } catch (err) {
     return routeError("[media/test POST]", err);

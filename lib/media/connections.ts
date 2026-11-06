@@ -10,7 +10,7 @@ export type MediaKind = "image" | "video" | "voice" | "stt";
 /** What a connection is chosen *for*. Each purpose has one default connection. */
 export type MediaPurpose = "portrait" | "photo" | "scene" | "video" | "voice" | "stt";
 
-export type MediaProviderId = "comfyui" | "openai-image" | "openai-speech" | "elevenlabs" | "openai-stt";
+export type MediaProviderId = "comfyui" | "openai-image" | "openai-speech" | "vibevoice" | "elevenlabs" | "openai-stt";
 
 export interface MediaProviderInfo {
   id: MediaProviderId;
@@ -42,6 +42,13 @@ export const MEDIA_PROVIDERS: readonly MediaProviderInfo[] = [
     defaultBaseUrl: "https://api.openai.com/v1", keyRequired: true, fields: ["model"],
     modelPlaceholder: "gpt-image-1",
     help: "Use the service's base URL ending in /v1 and an API key from its dashboard.",
+  },
+  {
+    id: "vibevoice", label: "VibeVoice (local)", kinds: ["voice"],
+    blurb: "FableChat's own voice server: VibeVoice on your GPU, speaking in any voice from a short sample. Set it up below with Download and set up; FableChat starts and stops it.",
+    defaultBaseUrl: "http://127.0.0.1:7861/v1", keyRequired: false, fields: ["voice"],
+    voicePlaceholder: "demo:en-Alice_woman, or one of yours",
+    help: "Built from SanDiegoDude/VibeVoice (MIT). Microsoft's VibeVoice is for research use; only add voices you have the right to use.",
   },
   {
     id: "openai-speech", label: "OpenAI-compatible speech", kinds: ["voice"],

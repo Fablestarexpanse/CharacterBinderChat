@@ -24,6 +24,14 @@ import path from "node:path";
 import { randomBytes } from "node:crypto";
 
 /** Tables a FableChat database must have to be worth restoring. */
+
+/**
+ * app_kv keys that describe this computer, not the story: where the voice server is installed (and so
+ * which program FableChat runs) and the folder media copies are written to. A restore keeps the live
+ * values and ignores the backup's.
+ */
+export const MACHINE_KEYS = ["voice:runtime", "media:saveFolder"];
+
 export const REQUIRED_TABLES = [
   "app_characters", "app_chats", "app_messages", "app_personas", "app_lorebooks", "app_scenarios",
   "app_presets", "app_kv", "entities", "facts", "relationship_stats", "memory_cards", "commitments", "core_memory",
@@ -104,6 +112,7 @@ export async function writeBackup(live: Database.Database, dest: string): Promis
   try {
     copy.prepare("INSERT OR REPLACE INTO app_kv (key, value) VALUES ('backup_made_at', ?)").run(JSON.stringify(Math.floor(Date.now() / 1000)));
     copy.prepare("DELETE FROM app_kv WHERE key LIKE 'secret:%'").run();
+    for (const k of MACHINE_KEYS) copy.prepare("DELETE FROM app_kv WHERE key = ?").run(k);
     copy.exec("VACUUM");
   } finally {
     copy.close();
@@ -141,9 +150,13 @@ export function swapInDatabase(o: SwapOptions): SwapResult {
 
   // Read the live keys while the live file is still open and consistent
   let secrets: Array<{ key: string; value: string }> = [];
+  let local: Array<{ key: string; value: string }> = [];
   try {
     const live = new Database(o.livePath, { readonly: true, fileMustExist: true });
-    try { secrets = live.prepare("SELECT key, value FROM app_kv WHERE key LIKE 'secret:%'").all() as typeof secrets; }
+    try {
+      secrets = live.prepare("SELECT key, value FROM app_kv WHERE key LIKE 'secret:%'").all() as typeof secrets;
+      local = live.prepare(`SELECT key, value FROM app_kv WHERE key IN (${MACHINE_KEYS.map(() => "?").join(",")})`).all(...MACHINE_KEYS) as typeof local;
+    }
     finally { live.close(); }
   } catch { /* a live database with no kv table has no keys to carry */ }
 
@@ -165,6 +178,11 @@ export function swapInDatabase(o: SwapOptions): SwapResult {
       const has = restored.prepare("SELECT 1 FROM app_kv WHERE key = ?");
       const put = restored.prepare("INSERT INTO app_kv (key, value) VALUES (?, ?)");
       for (const s of secrets) if (!has.get(s.key)) put.run(s.key, s.value);
+      // Settings about this machine come from this machine, never from the backup: a backup could
+      // otherwise point FableChat at a program to run (the voice server's Python) or a folder to write
+      const drop = restored.prepare("DELETE FROM app_kv WHERE key = ?");
+      for (const k of MACHINE_KEYS) drop.run(k);
+      for (const s of local) put.run(s.key, s.value);
       restored.prepare("INSERT OR REPLACE INTO app_kv (key, value) VALUES ('epoch', ?)").run(JSON.stringify(randomBytes(12).toString("hex")));
       restored.prepare("DELETE FROM app_kv WHERE key = 'backup_made_at'").run();
     } finally {

@@ -36,10 +36,17 @@ function logCall(chatId: string, characterId: string, byYou: boolean, event: Cal
 }
 
 /** You call them. They pick up after a moment and speak first. */
+let placing = false;
+
 export async function placeCall(chatId: string, characterId: string): Promise<string | null> {
+  if (call() || placing) return "You are already on a call.";
+  placing = true; // a second click while the settings load must not start a second call
+  let on: boolean;
+  try { on = (await contactSettings()).enabled; } finally { placing = false; }
+  if (!on) return "Calls are off. Turn on Contact & media in Settings to call.";
   if (call()) return "You are already on a call.";
-  if (!(await contactSettings()).enabled) return "Calls are off. Turn on Contact & media in Settings to call.";
   if (useFableStore.getState().isGenerating) return "Wait for the reply being written to finish.";
+  if (useUiStore.getState().sendingPicture) return "Wait for your picture to finish sending.";
   setCall({ chatId, characterId, phase: "calling" });
   logCall(chatId, characterId, true, { kind: "started" });
   setTimeout(() => {
@@ -55,7 +62,10 @@ export async function placeCall(chatId: string, characterId: string): Promise<st
 export async function ringIn(chatId: string, characterId: string, outreach: OutreachRequest): Promise<void> {
   if (call()) return;
   setCall({ chatId, characterId, phase: "incoming", outreach: { ...outreach, channel: "call" } });
-  if ((await contactSettings()).sounds) startRingtone();
+  const sounds = (await contactSettings()).sounds;
+  // Answered, declined or replaced while the settings loaded: no ringtone for a call that is not ringing
+  const now = call();
+  if (sounds && now?.phase === "incoming" && now.chatId === chatId) startRingtone();
   if (missTimer) clearTimeout(missTimer);
   missTimer = setTimeout(() => { if (call()?.phase === "incoming") endIncoming("missed"); }, RING_MS);
 }
@@ -74,16 +84,25 @@ function endIncoming(kind: "missed" | "declined") {
 }
 
 /** Pick up their call: they speak first, saying why they called. */
-export function answerCall(): void {
+export async function answerCall(): Promise<void> {
   const cur = call();
   if (!cur || cur.phase !== "incoming") return;
   stopRingtone();
   if (missTimer) clearTimeout(missTimer);
-  logCall(cur.chatId, cur.characterId, false, { kind: "started" });
+  // Their call counts toward their limits and backoff (the outreach is on the line it started)
+  logCall(cur.chatId, cur.characterId, false, { kind: "started" }, cur.outreach);
   setCall({ ...cur, phase: "connected", connectedAt: Date.now() });
   const st = useFableStore.getState();
   st.setActiveChatId(cur.chatId);
   useUiStore.getState().setActiveSection("chats");
+  // A reply being written elsewhere would make them silent: stop it first
+  if (st.isGenerating) {
+    stopGeneration();
+    const until = Date.now() + 5000;
+    while (useFableStore.getState().isGenerating && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
+    if (useFableStore.getState().isGenerating) return;
+  }
+  if (call()?.chatId !== cur.chatId) return; // hung up while waiting
   void generateAssistantReply(cur.chatId, cur.characterId, cur.outreach);
 }
 
@@ -93,7 +112,7 @@ export const declineCall = () => endIncoming("declined");
 export async function sayOnCall(text: string): Promise<void> {
   const cur = call();
   const t = text.trim();
-  if (!cur || cur.phase !== "connected" || !t || useFableStore.getState().isGenerating) return;
+  if (!cur || cur.phase !== "connected" || !t || useFableStore.getState().isGenerating || useUiStore.getState().sendingPicture) return;
   useFableStore.getState().addMessage(cur.chatId, { chatId: cur.chatId, role: "user", content: t, channel: "call" });
   await generateAssistantReply(cur.chatId, cur.characterId);
 }

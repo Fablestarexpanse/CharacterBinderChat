@@ -221,7 +221,7 @@ function ChatRow({
         <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
           <button onClick={declineCall} aria-label="Decline call" title="Decline"
             className="flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 cursor-pointer"><PhoneOff className="h-3 w-3" /></button>
-          <button onClick={() => { unlockSounds(); answerCall(); }} aria-label="Answer call" title="Answer"
+          <button onClick={() => { unlockSounds(); void answerCall(); }} aria-label="Answer call" title="Answer"
             className="flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-white hover:bg-green-600 cursor-pointer"><Phone className="h-3 w-3" /></button>
         </div>
       )}

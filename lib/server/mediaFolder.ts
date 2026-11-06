@@ -87,7 +87,8 @@ export async function saveCopy(bytes: Uint8Array, mime: string, hash: string, op
   const { folder, byCharacter } = getMediaFolder();
   if (!folder) return null;
   const who = opts.who ? safeSegment(opts.who, "") : "";
-  const dir = byCharacter && who ? path.join(folder, who) : folder;
+  // The folder is yours, chosen at run time: tell the bundler not to trace it (it would trace the whole project)
+  const dir = byCharacter && who ? path.join(/*turbopackIgnore: true*/ folder, who) : folder;
   const d = opts.now ?? new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;

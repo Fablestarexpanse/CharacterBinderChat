@@ -41,14 +41,24 @@ export function sniffVideo(bytes: Uint8Array): "video/mp4" | "video/webm" | null
   return null;
 }
 
+/** A voice sample's type, from the bytes: WAV, MP3, Ogg, FLAC. Only where audio was asked for. */
+export function sniffAudio(bytes: Uint8Array): "audio/wav" | "audio/mpeg" | "audio/ogg" | "audio/flac" | null {
+  const b = bytes;
+  if (b.length >= 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x41 && b[10] === 0x56 && b[11] === 0x45) return "audio/wav";
+  if (b.length >= 3 && ((b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33) || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0))) return "audio/mpeg";
+  if (b.length >= 4 && b[0] === 0x4f && b[1] === 0x67 && b[2] === 0x67 && b[3] === 0x53) return "audio/ogg";
+  if (b.length >= 4 && b[0] === 0x66 && b[1] === 0x4c && b[2] === 0x61 && b[3] === 0x43) return "audio/flac";
+  return null;
+}
+
 export function hashBytes(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
 /** Store an image (or, with `video`, a clip). The same bytes stored twice are one row. */
-export function putAsset(db: DB, bytes: Uint8Array, opts: { video?: boolean } = {}): { hash: string; mime: string; size: number } {
-  const mime = sniffImage(bytes) ?? (opts.video ? sniffVideo(bytes) : null);
-  if (!mime) throw new Error(opts.video ? "not a clip FableChat accepts (MP4 or WebM)" : "not an image FableChat accepts (PNG, JPEG, GIF or WebP)");
+export function putAsset(db: DB, bytes: Uint8Array, opts: { video?: boolean; audio?: boolean } = {}): { hash: string; mime: string; size: number } {
+  const mime = opts.audio ? sniffAudio(bytes) : sniffImage(bytes) ?? (opts.video ? sniffVideo(bytes) : null);
+  if (!mime) throw new Error(opts.audio ? "not a sound file FableChat accepts (WAV, MP3, Ogg or FLAC)" : opts.video ? "not a clip FableChat accepts (MP4 or WebM)" : "not an image FableChat accepts (PNG, JPEG, GIF or WebP)");
   const hash = hashBytes(bytes);
   db.prepare("INSERT OR IGNORE INTO app_assets (hash, mime, bytes, size, created_at) VALUES (?, ?, ?, ?, ?)")
     .run(hash, mime, Buffer.from(bytes), bytes.length, Math.floor(Date.now() / 1000));

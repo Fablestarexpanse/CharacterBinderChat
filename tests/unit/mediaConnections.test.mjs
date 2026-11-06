@@ -161,3 +161,11 @@ test("the test frame is a real PNG and the test prefers a first-frame workflow o
   assert.equal(testWorkflow([w("h3-reference-clip", "bundled", ["MiniMaxH3ReferenceToVideo"])]), "h3-reference-clip", "a reference workflow when it is the only one");
   assert.equal(testWorkflow([]), null);
 });
+
+test("VibeVoice (local) before setup says so instead of calling anything", async () => {
+  seen.length = 0;
+  const r = await M.testConnection(conn({ kind: "voice", provider: "vibevoice", baseUrl: base + "/v1", voice: "demo:en-Alice_woman" }), null);
+  assert.equal(r.ok, false);
+  assert.match(r.label, /not set up yet/);
+  assert.equal(seen.length, 0, "nothing is requested, and nothing downloaded, before Download and set up");
+});

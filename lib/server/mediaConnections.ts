@@ -8,6 +8,7 @@ import path from "node:path";
 import { getStore } from "@/lib/db";
 import { decryptSecret, encryptSecret, loadKey } from "@/lib/server/secrets";
 import { testVideoClip } from "@/lib/server/videoTest";
+import { ensureRunning, voiceHeaders } from "@/lib/server/voiceRuntime";
 import {
   cleanDefaults, providerInfo, validateConnection,
   type MediaConnection, type MediaConnectionView, type MediaDefaults,
@@ -173,6 +174,20 @@ export async function testConnection(c: MediaConnection, key: string | null): Pr
           return { ok: true, label: "Made a test image.", sample: { type: "image", dataUrl: toDataUrl(await img.arrayBuffer(), img.headers.get("content-type") ?? "image/png") } };
         }
         return { ok: false, label: "The service answered, but with no image in the reply." };
+      }
+      case "vibevoice": {
+        // FableChat's own server: start it if it is not running, then speak a real sentence
+        try { await ensureRunning(); } catch (e) { return { ok: false, label: e instanceof Error ? e.message : String(e) }; }
+        const started = Date.now();
+        const res = await fetch(`${c.baseUrl}/audio/speech`, {
+          method: "POST", headers: voiceHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({ input: TEST_SPEECH, voice: c.voice || "demo:en-Alice_woman", response_format: "wav" }),
+          signal: AbortSignal.timeout(900_000),
+        });
+        if (!res.ok) return { ok: false, label: `The voice server answered ${await upstreamMessage(res)}` };
+        const bytes = await res.arrayBuffer();
+        if (bytes.byteLength < 1000) return { ok: false, label: "The voice server answered, but sent no audio." };
+        return { ok: true, label: `Spoke a test sentence in ${Math.round((Date.now() - started) / 1000)} s (the first one also loads the model).`, sample: { type: "audio", dataUrl: toDataUrl(bytes, "audio/wav") } };
       }
       case "openai-speech": {
         const res = await fetch(`${c.baseUrl}/audio/speech`, {

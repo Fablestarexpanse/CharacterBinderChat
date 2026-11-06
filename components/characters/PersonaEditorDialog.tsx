@@ -13,6 +13,8 @@ import { AvatarPicker } from "@/components/ui/AvatarPicker";
 import { Trash2 } from "lucide-react";
 import { Field } from "@/components/ui/field";
 import { ImageLookFields, toLookDraft, fromLookDraft } from "@/components/characters/ImageLookFields";
+import { VoiceFields } from "@/components/characters/VoiceFields";
+import type { CharacterVoice } from "@/lib/media/voice";
 import { ReferencePictures } from "@/components/characters/ReferencePictures";
 
 // ─── Inner form (mounted fresh per open, keyed by target id) ─────────────────
@@ -34,10 +36,12 @@ function EditorForm({
   const [initialLook]                 = useState(() => toLookDraft(editing?.image));
   const [look,        setLook]        = useState(initialLook);
   const [refs,        setRefs]        = useState<string[]>(editing?.referenceImages ?? []);
+  const [voice,       setVoice]       = useState<CharacterVoice | undefined>(editing?.voice);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const dirty = name !== (editing?.name ?? "") || avatar !== (editing?.avatar ?? "") || description !== (editing?.description ?? "")
     || JSON.stringify(look) !== JSON.stringify(initialLook)
-    || JSON.stringify(refs) !== JSON.stringify(editing?.referenceImages ?? []);
+    || JSON.stringify(refs) !== JSON.stringify(editing?.referenceImages ?? [])
+    || JSON.stringify(voice ?? null) !== JSON.stringify(editing?.voice ?? null);
   const guard = useDiscardGuard(dirty, onClose, closeRef);
 
   const handleSave = () => {
@@ -47,6 +51,7 @@ function EditorForm({
       description: description.trim(),
       image:       fromLookDraft(look),
       referenceImages: refs.length ? refs : undefined,
+      voice:       voice && (voice.sample || voice.demo) ? voice : undefined,
     };
     if (editing) updatePersona(editing.id, data);
     else addPersona(data);
@@ -86,6 +91,7 @@ function EditorForm({
         <ImageLookFields value={look} onChange={setLook} who={name.trim() || "you"} open={refs.length > 0}>
           <ReferencePictures value={refs} onChange={setRefs} avatar={avatar} who={name.trim() || "you"} />
         </ImageLookFields>
+        <VoiceFields value={voice} onChange={setVoice} who={name.trim() || "you"} />
       </div>
 
       {/* Footer */}

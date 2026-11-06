@@ -24,7 +24,10 @@ export function MobileBar() {
   const title = NAV_ITEMS.find((n) => n.id === activeSection)?.label ?? "FableChat";
   // The chat list is in the drawer: a dot on the menu says something came in (green and pulsing while a call rings)
   const ringing = useUiStore((s) => s.call?.phase === "incoming");
-  const unread = useUiStore((s) => Object.values(s.unreadChats).reduce((a, n) => a + n, 0));
+  // Counted over chats that still exist: a deleted chat's unread texts are not waiting for you
+  const unreadMap = useUiStore((s) => s.unreadChats);
+  const chats = useFableStore((s) => s.chats);
+  const unread = chats.reduce((a, c) => a + (unreadMap[c.id] ?? 0), 0);
   return (
     <div className="flex h-11 flex-shrink-0 items-center gap-2 border-b border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] px-2">
       <button onClick={() => setNavOpenAt(key)} aria-label={ringing ? "Open menu (a call is ringing)" : unread ? `Open menu (${unread} new)` : "Open menu"}

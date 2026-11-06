@@ -21,13 +21,15 @@ export async function POST(req: NextRequest) {
   try {
     const denied = guard(req);
     if (denied) return denied;
-    const video = req.nextUrl.searchParams.get("kind") === "video";
+    const kind = req.nextUrl.searchParams.get("kind");
+    const video = kind === "video";
+    const audio = kind === "audio";
     let bytes: Uint8Array;
     try { bytes = await readBodyCapped(req, video ? MAX_VIDEO_BYTES : MAX_UPLOAD_BYTES); }
     catch (e) { return badRequest(e instanceof Error ? e.message : "the upload failed"); }
     if (bytes.length === 0) return badRequest("send the image as the request body");
     try {
-      const { hash, mime, size } = getStore().putAsset(bytes, { video });
+      const { hash, mime, size } = getStore().putAsset(bytes, { video, audio });
       const params = req.nextUrl.searchParams;
       const copy = params.get("copy") === "1" ? await saveCopy(bytes, mime, hash, { who: params.get("who") ?? undefined }) : null;
       return Response.json({ ok: true, hash, url: assetUrl(hash), mime, size, ...(copy ?? {}) });

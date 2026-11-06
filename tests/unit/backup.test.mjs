@@ -178,3 +178,26 @@ test("the epoch is stable until something replaces the database", () => {
   s.patchAppState({ upserts: { characters: [{ id: "a", name: "A", description: "d", tags: [] }] } });
   assert.equal(s.epoch(), e, "ordinary writes do not change it");
 });
+
+test("settings about this machine never travel in a backup, and a crafted one cannot replace them", async () => {
+  const dir = tmp(), live = path.join(dir, "live.db"), out = path.join(dir, "b.db");
+  const s = populated(live);
+  const mine = JSON.stringify({ folder: "F:\FableChat Voice", installed: true, port: 7861 });
+  s.setKv("voice:runtime", mine);
+  s.setKv("media:saveFolder", JSON.stringify({ folder: "F:\copies", byCharacter: true }));
+  await s.backupTo(out);
+  const b = new Database(out, { readonly: true });
+  assert.equal(b.prepare("SELECT value FROM app_kv WHERE key = 'voice:runtime'").get(), undefined, "the install folder is not in the backup");
+  b.close();
+
+  // A backup someone edited to point at another Python
+  const staged = path.join(dir, ".staged-z.db"); fs.copyFileSync(out, staged);
+  const evil = new Database(staged);
+  evil.prepare("INSERT OR REPLACE INTO app_kv (key, value) VALUES ('voice:runtime', ?)").run(JSON.stringify({ folder: "\\host\share", installed: true, port: 9999 }));
+  evil.close();
+  swapInDatabase({ livePath: live, stagedPath: staged, closeLive: () => s.close() });
+  const after = new FableStore(live);
+  assert.equal(after.getKv("voice:runtime"), mine, "this machine's voice install is kept; the backup's is ignored");
+  assert.ok(after.getKv("media:saveFolder").includes("copies"));
+  after.close();
+});

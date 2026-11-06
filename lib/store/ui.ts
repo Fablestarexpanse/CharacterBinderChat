@@ -102,6 +102,9 @@ interface UiStore {
   dismissRemoteNotice: (key: number) => void;
 
   // Composer
+  /** A picture you sent is uploading or being read: the reply waits for it, so nothing else may answer first */
+  sendingPicture: boolean;
+  setSendingPicture: (on: boolean) => void;
   /** Chats with messages a character sent on their own while you were elsewhere */
   unreadChats: Record<string, number>;
   markUnread: (chatId: string) => void;
@@ -155,6 +158,9 @@ export const useUiStore = create<UiStore>()((set) => ({
       remoteNotices: [...s.remoteNotices, ...notices.map((n) => ({ ...n, key: ++noticeKey }))].slice(-5),
     })),
   dismissRemoteNotice: (key) => set((s) => ({ remoteNotices: s.remoteNotices.filter((n) => n.key !== key) })),
+
+  sendingPicture: false,
+  setSendingPicture: (on) => set({ sendingPicture: on }),
 
   unreadChats: {},
 
