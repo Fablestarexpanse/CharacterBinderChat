@@ -19,7 +19,7 @@ import { storePicture } from "@/lib/chat/assets";
 
 export function ImageCard({ message }: { message: Message }) {
   const {
-    imageJobs, setMessageImageJob,
+    imageJobs, setMessageImageJob, updateImageJob,
     updateMessageContent, toggleMessageCollapsed, removeMessage,
     chats, characters, updateCharacter,
   } = useFableStore();
@@ -32,6 +32,9 @@ export function ImageCard({ message }: { message: Message }) {
     setKept("saving");
     try {
       const asset = await storePicture(url);
+      // Note the copy on the render, so deleting it from Image Studio can say who kept it
+      const index = job?.outputUrls.indexOf(url) ?? -1;
+      if (job && index >= 0 && job.keptAs?.[index] !== asset) updateImageJob(job.id, { keptAs: { ...job.keptAs, [index]: asset } });
       const current = useFableStore.getState().characters.find((c) => c.id === character.id)?.referenceImages ?? [];
       if (!current.includes(asset)) updateCharacter(character.id, { referenceImages: [...current, asset] });
       setKept("done");

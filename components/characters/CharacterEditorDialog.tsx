@@ -310,7 +310,7 @@ export function CharacterEditorDialog() {
           // Draft identity must be part of the key: dropping card B while
           // reviewing card A keeps the dialog open in create mode, and a bare
           // "new" key silently ignored the fresh draft.
-          key={characterEditorId ?? `new-${characterEditorDraft?.name ?? ""}-${characterEditorDraft?.description?.length ?? 0}`}
+          key={characterEditorId ?? `new-${characterEditorDraft?.name ?? ""}-${characterEditorDraft?.description?.length ?? 0}-${characterEditorDraft?.avatar ?? ""}`}
           editing={editing}
           draft={characterEditorDraft}
           closeRef={closeRef}

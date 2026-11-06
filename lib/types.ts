@@ -275,6 +275,8 @@ export interface ImageJob {
   promptId?: string; // ComfyUI prompt ID
   /** A clip rather than a still: kept out of Image Studio's recent pictures */
   kind?: "video";
+  /** Output index → the asset URL a copy was kept as (portrait, reference), so "what uses this render?" can match it */
+  keptAs?: Record<number, string>;
   createdAt: string;
   completedAt?: string;
   error?: string;

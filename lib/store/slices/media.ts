@@ -6,6 +6,7 @@ import type { FableStore } from "../index";
 import type {
   ImageJob, ImageGenerationSettings,
 } from "@/lib/types";
+import { removeRenders, restoreRenders, type RemovedRenders } from "@/lib/media/renders";
 
 export interface MediaSlice {
   // Image Jobs
@@ -18,29 +19,30 @@ export interface MediaSlice {
    * always go together. Conversation text is never touched — image cards carry
    * no dialogue, only the prompt.
    */
-  deleteRenders: (jobIds: string[]) => void;
+  deleteRenders: (jobIds: string[]) => RemovedRenders;
+  /** Undo a deleteRenders: the renders and their image cards go back where they were. */
+  restoreRenders: (removed: RemovedRenders) => void;
 
   // Image Settings (Image Studio panel)
   imageSettings: ImageGenerationSettings;
   setImageSettings: (s: Partial<ImageGenerationSettings>) => void;
 }
 
-export const createMediaSlice: StateCreator<FableStore, [], [], MediaSlice> = (set) => ({
+export const createMediaSlice: StateCreator<FableStore, [], [], MediaSlice> = (set, get) => ({
   imageJobs: [],
   addImageJob: (job) => set((s) => ({ imageJobs: [job, ...s.imageJobs] })),
   updateImageJob: (id, updates) =>
     set((s) => ({ imageJobs: s.imageJobs.map((j) => (j.id === id ? { ...j, ...updates } : j)) })),
 
   deleteRenders: (jobIds) => {
-    const doomed = new Set(jobIds);
-    if (doomed.size === 0) return;
-    set((s) => ({
-      imageJobs: s.imageJobs.filter((j) => !doomed.has(j.id)),
-      chats: s.chats.map((c) => {
-        const kept = c.messages.filter((m) => !m.imageJobId || !doomed.has(m.imageJobId));
-        return kept.length === c.messages.length ? c : { ...c, messages: kept };
-      }),
-    }));
+    const s = get();
+    const out = removeRenders(s.imageJobs, s.chats, jobIds);
+    if (out.removed.jobs.length || out.removed.messages.length) set({ imageJobs: out.imageJobs, chats: out.chats });
+    return out.removed;
+  },
+  restoreRenders: (removed) => {
+    const s = get();
+    set(restoreRenders(s.imageJobs, s.chats, removed));
   },
 
   imageSettings: defaultImageSettings,
