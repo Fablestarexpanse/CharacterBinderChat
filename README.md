@@ -5,7 +5,7 @@ local or cloud LLMs. A two-layer memory system keeps the model aware of everythi
 card library (what used to be the separate CharacterBinder tool) holds your characters, personas, lorebooks and
 scenarios.
 
-![FableChat](docs/screenshot.png)
+![FableChat: a story that moved to texts, with a photo read by the picture reader and a phone call](docs/screenshot.png)
 
 ---
 
@@ -94,9 +94,17 @@ npm run dev
 <details>
 <summary><strong>More screenshots</strong></summary>
 
-**Library — every card in one place**
+**Library — every card in one place, lorebooks and scenarios with their banners**
 
 ![Library](docs/screenshot-library.png)
+
+**A character calling — the phone rings on their chat in Recent Chats, not over the screen**
+
+![Incoming call](docs/screenshot-call.png)
+
+**A character's voice — a sample you have the right to use, or a demo voice, with Preview**
+
+![Voice in the character editor](docs/screenshot-voice.png)
 
 **Knowledge graph — facts with supersession history, one pinned and one locked**
 
@@ -118,7 +126,7 @@ npm run dev
 
 ![Phone layout](docs/screenshot-phone.png)
 
-**Settings — appearance, memory, backup and providers**
+**Settings — tabbed; Media holds the image, video and voice connections**
 
 ![Settings](docs/screenshot-settings.png)
 
