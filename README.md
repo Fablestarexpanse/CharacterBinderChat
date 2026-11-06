@@ -177,8 +177,9 @@ Everything here is **off until you turn it on** in **Settings → Contact**, and
 - **Voice** (optional, Settings → Media → Voice): FableChat sets up and runs [VibeVoice](https://github.com/SanDiegoDude/VibeVoice)
   1.5B locally, downloading nothing until you press Set up (about 11 GB with the runtime; an NVIDIA GPU with 6–7 GB free
   is best). Give a character or persona a voice in their editor: upload a sample of a voice you have the right to use (tick
-  the consent box; it is cleaned by vocal isolation once) or pick a demo voice, and Preview it. Speaking chat lines, voice
-  notes and spoken calls are next (`docs/plan-voice.md`).
+  the consent box; it is cleaned by vocal isolation once) or pick a demo voice, and Preview it. Then press Play on any
+  reply to hear it in their voice, or turn on **Read replies aloud** in the chat header. Voice notes and spoken calls are
+  next (`docs/plan-voice.md`).
 - **Send a picture** with the paperclip in the message box (or paste / drop one). Set a **Picture reader** in
   **Settings → Chat models** first: a model that can see images, for example one in LM Studio with a vision projector
   (`mmproj`), an Ollama vision model such as `qwen2.5vl:7b`, or an OpenRouter model that accepts images. Without one

@@ -101,6 +101,11 @@ interface UiStore {
   pushRemoteNotices: (notices: Array<Omit<RemoteNotice, "key">>) => void;
   dismissRemoteNotice: (key: number) => void;
 
+  // Voice
+  /** The reply being spoken: its audio is being made, or it is playing (lib/chat/speech.ts) */
+  speaking: { messageId: string; phase: "making" | "playing" } | null;
+  setSpeaking: (s: { messageId: string; phase: "making" | "playing" } | null) => void;
+
   // Composer
   /** A picture you sent is uploading or being read: the reply waits for it, so nothing else may answer first */
   sendingPicture: boolean;
@@ -158,6 +163,9 @@ export const useUiStore = create<UiStore>()((set) => ({
       remoteNotices: [...s.remoteNotices, ...notices.map((n) => ({ ...n, key: ++noticeKey }))].slice(-5),
     })),
   dismissRemoteNotice: (key) => set((s) => ({ remoteNotices: s.remoteNotices.filter((n) => n.key !== key) })),
+
+  speaking: null,
+  setSpeaking: (speaking) => set({ speaking }),
 
   sendingPicture: false,
   setSendingPicture: (on) => set({ sendingPicture: on }),

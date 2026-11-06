@@ -14,7 +14,8 @@ import { ImageCard } from "@/components/chat/ImageCard";
 import { Attachments } from "@/components/chat/Attachments";
 import { formatTime } from "@/lib/utils";
 import type { Message, MemoryTrace } from "@/lib/types";
-import { Copy, Pencil, RefreshCw, ThumbsUp, ThumbsDown, Check, X, ImagePlus, Brain, GitBranch, Clock, Loader2, Phone, PhoneMissed, PhoneOff } from "lucide-react";
+import { Copy, Pencil, RefreshCw, ThumbsUp, ThumbsDown, Check, X, ImagePlus, Brain, GitBranch, Clock, Loader2, Phone, PhoneMissed, PhoneOff, Volume2, Square } from "lucide-react";
+import { playMessage, spokenText, stopSpeaking } from "@/lib/chat/speech";
 
 interface MessageItemProps {
   message: Message;
@@ -56,6 +57,11 @@ export function MessageItem({ message }: MessageItemProps) {
   // Regenerate only applies to the newest message in the chat
   const chat = chats.find((c) => c.id === message.chatId);
   const isLastMessage = chat?.messages[chat.messages.length - 1]?.id === message.id;
+
+  // Playing this reply in its writer's voice (lib/chat/speech.ts)
+  const speaking = useUiStore((s) => (s.speaking?.messageId === message.id ? s.speaking : null));
+  const [speakError, setSpeakError] = useState<string | null>(null);
+  const speakerName = character ? `${character.name}'s` : undefined;
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(message.content);
@@ -201,9 +207,29 @@ export function MessageItem({ message }: MessageItemProps) {
           </div>
         )}
 
+        {speakError && (
+          <div role="alert" className="text-[10px] text-red-500">
+            {speakError}{" "}
+            <button className="underline cursor-pointer" onClick={() => setSpeakError(null)}>Dismiss</button>
+          </div>
+        )}
+
         {/* Action buttons — visible on hover */}
         {!editing && (
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className={`flex items-center gap-0.5 transition-opacity ${speaking ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+          {!isUser && !message.error && !message.callEvent && spokenText(message) && (
+            <Button variant="ghost" size="icon" className="h-6 w-6"
+              title={speaking?.phase === "making" ? "Making the audio… (click to cancel)" : speaking ? "Stop" : `Play in ${speakerName ?? "their"} voice`}
+              aria-label={speaking ? "Stop playing" : "Play this reply"}
+              onClick={() => {
+                if (speaking) { stopSpeaking(); return; }
+                setSpeakError(null);
+                void playMessage(message.chatId, message.id).catch((e: unknown) => setSpeakError(e instanceof Error ? e.message : String(e)));
+              }}>
+              {speaking?.phase === "making" ? <Loader2 className="h-3 w-3 animate-spin text-[var(--purple-fg)]" />
+                : speaking ? <Square className="h-3 w-3 text-[var(--purple-fg)]" /> : <Volume2 className="h-3 w-3" />}
+            </Button>
+          )}
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleCopy} title="Copy">
             {copied ? <Check className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3" />}
           </Button>

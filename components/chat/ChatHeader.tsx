@@ -21,7 +21,10 @@ import {
   Trash2,
   Loader2,
   ChevronLeft,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
+import { stopSpeaking, voiceReady } from "@/lib/chat/speech";
 
 const PROVIDER_LABELS: Record<string, string> = {
   ollama:      "Ollama",
@@ -53,6 +56,14 @@ export function ChatHeader() {
   const [customOpen,   setCustomOpen]   = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [peekOpen,     setPeekOpen]     = useState(false);
+  // Read replies aloud is offered once voice is set up (Settings → Media → Voice)
+  const [voiceOn, setVoiceOn] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void voiceReady().then((v) => { if (!cancelled) setVoiceOn(v); });
+    return () => { cancelled = true; };
+  }, []);
+  const setChatReadAloud = useFableStore((s) => s.setChatReadAloud);
 
   // Backend models never belong in the chat selector: the image scene
   // director is configured in Settings, and embedding models can't chat at
@@ -231,6 +242,14 @@ export function ChatHeader() {
 
       {/* Action buttons */}
       <div className="flex items-center gap-0.5 md:gap-1 flex-shrink-0">
+        {voiceOn && (
+          <Button variant="ghost" size="icon" aria-pressed={!!chat.readAloud}
+            title={chat.readAloud ? "Reading replies aloud: click to stop" : "Read replies aloud, in each character's voice"}
+            className={chat.readAloud ? "text-[var(--purple-fg)] bg-[var(--purple-light)]" : ""}
+            onClick={() => { if (chat.readAloud) stopSpeaking(); setChatReadAloud(chat.id, !chat.readAloud); }}>
+            {chat.readAloud ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+          </Button>
+        )}
         <Button variant="ghost" size="icon" title="Peek prompt — see exactly what the model receives" onClick={() => setPeekOpen(true)}>
           <Eye className="h-4 w-4" />
         </Button>

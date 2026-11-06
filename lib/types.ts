@@ -140,6 +140,8 @@ export interface Message {
   memoryTrace?: MemoryTrace;
   /** User feedback on this reply (thumbs up/down in the hover actions) */
   rating?: "up" | "down";
+  /** This reply spoken in its writer's voice: an audio asset, and the words + voice it was made from (lib/chat/speech.ts) */
+  speech?: { url: string; key: string };
   /** Image cards only: collapsed to a one-line summary to declutter the chat */
   collapsed?: boolean;
   /** True when this is a provider-failure notice, not real dialogue — such
@@ -186,6 +188,8 @@ export interface Chat {
   };
   contextUsed?: number;
   contextMax?: number;
+  /** Speak each new reply in its writer's voice as it finishes (lib/chat/speech.ts) */
+  readAloud?: boolean;
   /** Which preset applies. Unset falls back to the store's defaultPresetId,
    *  resolved at read time so old chats pick up the default too. */
   presetId?: string;

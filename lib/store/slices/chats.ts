@@ -29,6 +29,10 @@ export interface ChatsSlice {
   setMessageMemoryTrace: (chatId: string, messageId: string, trace: MemoryTrace) => void;
   /** Flag a message as a provider-failure notice (excluded from prompts) */
   markMessageError: (chatId: string, messageId: string) => void;
+  /** Keep a reply's spoken audio (an asset) with the words and voice it was made from */
+  setMessageSpeech: (chatId: string, messageId: string, speech: { url: string; key: string }) => void;
+  /** Read replies aloud in this chat as they finish */
+  setChatReadAloud: (chatId: string, on: boolean) => void;
   /** Change one attachment on a message (status, url, prompt…); adds it if new */
   setAttachment: (chatId: string, messageId: string, attachment: Attachment) => void;
   /** Drop an attachment; a message left with nothing at all is removed too */
@@ -230,6 +234,10 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
 
   markMessageError: (chatId, messageId) =>
     set((s) => patchMessage(s, chatId, messageId, (m) => ({ ...m, error: true }))),
+  setMessageSpeech: (chatId, messageId, speech) =>
+    set((s) => patchMessage(s, chatId, messageId, (m) => ({ ...m, speech }))),
+  setChatReadAloud: (chatId, on) =>
+    set((state) => patchChat(state, chatId, (c) => ({ ...c, readAloud: on || undefined }))),
 
   setAttachment: (chatId, messageId, attachment) =>
     set((s) => patchMessage(s, chatId, messageId, (m) => {

@@ -20,6 +20,7 @@ import { recordSentPrompt } from "./sentPrompts";
 import { createGate } from "./extractionGate";
 import { speakerIsMissing } from "./references";
 import { useMemorySettings } from "@/lib/store/memorySettings";
+import { readAloudIfOn } from "@/lib/chat/speech";
 import type { Chat, Character, MessageRole, MemoryTaskRequest } from "@/lib/types";
 import type { CoreMemoryGetResponse } from "@/lib/api/dto";
 
@@ -417,6 +418,8 @@ export async function generateAssistantReply(chatId: string, speakerId?: string,
       }
       // Extraction waits until the exchange settles — see schedulePending.
       schedulePendingExtraction(chatId, speakerCharId, assistantMsgId);
+      // Read replies aloud: spoken once, as it finishes
+      readAloudIfOn(chatId, assistantMsgId);
       return true;
     } else if (!failed && assistantMsgId) {
       // Stop pressed before the first token — drop the bubble. Checking
