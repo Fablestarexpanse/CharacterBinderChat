@@ -467,3 +467,59 @@ He was last seen in Anvale.`;
     expect(parseCardText(wpp).notes.join(" ")).toMatch(/outside the attribute blocks/i);
   });
 });
+
+describe("markdown sheets with a title and bulleted sections", () => {
+  // The shape of many hand-written sheets: a wrapper, a "# Name" title, "## Section"
+  // headings, and "- Label: value" bullets inside each section.
+  const sheet = [
+    "# Setting",
+    "- Time Period: Modern day",
+    "- Location: Riverside Quarter",
+    "",
+    "<{{char}}>",
+    "",
+    "# Dr. Vivian Reyes",
+    "",
+    "## Overview",
+    "Classics professor, 50.",
+    "",
+    "## Appearance Details",
+    "- Hair: Silver, long, in a single braid",
+    "- Eyes: Warm brown",
+    "",
+    "## Socioeconomic Background",
+    "- Occupation: Associate Professor of Classics",
+    "",
+    "## Connections",
+    "- Anna Yue: former student turned friend",
+    "",
+    "## Speech Examples",
+    "[At a lecture]:",
+    "\"Homer knew that.\"",
+    "",
+    "</{{char}}>",
+  ].join("\n");
+
+  it("takes the title as the name, without its markdown, even with a title like Dr.", () => {
+    expect(parseCardText(sheet).fields.name).toBe("Dr. Vivian Reyes");
+  });
+
+  it("does not read the <{{char}}> wrapper as a Name label", () => {
+    const all = Object.values(parseCardText(sheet).fields).join("\n");
+    expect(all).not.toContain("{{char}}");
+  });
+
+  it("keeps bullets inside the section they are listed under", () => {
+    const f = parseCardText(sheet).fields;
+    expect(f.appearance).toContain("Hair: Silver");
+    expect(f.appearance).toContain("Eyes: Warm brown");
+    expect(f.scenario).toContain("Time Period: Modern day");
+    expect(f.background).toContain("Occupation: Associate Professor");
+  });
+
+  it("matches a longer heading by its first or last word, and keeps unknown ones with their label", () => {
+    const f = parseCardText(sheet).fields;
+    expect(f.mes_example).toContain("Homer knew that.");
+    expect(f.description).toContain("Connections: - Anna Yue");
+  });
+});

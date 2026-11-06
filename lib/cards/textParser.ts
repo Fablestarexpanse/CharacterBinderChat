@@ -393,6 +393,35 @@ interface Heading {
   rawLabel: string;
   /** Content that appeared on the same line, after the separator. */
   inline: string;
+  /**
+   * Opened by a heading line (`## Hair`, `[Hair]`, a bare `Appearance`) rather
+   * than `Label: content`. List items under such a heading are its content,
+   * even when they look like `- Hair: silver`.
+   */
+  block?: boolean;
+}
+
+/** `<{{char}}>`, `</{{char}}>`, `<char>`: a wrapper around the card, never a section */
+const WRAPPER_RE = /^<\s*\/?\s*(\{\{\s*(char|user)\s*\}\}|char|bot|user)\s*>$/i;
+
+/** A markdown heading line: `# Title`, `## Section` (level, text) */
+const MD_HEADING_RE = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
+
+/**
+ * A multi-word heading that is not an exact alias, matched by its last word and
+ * then its first: `Appearance Details` is Appearance, `Socioeconomic Background`
+ * is Background, `Speech Examples` is example dialogue.
+ */
+function lookupHeadingWords(raw: string): LabelTarget | null {
+  const words = normaliseLabel(raw).split(" ").filter(Boolean);
+  if (words.length < 2) return null;
+  return LABEL_LOOKUP.get(words[words.length - 1]) ?? LABEL_LOOKUP.get(words[0]) ?? null;
+}
+
+/** A name field holds a name: its first line, without markdown decoration */
+function cleanName(raw: string): string {
+  const first = raw.split("\n").map((l) => l.trim()).find(Boolean) ?? "";
+  return first.replace(/^[#>*_\s]+|[*_#\s]+$/g, "").trim();
 }
 
 /**
@@ -443,7 +472,21 @@ function matchHeading(line: string): Heading | null {
   const bracket = trimmed.match(/^[[<(]\s*([^\]>)]{1,40}?)\s*[\]>)]\s*[:\-–—]?\s*(.*)$/);
   if (bracket) {
     const target = lookupLabel(bracket[1]);
-    if (target) return { target, rawLabel: bracket[1].trim(), inline: bracket[2].trim() };
+    if (target) return { target, rawLabel: bracket[1].trim(), inline: bracket[2].trim(), block: !bracket[2].trim() };
+  }
+
+  // ## Section: an alias, or a longer heading whose first or last word is one.
+  // An unknown one still opens a section, so its text keeps its label.
+  const md = trimmed.match(MD_HEADING_RE);
+  if (md && !/[:：]/.test(md[2])) {
+    const text = md[2].replace(/[*_`]+/g, "").trim();
+    const target = lookupLabel(text) ?? lookupHeadingWords(text);
+    if (target) return { target, rawLabel: text, inline: "", block: true };
+    // `# Dr. Vivian Reyes`: a top-level title that is a name, not a section
+    // (a title's own full stop, as in "Dr." or "St.", is not a sentence)
+    const titleless = text.replace(/\b(Dr|Mr|Mrs|Ms|Mx|Prof|Capt|Sgt|Lt|Col|Gen|St|Jr|Sr)\./g, "$1");
+    if (md[1] === "#" && isNameLike(titleless)) return { target: "name", rawLabel: "Name", inline: text, block: true };
+    if (isLabelShaped(text)) return { target: null, rawLabel: text, inline: "", block: true };
   }
 
   const bare = trimmed.replace(/^[#>*_\-–—•\s]+/, "");
@@ -463,7 +506,7 @@ function matchHeading(line: string): Heading | null {
     const stripped = bare.replace(/[*_#`:：]+$/, "").trim();
     if (stripped.length <= 32 && !/[.!?,;]/.test(stripped)) {
       const target = lookupLabel(stripped);
-      if (target) return { target, rawLabel: stripped, inline: "" };
+      if (target) return { target, rawLabel: stripped, inline: "", block: true };
     }
   }
 
@@ -487,6 +530,10 @@ function parseLabelled(text: string): ParsedCardText | null {
 
   for (const line of lines) {
     if (isSeparatorLine(line)) continue; // divider rules are never content
+    if (WRAPPER_RE.test(line.trim())) continue; // <{{char}}> … </{{char}}> wraps the card
+    // `- Hair: silver` under `## Appearance` belongs to Appearance
+    const current = sections[sections.length - 1];
+    if (current?.heading.block && isBulletLine(line)) { current.body.push(line); continue; }
     const heading = matchHeading(line);
     if (heading) {
       if (heading.target) recognised++;
@@ -535,6 +582,8 @@ function parseLabelled(text: string): ParsedCardText | null {
       fields.description = joinSections(lead, fields.description);
     }
   }
+
+  if (fields.name) fields.name = cleanName(fields.name);
 
   if (leftovers.length) {
     fields.description = joinSections(fields.description, leftovers.join("\n\n"));
