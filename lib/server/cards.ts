@@ -186,7 +186,8 @@ export function createCard(store: FableStore, type: CardType, payload: unknown, 
     }
   }
   const r = commit(store, source, `${source} created ${type} “${primary.name}”`, touches);
-  return { id: primary.id, type, name: primary.name, rev: r.rev };
+  // historyId is the undo handle: undo_change needs it to reverse a create, as it does an update or delete
+  return { id: primary.id, type, name: primary.name, rev: r.rev, historyId: r.historyId };
 }
 
 function blankData() {

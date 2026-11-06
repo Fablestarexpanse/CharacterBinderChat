@@ -25,6 +25,10 @@ test("creating a character from bare fields stores every field, under the model'
   assert.deepEqual(row.alternateGreetings, ["Late."]);
   assert.deepEqual(row.cardExtensions, { talkativeness: "0.4" });
   assert.ok(row.createdAt && row.updatedAt);
+  // The create can be undone with the handle it returns (an agent has no other way to find it)
+  assert.ok(Number.isInteger(r.historyId), "a create returns its undo handle");
+  undo(s, r.historyId, "agent");
+  assert.equal(s.getRow("characters", r.id), null, "undoing the create removes it");
 });
 
 test("a whole V2 card is accepted too, including its embedded lorebook, which is created and linked", () => {
