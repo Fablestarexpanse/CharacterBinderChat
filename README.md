@@ -5,8 +5,9 @@ local or cloud LLMs. A two-layer memory system keeps the model aware of everythi
 card library (what used to be the separate CharacterBinder tool) holds your characters, personas, lorebooks and
 scenarios.
 
-**Need help using it?** The [help pages](docs/wiki/Home.md) cover getting started, models, characters, memory, texts
-and calls, images, voice and troubleshooting.
+**Need help using it?** The [wiki](https://github.com/Fablestarexpanse/CharacterBinderChat/wiki) covers getting started, models, characters, memory, texts
+and calls, images, voice and troubleshooting (the same pages are in
+[`docs/wiki`](docs/wiki/Home.md)).
 
 ![FableChat: June, a night radio host, texting with Nora: photos both ways, one read by the picture reader, and a phone call](docs/screenshot.png)
 
