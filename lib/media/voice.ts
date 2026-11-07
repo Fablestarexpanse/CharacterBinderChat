@@ -42,3 +42,21 @@ export function cleanVoice(raw: unknown): CharacterVoice | undefined {
   if (typeof r.demo === "string" && DEMO_VOICES.some((d) => d.id === r.demo)) out.demo = r.demo;
   return Object.keys(out).length ? out : undefined;
 }
+
+/**
+ * The narrator: a voice that reads a story reply's narration while the
+ * character speaks their quoted lines, as one clip with two voices. Settings →
+ * Media → Narrator; stored on the server (`voice:narrator`, so backups keep it).
+ */
+export interface NarratorSettings {
+  enabled: boolean;
+  voice?: CharacterVoice;
+}
+
+export const DEFAULT_NARRATOR: NarratorSettings = { enabled: false };
+
+export function cleanNarrator(raw: unknown): NarratorSettings {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const voice = cleanVoice(r.voice);
+  return { enabled: r.enabled === true && hasVoice(voice), ...(voice ? { voice } : {}) };
+}

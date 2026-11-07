@@ -94,6 +94,8 @@ export function referencedAssets(db: DB): Set<string> {
   };
   for (const t of tables) scan(`SELECT data FROM ${t} WHERE data LIKE '%/api/assets/%'`);
   scan("SELECT data FROM app_history WHERE data LIKE '%/api/assets/%'");
+  // Settings that hold a picture or a voice (the narrator's sample); never the secrets
+  scan("SELECT value AS data FROM app_kv WHERE key NOT LIKE 'secret:%' AND value LIKE '%/api/assets/%'");
   return out;
 }
 

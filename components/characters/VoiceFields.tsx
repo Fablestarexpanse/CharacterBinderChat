@@ -21,7 +21,7 @@ async function uploadSample(file: File): Promise<string> {
   return body.url;
 }
 
-export function VoiceFields({ value, onChange, who }: { value: CharacterVoice | undefined; onChange: (v: CharacterVoice | undefined) => void; who: string }) {
+export function VoiceFields({ value, onChange, who, previewLine, open, purpose }: { value: CharacterVoice | undefined; onChange: (v: CharacterVoice | undefined) => void; who: string; previewLine?: string; open?: boolean; purpose?: string }) {
   const v = value ?? {};
   const fileRef = useRef<HTMLInputElement>(null);
   const [consent, setConsent] = useState(!!v.sample);
@@ -30,7 +30,7 @@ export function VoiceFields({ value, onChange, who }: { value: CharacterVoice | 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   // The last preview's address is released when a new one replaces it or the editor closes
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
-  const [line, setLine] = useState(`Hi. It's ${who === "them" ? "me" : who}. Did you miss me?`);
+  const [line, setLine] = useState(previewLine ?? `Hi. It's ${who === "them" ? "me" : who}. Did you miss me?`);
 
   const pick = async (file: File | undefined) => {
     if (!file) return;
@@ -68,9 +68,9 @@ export function VoiceFields({ value, onChange, who }: { value: CharacterVoice | 
   };
 
   return (
-    <details className="rounded-lg border border-[var(--border)] px-3 py-2" open={!!v.sample || !!v.demo}>
+    <details className="rounded-lg border border-[var(--border)] px-3 py-2" open={open || !!v.sample || !!v.demo}>
       <summary className="flex cursor-pointer select-none items-center gap-1.5 text-xs font-medium text-[var(--foreground)]">
-        <AudioLines className="h-3.5 w-3.5" />Voice <span className="font-normal text-[var(--muted-fg)]">— how {who} sounds when read aloud, in voice notes and on calls</span>
+        <AudioLines className="h-3.5 w-3.5" />Voice <span className="font-normal text-[var(--muted-fg)]">— {purpose ?? `how ${who} sounds when read aloud, in voice notes and on calls`}</span>
       </summary>
       <div className="mt-2 space-y-3 text-xs">
         <div className="space-y-1.5">

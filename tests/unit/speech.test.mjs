@@ -31,3 +31,40 @@ test("the audio key changes with the words and with the voice, and only then", (
   assert.equal(voiceKey({ sample }), "none", "a sample without the consent tick is not their voice");
   assert.equal(voiceKey(v2), "demo:en-Carter_man");
 });
+
+test("with a narrator, a story reply alternates narration and quoted speech, in order", async () => {
+  const { speechParts, partsKey, speechKey } = await import("../../lib/chat/speech.ts");
+  const m = { content: '*She smooths her skirt one final time.* "Either this is the universe\'s cruelest joke," *she whispered to herself,* "or..."\n\n*She didn\'t finish the thought.*' };
+  assert.deepEqual(speechParts(m, true), [
+    { by: "narrator", text: "She smooths her skirt one final time." },
+    { by: "character", text: "Either this is the universe's cruelest joke," },
+    { by: "narrator", text: "she whispered to herself," },
+    { by: "character", text: "or..." },
+    { by: "narrator", text: "She didn't finish the thought." },
+  ]);
+  // Neighbours of one voice join; a bare comma between two quotes is not a narrator line
+  assert.deepEqual(speechParts({ content: '"Hi." , "Sit down."' }, true), [{ by: "character", text: "Hi. Sit down." }]);
+  // Without a narrator, or for a text or a call, it is the character alone
+  assert.deepEqual(speechParts(m, false), [{ by: "character", text: "Either this is the universe's cruelest joke, or..." }]);
+  assert.deepEqual(speechParts({ content: "on my way", channel: "text" }, true), [{ by: "character", text: "on my way" }]);
+  // A reply that is all speech keeps the key it had before the narrator, so its audio is reused
+  const v = { demo: "demo:en-Carter_man" }, n = { demo: "demo:en-Alice_woman" };
+  assert.equal(partsKey([{ by: "character", text: "Hi." }], v, n), speechKey("Hi.", v));
+  assert.notEqual(partsKey(speechParts(m, true), v, n), partsKey(speechParts(m, true), v, { demo: "demo:en-Maya_woman" }), "a new narrator voice is spoken afresh");
+});
+
+test("the narrator is on only with a voice, and its sample is kept by the asset sweep", async () => {
+  const { cleanNarrator } = await import("../../lib/media/voice.ts");
+  assert.deepEqual(cleanNarrator({ enabled: true }), { enabled: false }, "no voice: off");
+  assert.deepEqual(cleanNarrator({ enabled: true, voice: { demo: "demo:en-Alice_woman" } }), { enabled: true, voice: { demo: "demo:en-Alice_woman" } });
+  assert.equal(cleanNarrator({ enabled: true, voice: { sample: "/api/assets/" + "b".repeat(64) } }).enabled, false, "a sample without consent is not a voice");
+  const { FableStore } = await import("../../lib/db/store.ts");
+  const s = new FableStore(":memory:");
+  const wav = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45, 9, 9, 9, 9]);
+  const { hash } = s.putAsset(wav, { audio: true });
+  s.db.prepare("UPDATE app_assets SET created_at = 0").run(); // old enough to be swept
+  s.setKv("voice:narrator", JSON.stringify({ enabled: true, voice: { sample: `/api/assets/${hash}`, consent: true } }));
+  assert.equal(s.gcAssets(), 0, "the narrator's sample is in use");
+  s.setKv("voice:narrator", JSON.stringify({ enabled: false }));
+  assert.equal(s.gcAssets(), 1, "once nothing uses it, it is swept");
+});

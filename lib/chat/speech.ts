@@ -5,11 +5,16 @@
 // so playing it again costs nothing, and an edited reply or a changed voice is
 // spoken afresh. "Read replies aloud" (`chat.readAloud`) speaks each new reply
 // once, as it finishes. One thing plays at a time.
+//
+// With a narrator (Settings → Media → Narrator) a story reply is read like an
+// audiobook: the narrator reads the narration, the character speaks what is in
+// quotes, and the two voices come back as one clip (the voice server's
+// multi-speaker dialogue). Texts and call lines are the character alone.
 
 import { useFableStore } from "@/lib/store";
 import { useUiStore } from "@/lib/store/ui";
 import { getJson, sendJson } from "@/lib/api/client";
-import { hasVoice, type CharacterVoice } from "@/lib/media/voice";
+import { cleanNarrator, hasVoice, type CharacterVoice, type NarratorSettings } from "@/lib/media/voice";
 import type { Message } from "@/lib/types";
 
 /** The voice server answers at most this much text per line */
@@ -32,6 +37,50 @@ export function spokenText(m: Pick<Message, "content" | "channel">): string {
   return t.length > MAX_SPOKEN ? t.slice(0, MAX_SPOKEN) : t;
 }
 
+export interface SpeechPart { by: "narrator" | "character"; text: string }
+
+/** Plain words for the voice server: no markers, no markdown (its own cleaner would drop an *action* as a stage direction) */
+const plain = (s: string) => s.replace(/[*_#`>~]+/g, "").replace(/\s+/g, " ").trim();
+const hasWords = (s: string) => /[\p{L}\p{N}]/u.test(s);
+
+/**
+ * A reply as the parts a narrator and the character read. Without a narrator,
+ * or for a text or a call line, it is the character alone saying spokenText.
+ * With one, a story reply alternates: everything outside quotes (narration,
+ * actions, "she whispers") is the narrator's, the quoted words the character's,
+ * in order, with neighbours of the same voice joined.
+ */
+export function speechParts(m: Pick<Message, "content" | "channel">, narrate: boolean): SpeechPart[] {
+  if (!narrate || m.channel === "text" || m.channel === "call") {
+    const t = spokenText(m);
+    return t ? [{ by: "character", text: t }] : [];
+  }
+  const src = m.content.replace(/\[(?:photo|video|voice note|sent [^\]]*)[^\]]*\]/gi, " ");
+  const parts: SpeechPart[] = [];
+  const push = (by: SpeechPart["by"], raw: string) => {
+    const text = plain(raw);
+    if (!hasWords(text)) return;
+    const last = parts[parts.length - 1];
+    if (last && last.by === by) last.text = `${last.text} ${text}`;
+    else parts.push({ by, text });
+  };
+  let at = 0;
+  for (const q of src.matchAll(/[“"]([^”"]+)[”"]/g)) {
+    push("narrator", src.slice(at, q.index));
+    push("character", q[1]);
+    at = (q.index ?? 0) + q[0].length;
+  }
+  push("narrator", src.slice(at));
+  // The voice server takes at most 8,000 characters in one dialogue
+  let budget = MAX_SPOKEN * 2;
+  return parts.flatMap((p) => {
+    if (budget <= 0) return [];
+    const text = p.text.slice(0, Math.min(MAX_SPOKEN, budget));
+    budget -= text.length;
+    return [{ ...p, text }];
+  });
+}
+
 /** Which voice a voice is, for the cache key: their sample (by its asset) or the demo voice */
 export function voiceKey(v: CharacterVoice | undefined): string {
   if (v?.sample && v.consent) return `sample:${(/([0-9a-f]{64})$/.exec(v.sample)?.[1] ?? v.sample).slice(0, 16)}`;
@@ -48,6 +97,16 @@ function hash(s: string): string {
 /** The key a message's spoken audio is stored under: these words in this voice */
 export const speechKey = (text: string, v: CharacterVoice | undefined) => `${voiceKey(v)}:${hash(text)}`;
 
+/**
+ * The key for a reply read in parts. One part by the character is exactly
+ * speechKey, so audio made before the narrator was turned on is still used for
+ * a reply that is all speech; with narration, both voices and the split are in it.
+ */
+export function partsKey(parts: SpeechPart[], character: CharacterVoice | undefined, narrator: CharacterVoice | undefined): string {
+  if (parts.length === 1 && parts[0].by === "character") return speechKey(parts[0].text, character);
+  return `${voiceKey(character)}+${voiceKey(narrator)}:${hash(JSON.stringify(parts))}`;
+}
+
 // ── Is voice set up? (cached briefly, like the contact settings) ──────────────
 
 let readyCache: { at: number; value: boolean } | null = null;
@@ -61,6 +120,19 @@ export async function voiceReady(): Promise<boolean> {
   }
   return readyCache.value;
 }
+
+let narratorCache: { at: number; value: NarratorSettings } | null = null;
+/** The narrator setting (cached for 10 s; Settings calls forgetNarrator after a change) */
+export async function narratorSettings(): Promise<NarratorSettings> {
+  if (narratorCache && Date.now() - narratorCache.at < 10_000) return narratorCache.value;
+  try {
+    narratorCache = { at: Date.now(), value: cleanNarrator(await getJson<unknown>("/api/voice/narrator")) };
+  } catch {
+    narratorCache = { at: Date.now(), value: cleanNarrator({}) };
+  }
+  return narratorCache.value;
+}
+export const forgetNarrator = () => { narratorCache = null; };
 
 // ── Playing ──────────────────────────────────────────────────────────────────
 
@@ -86,18 +158,23 @@ function find(chatId: string, messageId: string) {
 export async function playMessage(chatId: string, messageId: string): Promise<void> {
   const { msg, who } = find(chatId, messageId);
   if (!msg) return;
-  const text = spokenText(msg);
-  if (!text) throw new Error("There is nothing to say out loud in this message.");
+  const narrator = await narratorSettings();
+  const parts = speechParts(msg, narrator.enabled);
+  if (!parts.length) throw new Error("There is nothing to say out loud in this message.");
   if (!who) throw new Error("Whoever wrote this is no longer in your library.");
   if (!hasVoice(who.voice)) throw new Error(`${who.name} has no voice yet: choose one in their editor (Voice).`);
 
   stopSpeaking();
   const ui = useUiStore.getState();
-  const key = speechKey(text, who.voice);
+  const key = partsKey(parts, who.voice, narrator.voice);
   let url = msg.speech?.key === key ? msg.speech.url : null;
   if (!url) {
     ui.setSpeaking({ messageId, phase: "making" });
-    const r = await sendJson<{ ok?: boolean; url?: string; error?: string }>("POST", "/api/voice/speak?store=1", { text, voice: who.voice })
+    // One voice: a line. Narrator and character: one clip, the two voices taking turns
+    const body = parts.length === 1 && parts[0].by === "character"
+      ? { text: parts[0].text, voice: who.voice }
+      : { lines: parts.map((p) => ({ text: p.text, voice: p.by === "narrator" ? narrator.voice : who.voice })) };
+    const r = await sendJson<{ ok?: boolean; url?: string; error?: string }>("POST", "/api/voice/speak?store=1", body)
       .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as { ok?: boolean; url?: string; error?: string });
     if (!r.url) { useUiStore.getState().setSpeaking(null); throw new Error(r.error ?? "The voice server gave no audio."); }
     url = r.url;

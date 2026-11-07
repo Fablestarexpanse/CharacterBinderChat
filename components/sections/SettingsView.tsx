@@ -18,6 +18,7 @@ import { MediaConnectionsCard } from "@/components/settings/MediaConnectionsCard
 import { MediaFolderCard } from "@/components/settings/MediaFolderCard";
 import { PictureReaderCard } from "@/components/settings/PictureReaderCard";
 import { VoiceSetupCard } from "@/components/settings/VoiceSetupCard";
+import { NarratorCard } from "@/components/settings/NarratorCard";
 import { ContactCard } from "@/components/settings/ContactCard";
 import { useUiStore, SETTINGS_TABS, type SettingsTab } from "@/lib/store/ui";
 
@@ -584,6 +585,8 @@ export function SettingsView() {
         <MediaConnectionsCard />
 
         <VoiceSetupCard />
+
+        <NarratorCard />
 
         <MediaFolderCard />
 
