@@ -55,15 +55,19 @@ test("with a narrator, a story reply alternates narration and quoted speech, in 
 
 test("the narrator is on only with a voice, and its sample is kept by the asset sweep", async () => {
   const { cleanNarrator } = await import("../../lib/media/voice.ts");
-  assert.deepEqual(cleanNarrator({ enabled: true }), { enabled: false }, "no voice: off");
-  assert.deepEqual(cleanNarrator({ enabled: true, voice: { demo: "demo:en-Alice_woman" } }), { enabled: true, voice: { demo: "demo:en-Alice_woman" } });
-  assert.equal(cleanNarrator({ enabled: true, voice: { sample: "/api/assets/" + "b".repeat(64) } }).enabled, false, "a sample without consent is not a voice");
+  const alice = { demo: "demo:en-Alice_woman" }, carter = { demo: "demo:en-Carter_man" };
+  assert.deepEqual(cleanNarrator({ enabled: true }), { enabled: false, use: "female" }, "no voice: off");
+  assert.deepEqual(cleanNarrator({ enabled: true, female: alice, male: carter, use: "male" }),
+    { enabled: true, use: "male", female: alice, male: carter, voice: carter }, "the narrator in use reads");
+  assert.equal(cleanNarrator({ enabled: true, female: alice, use: "male" }).enabled, false, "the male narrator has no voice: off");
+  assert.deepEqual(cleanNarrator({ enabled: true, voice: alice }).female, alice, "a narrator saved before the two slots becomes the female one");
+  assert.equal(cleanNarrator({ enabled: true, female: { sample: "/api/assets/" + "b".repeat(64) } }).enabled, false, "a sample without consent is not a voice");
   const { FableStore } = await import("../../lib/db/store.ts");
   const s = new FableStore(":memory:");
   const wav = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45, 9, 9, 9, 9]);
   const { hash } = s.putAsset(wav, { audio: true });
   s.db.prepare("UPDATE app_assets SET created_at = 0").run(); // old enough to be swept
-  s.setKv("voice:narrator", JSON.stringify({ enabled: true, voice: { sample: `/api/assets/${hash}`, consent: true } }));
+  s.setKv("voice:narrator", JSON.stringify({ enabled: true, use: "male", male: { sample: `/api/assets/${hash}`, consent: true } }));
   assert.equal(s.gcAssets(), 0, "the narrator's sample is in use");
   s.setKv("voice:narrator", JSON.stringify({ enabled: false }));
   assert.equal(s.gcAssets(), 1, "once nothing uses it, it is swept");

@@ -5,9 +5,11 @@ import { getNarrator, setNarrator } from "@/lib/server/narrator";
 
 export const dynamic = "force-dynamic";
 
-// GET → { enabled, voice? }   PUT { enabled?, voice? } → { ok: true, enabled, voice? }
+// GET → { enabled, use, female?, male?, voice? }
+// PUT { enabled?, use?: "female" | "male", female?, male? } → { ok: true, ...the same }
 // The narrator reads a story reply's narration while the character speaks their
-// quoted lines. Turning it on needs a voice; without one it stays off.
+// quoted lines. There are two, a female and a male voice; `use` picks which one
+// reads and `voice` is that one. Narration stays off while it has no voice.
 export async function GET(req: NextRequest) {
   try {
     const denied = guard(req);

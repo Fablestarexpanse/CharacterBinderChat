@@ -48,15 +48,29 @@ export function cleanVoice(raw: unknown): CharacterVoice | undefined {
  * character speaks their quoted lines, as one clip with two voices. Settings →
  * Media → Narrator; stored on the server (`voice:narrator`, so backups keep it).
  */
+export type NarratorSlot = "female" | "male";
+
 export interface NarratorSettings {
   enabled: boolean;
+  /** Which of the two narrators reads */
+  use: NarratorSlot;
+  female?: CharacterVoice;
+  male?: CharacterVoice;
+  /** The voice that reads: the one in the `use` slot (derived, never stored on its own) */
   voice?: CharacterVoice;
 }
 
-export const DEFAULT_NARRATOR: NarratorSettings = { enabled: false };
+export const DEFAULT_NARRATOR: NarratorSettings = { enabled: false, use: "female" };
 
 export function cleanNarrator(raw: unknown): NarratorSettings {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const voice = cleanVoice(r.voice);
-  return { enabled: r.enabled === true && hasVoice(voice), ...(voice ? { voice } : {}) };
+  // Saved before there were two slots: the one voice becomes the female narrator
+  const female = cleanVoice(r.female) ?? (r.female === undefined ? cleanVoice(r.voice) : undefined);
+  const male = cleanVoice(r.male);
+  const use: NarratorSlot = r.use === "male" ? "male" : "female";
+  const voice = use === "male" ? male : female;
+  return {
+    enabled: r.enabled === true && hasVoice(voice), use,
+    ...(female ? { female } : {}), ...(male ? { male } : {}), ...(voice ? { voice } : {}),
+  };
 }
