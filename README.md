@@ -5,6 +5,9 @@ local or cloud LLMs. A two-layer memory system keeps the model aware of everythi
 card library (what used to be the separate CharacterBinder tool) holds your characters, personas, lorebooks and
 scenarios.
 
+**Need help using it?** The [help pages](docs/wiki/Home.md) cover getting started, models, characters, memory, texts
+and calls, images, voice and troubleshooting.
+
 ![FableChat: June, a night radio host, texting with Nora: photos both ways, one read by the picture reader, and a phone call](docs/screenshot.png)
 
 ---
@@ -41,16 +44,16 @@ port 3000 is busy it uses the next free one and says so.
 
 The first time it opens, you land in a **demo story** set in Port Ellery, a rainy harbour city: June, a night radio
 host, has just taken your call on air (you are Nora, a photographer new in town), with Elias the baker one tap away, a
-second persona (Theo, a night nurse), a lorebook for the city and a chat a few lines in. Everyone has a demo voice. Pick a model in the chat header and reply
-to see memory form in the inspector. Edit or delete any of it; once deleted it stays deleted, and **Library → Add the
+second persona (Theo, a night nurse), a lorebook for the city and a chat a few lines in. Everyone has a demo voice.
+Pick a model in the chat header and reply to see memory form in the inspector. Edit or delete any of it; once deleted it stays deleted, and **Library → Add the
 demo story** brings it back.
 
 The first run downloads about 300 MB and takes a minute or two. If it fails mentioning `node-gyp`, the message says
 which build tools to install.
 
 Provider settings live in **Settings** inside the app; nothing needs a `.env`. For OpenRouter, paste your key in
-Settings → OpenRouter (it is stored encrypted on the server, not in the browser). Your data is a SQLite database in
-`data/`, created on first run. **Back it up** from Settings → Backup & restore.
+Settings → Chat models (it is stored encrypted on the server, not in the browser). Your data is a SQLite database in
+`data/`, created on first run. **Back it up** from Settings → Data & backup.
 
 Developing on it instead:
 
@@ -213,7 +216,7 @@ reverse proxy or Tailscale) before exposing it further.
 ### Your data
 
 Chats and cards are saved to SQLite a moment after every change, so clearing browser storage loses nothing, and open
-tabs pick up changes made elsewhere within a few seconds. **Settings → Backup & restore** is the real backup: it
+tabs pick up changes made elsewhere within a few seconds. **Settings → Data & backup** is the real backup: it
 includes what the characters remember and never includes your API keys. The JSON export under *Your Data* is a
 portable copy of cards and chats **without** memory, so it is not a backup.
 
