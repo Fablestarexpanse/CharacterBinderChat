@@ -75,7 +75,7 @@ function EditorForm({
       {/* Body */}
       <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
         <Field label="Name" hint="how characters address you">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Kira" autoFocus />
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nora Vale" autoFocus />
         </Field>
 
         <AvatarPicker name={name} value={avatar} onChange={setAvatar} />

@@ -310,7 +310,7 @@ export function LibraryView() {
             </div>
             {tab === "characters" && (
               <Button variant="outline" size="sm" className="mt-3" onClick={() => { addDemoStory(); setActiveSection("chats"); }}
-                title="Ronan, a persona, a small lorebook and a chat a few lines in">
+                title="June and Elias in Port Ellery, two personas, a lorebook and a chat a few lines in">
                 <Sparkles className="h-3.5 w-3.5 mr-1" />Add the demo story
               </Button>
             )}

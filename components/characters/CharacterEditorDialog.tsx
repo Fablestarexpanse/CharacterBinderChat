@@ -169,7 +169,7 @@ function EditorForm({ editing, draft, closeRef }: { editing: Character | null; d
         <QuickImportPanel onApply={applyQuickImport} />
 
         <Field label="Name">
-          <Input value={form.name} onChange={set("name")} placeholder="Ronan" autoFocus />
+          <Input value={form.name} onChange={set("name")} placeholder="June Okafor" autoFocus />
         </Field>
 
         <AvatarPicker

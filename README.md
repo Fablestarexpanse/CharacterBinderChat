@@ -5,7 +5,7 @@ local or cloud LLMs. A two-layer memory system keeps the model aware of everythi
 card library (what used to be the separate CharacterBinder tool) holds your characters, personas, lorebooks and
 scenarios.
 
-![FableChat: a story that moved to texts, with a photo read by the picture reader and a phone call](docs/screenshot.png)
+![FableChat: June, a night radio host, texting with Nora: photos both ways, one read by the picture reader, and a phone call](docs/screenshot.png)
 
 ---
 
@@ -39,8 +39,9 @@ The launcher checks Node, installs dependencies the first time, builds the app, 
 a second one; after an update it rebuilds by itself. Keep its window open while you use FableChat; Ctrl+C stops it. If
 port 3000 is busy it uses the next free one and says so.
 
-The first time it opens, you land in a **demo story**: Ronan, a mercenary in a rain-soaked cyberpunk city, waiting
-for you (as Kira, a courier) with a small lorebook and a chat a few lines in. Pick a model in the chat header and reply
+The first time it opens, you land in a **demo story** set in Port Ellery, a rainy harbour city: June, a night radio
+host, has just taken your call on air (you are Nora, a photographer new in town), with Elias the baker one tap away, a
+second persona (Theo, a night nurse), a lorebook for the city and a chat a few lines in. Everyone has a demo voice. Pick a model in the chat header and reply
 to see memory form in the inspector. Edit or delete any of it; once deleted it stays deleted, and **Library → Add the
 demo story** brings it back.
 
@@ -94,11 +95,11 @@ npm run dev
 <details>
 <summary><strong>More screenshots</strong></summary>
 
-**Library — every card in one place, lorebooks and scenarios with their banners**
+**Library — every card in one place: characters, personas, lorebooks and scenarios**
 
 ![Library](docs/screenshot-library.png)
 
-**A character calling — the phone rings on their chat in Recent Chats, not over the screen**
+**A character calling — the phone rings on their chat in Recent Chats (Answer / Decline), not over the screen**
 
 ![Incoming call](docs/screenshot-call.png)
 
@@ -106,7 +107,7 @@ npm run dev
 
 ![Voice in the character editor](docs/screenshot-voice.png)
 
-**Knowledge graph — facts with supersession history, one pinned and one locked**
+**Knowledge graph — facts the story has established, one pinned (always in the prompt) and one locked**
 
 ![Memory tab](docs/screenshot-memory.png)
 
@@ -126,7 +127,7 @@ npm run dev
 
 ![Phone layout](docs/screenshot-phone.png)
 
-**Settings — tabbed; Media holds the image, video and voice connections**
+**Settings — tabbed; Media holds the connections, voice and the narrator (a female and a male voice)**
 
 ![Settings](docs/screenshot-settings.png)
 
@@ -179,8 +180,13 @@ Everything here is **off until you turn it on** in **Settings → Contact**, and
   is best). Give a character or persona a voice in their editor: upload a sample of a voice you have the right to use (tick
   the consent box; it is cleaned by vocal isolation once) or pick a demo voice, and Preview it. Then press Play on any
   reply to hear it in their voice, or turn on **Read replies aloud** in the chat header. Add a **Narrator** (Settings →
-  Media) and replies play like an audiobook: the narrator reads the story, each character speaks their own lines.
-  Voice notes and spoken calls are next (`docs/plan-voice.md`).
+  Media: a female and a male narrator, and which one reads) and replies play like an audiobook: the narrator reads the
+  story, each character speaks their own lines in quotes, in one clip. Voice notes and spoken calls are next
+  (`docs/plan-voice.md`).
+- **Write a text into the story.** `I text June "you still on air?"` is sent as a real text, just the quoted words, and
+  the conversation carries on by text.
+- **Calls now and then.** A character allowed to call can also ring at random times, up to a pace you set (1 to 8 a
+  day, at least 1 to 12 hours apart), as well as when the story calls for it.
 - **Send a picture** with the paperclip in the message box (or paste / drop one). Set a **Picture reader** in
   **Settings → Chat models** first: a model that can see images, for example one in LM Studio with a vision projector
   (`mmproj`), an Ollama vision model such as `qwen2.5vl:7b`, or an OpenRouter model that accepts images. Without one
@@ -262,7 +268,8 @@ The current plan is [`docs/plan-2026-11.md`](docs/plan-2026-11.md), drawn from t
 - [ ] GPU / VRAM monitoring
 - [ ] Export a chat as a story document
 - [x] Characters who text and call you, with photos and video clips that look like them (opt-in)
-- [ ] Voice for calls and voice notes, and the rest of [`docs/plan-contact-media.md`](docs/plan-contact-media.md)
+- [x] Voices for characters and personas (local VibeVoice), Play and Read replies aloud, and a narrator
+- [ ] Voice notes, spoken calls and group dialogue, and the rest of [`docs/plan-contact-media.md`](docs/plan-contact-media.md)
 
 ---
 
