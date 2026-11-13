@@ -30,10 +30,17 @@ const ASPECT_RATIOS: AspectRatio[] = ["1:1", "16:9", "9:16", "4:3", "3:4", "2:1"
 /**
  * `lookOf`: whose image look to apply by default ("character:<id>"), e.g. the
  * character the chat inspector is showing. The full Image Studio page passes none.
+ * `chatId`: the chat inspector's tab. Settings are that chat's own (stored on the
+ * chat, used by every picture made in it) and only its pictures are listed.
  */
-export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
-  const { imageSettings, setImageSettings, imageJobs, providerSettings, activeChatId } =
+export function ImageStudioTab({ lookOf, chatId }: { lookOf?: string; chatId?: string } = {}) {
+  const { imageSettings, setImageSettings, imageJobs, providerSettings, chats, setChatImageSettings } =
     useFableStore();
+  // In a chat: that chat's own settings (Image Studio's, with its changes over
+  // them) and only its pictures. On the Image Studio page: Image Studio's own.
+  const chat = chatId ? chats.find((c) => c.id === chatId) : undefined;
+  const settings = chat?.imageSettings ? { ...imageSettings, ...chat.imageSettings } : imageSettings;
+  const setSettings = (patch: Partial<typeof imageSettings>) => (chatId ? setChatImageSettings(chatId, patch) : setImageSettings(patch));
   const [newLora, setNewLora] = useState("");
   const [loraWeight, setLoraWeight] = useState("0.8");
   // In-app viewer — never navigate away to view an output
@@ -81,41 +88,41 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
   const handleGenerate = () => {
     // queueImage returns immediately; connection check, queueing and polling
     // all happen in the background and land through the store.
-    queueImage(settingsForPerson(imageSettings, chosenLook?.who, workflows), activeChatId ?? undefined);
+    queueImage(settingsForPerson(settings, chosenLook?.who, workflows), chatId);
   };
 
   // Choosing a ratio resolves to real pixels; typing a dimension by hand flips
   // the selector to "custom" so it never claims a shape the render won't have.
   const handleRatioChange = (ratio: AspectRatio) => {
     const dims = dimensionsForRatio(ratio);
-    setImageSettings(dims ? { aspectRatio: ratio, ...dims } : { aspectRatio: ratio });
+    setSettings(dims ? { aspectRatio: ratio, ...dims } : { aspectRatio: ratio });
   };
 
   const handleAddLora = () => {
     const name = newLora.trim();
-    if (!name || imageSettings.loras.some((l) => l.name === name)) return;
+    if (!name || settings.loras.some((l) => l.name === name)) return;
     const weight = Number(loraWeight);
-    setImageSettings({
-      loras: [...imageSettings.loras, { name, weight: Number.isFinite(weight) ? weight : 0.8 }],
+    setSettings({
+      loras: [...settings.loras, { name, weight: Number.isFinite(weight) ? weight : 0.8 }],
     });
     setNewLora("");
   };
 
   const handleRemoveLora = (name: string) => {
-    setImageSettings({ loras: imageSettings.loras.filter((l) => l.name !== name) });
+    setSettings({ loras: settings.loras.filter((l) => l.name !== name) });
   };
 
   // Asked of the template rather than hardcoded: /api/workflows publishes each
   // one's controls, and applySettingsToWorkflow keys LoRA injection off the
   // same loraSyntaxNode. A hardcoded slug meant a new LoRA-capable template
   // silently offered no LoRA panel.
-  const currentWorkflow = workflows.find((w) => w.slug === imageSettings.workflow);
+  const currentWorkflow = workflows.find((w) => w.slug === settings.workflow);
   const workflowSupportsLoras = currentWorkflow?.controls.includes("loraSyntax") ?? false;
   // A tuned workflow keeps its own sampling, so the sliders would lie about what is sent
   const ownSampling = currentWorkflow?.ownSampling === true;
 
   // Clips are shown on their message, not as pictures here
-  const pictureJobs = imageJobs.filter((j) => j.kind !== "video");
+  const pictureJobs = imageJobs.filter((j) => j.kind !== "video" && (!chatId || j.chatId === chatId));
   const recentJobs = pictureJobs.slice(0, 4);
   const runningCount = pictureJobs.filter((j) => j.status === "queued" || j.status === "generating").length;
   // Only surface a failure if the most recent job is the one that failed
@@ -124,16 +131,25 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
   return (
     <div className="overflow-y-auto h-full">
       <div className="p-3 space-y-4">
+        {chatId && (
+          <div className="rounded-lg bg-[var(--muted)] px-2.5 py-2 text-[11px] text-[var(--muted-fg)]">
+            Settings and pictures for this chat only. Every picture made in this chat uses them.
+            {chat?.imageSettings && (
+              <button className="ml-1 underline cursor-pointer hover:text-[var(--foreground)]"
+                onClick={() => setChatImageSettings(chatId, null)}>Use Image Studio&apos;s settings</button>
+            )}
+          </div>
+        )}
         <div className="space-y-2">
           <label className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider">Workflow</label>
           <Select
-            value={imageSettings.workflow}
-            onChange={(e) => setImageSettings({ workflow: e.target.value })}
+            value={settings.workflow}
+            onChange={(e) => setSettings({ workflow: e.target.value })}
           >
             {/* Keep the saved slug selectable even if the file is missing, so
                 the picker shows what will actually be sent */}
-            {!workflows.some((w) => w.slug === imageSettings.workflow) && (
-              <option value={imageSettings.workflow}>{imageSettings.workflow}</option>
+            {!workflows.some((w) => w.slug === settings.workflow) && (
+              <option value={settings.workflow}>{settings.workflow}</option>
             )}
             {workflows.map((w) => (
               <option key={w.slug} value={w.slug}>{w.title}</option>
@@ -145,8 +161,8 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
         <div className="space-y-2">
           <label className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider">Prompt</label>
           <Textarea
-            value={imageSettings.prompt}
-            onChange={(e) => setImageSettings({ prompt: e.target.value })}
+            value={settings.prompt}
+            onChange={(e) => setSettings({ prompt: e.target.value })}
             placeholder="cyberpunk alley at night, neon lights, rain…"
             rows={3}
             className="text-xs"
@@ -156,8 +172,8 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
         <div className="space-y-2">
           <label className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider">Negative Prompt</label>
           <Textarea
-            value={imageSettings.negativePrompt}
-            onChange={(e) => setImageSettings({ negativePrompt: e.target.value })}
+            value={settings.negativePrompt}
+            onChange={(e) => setSettings({ negativePrompt: e.target.value })}
             placeholder="blurry, deformed…"
             rows={2}
             className="text-xs"
@@ -168,7 +184,7 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
         <div className="space-y-2">
           <label className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider">Aspect Ratio</label>
           <Select
-            value={imageSettings.aspectRatio}
+            value={settings.aspectRatio}
             onChange={(e) => handleRatioChange(e.target.value as AspectRatio)}
           >
             {ASPECT_RATIOS.map((r) => <option key={r} value={r}>{r}</option>)}
@@ -180,8 +196,8 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
             <label className="text-xs text-[var(--muted-fg)]">Width</label>
             <Input
               type="number"
-              value={imageSettings.width}
-              onChange={(e) => setImageSettings({ width: Number(e.target.value), aspectRatio: "custom" })}
+              value={settings.width}
+              onChange={(e) => setSettings({ width: Number(e.target.value), aspectRatio: "custom" })}
               className="h-8 text-xs"
               step={64}
               min={512}
@@ -192,8 +208,8 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
             <label className="text-xs text-[var(--muted-fg)]">Height</label>
             <Input
               type="number"
-              value={imageSettings.height}
-              onChange={(e) => setImageSettings({ height: Number(e.target.value), aspectRatio: "custom" })}
+              value={settings.height}
+              onChange={(e) => setSettings({ height: Number(e.target.value), aspectRatio: "custom" })}
               className="h-8 text-xs"
               step={64}
               min={512}
@@ -202,7 +218,7 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
           </div>
         </div>
         <div className="text-[10px] text-[var(--muted-fg)] -mt-1">
-          {((imageSettings.width * imageSettings.height) / 1_000_000).toFixed(1)} megapixels
+          {((settings.width * settings.height) / 1_000_000).toFixed(1)} megapixels
         </div>
 
         {ownSampling && (
@@ -213,14 +229,14 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
         {/* Sliders */}
         <Slider
           label="Steps"
-          value={imageSettings.steps}
-          onChange={(v) => setImageSettings({ steps: v })}
+          value={settings.steps}
+          onChange={(v) => setSettings({ steps: v })}
           min={1} max={60} step={1}
         />
         <Slider
           label="CFG Scale"
-          value={imageSettings.cfg}
-          onChange={(v) => setImageSettings({ cfg: v })}
+          value={settings.cfg}
+          onChange={(v) => setSettings({ cfg: v })}
           min={1} max={20} step={0.5}
         />
 
@@ -228,8 +244,8 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
         <div className="space-y-2">
           <label className="text-xs font-semibold text-[var(--muted-fg)] uppercase tracking-wider">Sampler</label>
           <Select
-            value={imageSettings.sampler}
-            onChange={(e) => setImageSettings({ sampler: e.target.value })}
+            value={settings.sampler}
+            onChange={(e) => setSettings({ sampler: e.target.value })}
           >
             {SAMPLERS.map((s) => <option key={s} value={s}>{s}</option>)}
           </Select>
@@ -241,8 +257,8 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
           <div className="flex gap-2">
             <Input
               type="number"
-              value={imageSettings.seed === -1 ? "" : imageSettings.seed}
-              onChange={(e) => setImageSettings({ seed: e.target.value ? Number(e.target.value) : -1 })}
+              value={settings.seed === -1 ? "" : settings.seed}
+              onChange={(e) => setSettings({ seed: e.target.value ? Number(e.target.value) : -1 })}
               placeholder="-1 (random)"
               className="h-8 text-xs flex-1"
             />
@@ -250,7 +266,7 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
               variant="outline"
               size="icon"
               className="h-8 w-8"
-              onClick={() => setImageSettings({ seed: Math.floor(Math.random() * 999999999) })}
+              onClick={() => setSettings({ seed: Math.floor(Math.random() * 999999999) })}
               title="Random seed"
             >
               <RefreshCw className="h-3.5 w-3.5" />
@@ -261,8 +277,8 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
         {/* Batch count */}
         <Slider
           label="Batch Count"
-          value={imageSettings.batchCount}
-          onChange={(v) => setImageSettings({ batchCount: v })}
+          value={settings.batchCount}
+          onChange={(v) => setSettings({ batchCount: v })}
           min={1} max={4} step={1}
         />
 
@@ -311,9 +327,9 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
                 Couldn&apos;t read LoRAs from ComfyUI — type the filename exactly as it appears in models/loras.
               </p>
             )}
-            {imageSettings.loras.length > 0 && (
+            {settings.loras.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-1">
-                {imageSettings.loras.map((lora) => (
+                {settings.loras.map((lora) => (
                   <div
                     key={lora.name}
                     className="flex items-center gap-1 bg-[var(--purple-light)] text-[var(--purple-fg)] rounded-full pl-2 pr-1 py-0.5 text-[11px] max-w-full"
@@ -353,7 +369,7 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
                 No likeness workflow is available, so the usual workflow is used. Import one with an image input, or install what SDXL Likeness needs.
               </span>
             )}
-            {chosenLook && !likenessSlug && chosenLook.refs.length > 0 && workflows.some((w) => w.slug === imageSettings.workflow && !w.controls.includes("referenceImage")) && (
+            {chosenLook && !likenessSlug && chosenLook.refs.length > 0 && workflows.some((w) => w.slug === settings.workflow && !w.controls.includes("referenceImage")) && (
               <span role="status" className="mt-1 block text-[10px] text-amber-700 dark:text-amber-300">
                 This workflow has no image input, so the reference pictures are not sent. Pick one that does on the Workflows screen.
               </span>
@@ -372,7 +388,7 @@ export function ImageStudioTab({ lookOf }: { lookOf?: string } = {}) {
           size="md"
           className="w-full"
           onClick={handleGenerate}
-          disabled={!imageSettings.prompt.trim()}
+          disabled={!settings.prompt.trim()}
         >
           <Zap className="h-3.5 w-3.5 mr-1.5" />
           Generate

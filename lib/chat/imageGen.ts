@@ -42,6 +42,17 @@ export interface QueueOptions {
   kind?: "video";
 }
 
+/**
+ * The picture settings a chat uses: Image Studio's, with the chat's own changes
+ * (made in its inspector's Images tab) over them. Every picture made in a chat
+ * starts from these, so changing one chat's settings never changes another's.
+ */
+export function imageSettingsForChat(chatId: string | undefined): ImageGenerationSettings {
+  const st = useFableStore.getState();
+  const own = chatId ? st.chats.find((c) => c.id === chatId)?.imageSettings : undefined;
+  return own ? { ...st.imageSettings, ...own } : st.imageSettings;
+}
+
 export function queueImage(requested: ImageGenerationSettings, chatId?: string, opts: QueueOptions = {}): ImageJob {
   // With no LoRA to apply, a LoRA pipeline is made with its plain workflow
   const settings = plainWhenNoLora(requested);
@@ -184,7 +195,7 @@ export async function generateSceneImage(
   const workflows = character?.image?.likeness
     ? await workflowsForLikeness()
     : [];
-  const job = queueImage(settingsForPerson({ ...store.imageSettings, prompt }, character, workflows), chatId);
+  const job = queueImage(settingsForPerson({ ...imageSettingsForChat(chatId), prompt }, character, workflows), chatId);
 
   const imageMessage = {
     chatId,

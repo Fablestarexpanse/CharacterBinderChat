@@ -8,7 +8,7 @@
 import { workflowsForLikeness } from "@/lib/chat/workflowNodes";
 import { useFableStore } from "@/lib/store";
 import { getJson, sendJson } from "@/lib/api/client";
-import { queueImage } from "@/lib/chat/imageGen";
+import { imageSettingsForChat, queueImage } from "@/lib/chat/imageGen";
 import { storePicture } from "@/lib/chat/assets";
 import { clientPromptTemplate } from "@/lib/chat/promptOverrides";
 import { renderTemplate } from "@/lib/prompts/render";
@@ -100,7 +100,7 @@ async function photoNow(chatId: string, messageId: string, attachmentId: string,
   const workflows = character.image?.likeness
     ? await workflowsForLikeness()
     : [];
-  const settings = settingsForPerson({ ...st.imageSettings, prompt, batchCount: 1 }, character, workflows);
+  const settings = settingsForPerson({ ...imageSettingsForChat(chatId), prompt, batchCount: 1 }, character, workflows);
   const job = queueImage(settings, chatId);
   update({ jobId: job.id, workflow: settings.workflow, negativePrompt: settings.negativePrompt, seed: settings.seed >= 0 ? settings.seed : undefined });
   const done = await waitForJob(job.id);

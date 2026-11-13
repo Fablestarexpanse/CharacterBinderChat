@@ -4,7 +4,7 @@ import type { StateCreator } from "zustand";
 import type { FableStore } from "../index";
 import { expandMacros } from "@/lib/cards/tavern";
 import type {
-  Character, Chat, GenerationParams, MemoryTrace, Message, PersistedAppState, Persona, ProviderId, Attachment,
+  Character, Chat, GenerationParams, MemoryTrace, Message, PersistedAppState, Persona, ProviderId, Attachment, ImageGenerationSettings,
 } from "@/lib/types";
 
 export interface ChatsSlice {
@@ -71,6 +71,8 @@ export interface ChatsSlice {
   deleteChat: (chatId: string) => void;
   /** Archive (hide) or bring back a chat; its messages and memory are kept */
   setChatArchived: (chatId: string, archived: boolean) => void;
+  /** Change this chat's own picture settings; null goes back to Image Studio's */
+  setChatImageSettings: (chatId: string, patch: Partial<ImageGenerationSettings> | null) => void;
   renameChat: (chatId: string, name: string) => void;
   /** Wipe messages (re-seeds the character's greeting if they have one) */
   clearChat: (chatId: string) => void;
@@ -417,6 +419,9 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
 
   setChatArchived: (chatId, archived) =>
     set((state) => patchChat(state, chatId, (c) => ({ ...c, archived: archived || undefined }))),
+
+  setChatImageSettings: (chatId, patch) =>
+    set((state) => patchChat(state, chatId, (c) => ({ ...c, imageSettings: patch === null ? undefined : { ...c.imageSettings, ...patch } }))),
 
   deleteChat: (chatId) => {
     set((state) => {

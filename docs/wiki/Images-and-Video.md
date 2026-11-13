@@ -22,6 +22,10 @@ seed and size inputs itself.
 - The **image icon** under a reply draws that moment.
 - **Image Studio** (sidebar) makes pictures from a prompt. Under a render: **Delete** (with Undo) and
   **Use for a character** (set as someone's portrait, or start a new character from it).
+- In a chat, the inspector's **Images** tab is that chat's own: it lists only pictures made in that chat, and its
+  settings (workflow, size, steps…) are kept for that chat. Every picture made in the chat uses them: `/image`, photo
+  messages and clips. **Use Image Studio's settings** goes back to the shared ones. The **Image Studio** page keeps the
+  shared settings that new chats start from.
 - **Gallery** keeps everything made.
 
 ## A character's look

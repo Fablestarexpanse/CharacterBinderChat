@@ -7,7 +7,7 @@
 
 import { useFableStore } from "@/lib/store";
 import { getJson, sendJson } from "@/lib/api/client";
-import { queueImage, cancelImageJob } from "@/lib/chat/imageGen";
+import { imageSettingsForChat, queueImage, cancelImageJob } from "@/lib/chat/imageGen";
 import { storeClip } from "@/lib/chat/assets";
 import { clientPromptTemplate } from "@/lib/chat/promptOverrides";
 import { renderTemplate } from "@/lib/prompts/render";
@@ -123,7 +123,7 @@ async function clipNow(chatId: string, messageId: string, attachmentId: string, 
     prompt = renderTemplate(await clientPromptTemplate("video.clip"), { motion: what });
   }
   const job = queueImage({
-    ...st.imageSettings, workflow: chosen.slug, prompt, negativePrompt: "", loras: [], batchCount: 1,
+    ...imageSettingsForChat(chatId), workflow: chosen.slug, prompt, negativePrompt: "", loras: [], batchCount: 1,
     referenceImages: chosen.reference ? [att.from, ...people.map((p) => p.picture)] : [att.from], videoLength: CLIP_FRAMES,
   }, chatId, { timeoutMs: CLIP_TIMEOUT_MS, kind: "video" });
   update({ jobId: job.id, workflow: chosen.slug });
