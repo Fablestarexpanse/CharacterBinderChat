@@ -217,9 +217,9 @@ export function MessageItem({ message }: MessageItemProps) {
           </div>
         )}
 
-        {/* Action buttons — visible on hover */}
+        {/* Action buttons: on hover with a mouse; always shown on a touch screen, which has no hover */}
         {!editing && (
-        <div className={`flex items-center gap-0.5 transition-opacity ${speaking ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+        <div className={`flex flex-wrap items-center gap-0.5 transition-opacity ${speaking ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"}`}>
           {!isUser && !message.error && !message.callEvent && spokenText(message) && (
             <Button variant="ghost" size="icon" className="h-6 w-6"
               title={speaking?.phase === "making" ? "Making the audio… (click to cancel)" : speaking ? "Stop" : `Play in ${speakerName ?? "their"} voice`}

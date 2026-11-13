@@ -107,6 +107,29 @@ export function cleanLookSuggestion(raw: unknown): { tags: string; undressedTags
   return tags || undressedTags ? { tags, undressedTags } : null;
 }
 
+const escapeRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * A picture prompt with people's names taken out. Image models don't know who
+ * "June Okafor" is, so a name only spends tokens (and can be drawn as text); the
+ * look tags say what they look like. Full names go wherever they appear; a first
+ * name only where it is a tag of its own or possessive ("June's"), so a month or a
+ * word that happens to be a name ("a June evening") stays.
+ */
+export function withoutNames(prompt: string, names: string[]): string {
+  let out = prompt;
+  const full = names.map((n) => n.trim()).filter((n) => n.length > 1).sort((a, b) => b.length - a.length);
+  for (const n of full) out = out.replace(new RegExp(`\\b${escapeRe(n)}('s)?\\b`, "gi"), "");
+  for (const first of new Set(full.map((n) => n.split(/\s+/)[0]).filter((f) => f.length > 1))) {
+    const f = escapeRe(first);
+    out = out
+      .replace(new RegExp(`\\b${f}'s\\s+`, "g"), "their ")
+      .replace(new RegExp(`(^|,)\\s*${f}\\s*(?=,|$)`, "g"), "$1");
+  }
+  // Tidy what the removals left: empty list items, doubled spaces, stray commas
+  return out.replace(/\s*,\s*(,\s*)+/g, ", ").replace(/\s{2,}/g, " ").replace(/^[\s,]+|[\s,]+$/g, "").replace(/\s+,/g, ",");
+}
+
 /** Whether there is anything to apply (for "use this character's look" toggles). */
 export const hasImageLook = (look: ImageLook | undefined) => !!look && Object.keys(look).length > 0;
 

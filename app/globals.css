@@ -90,3 +90,10 @@ body {
 .prose-chat p { margin: 0 0 0.4rem; }
 .prose-chat p:last-child { margin-bottom: 0; }
 .prose-chat em { font-style: italic; color: var(--prose-em); }
+
+/* Touch screens have no hover, so controls that appear on hover (message actions,
+   fact pin/lock, gallery and preset buttons, chat rename/delete) are always shown
+   there. One rule instead of a variant on every hover-revealed control. */
+@media (hover: none) {
+  .group .group-hover\:opacity-100 { opacity: 1; }
+}

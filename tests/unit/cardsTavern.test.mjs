@@ -102,7 +102,7 @@ test("the prompt carries the card fields, expanded, in a sensible order", () => 
   assert.ok(!p.includes("{{"), "no placeholder reaches the model");
   assert.ok(p.indexOf("[Character Instructions]") < p.indexOf("A wary courier."), "instructions precede the sheet");
   assert.ok(p.indexOf("[Reminder]") > p.indexOf("[Example Dialogue]"));
-  assert.ok(p.indexOf("[Reminder]") < p.indexOf("Write in first person"), "reminder sits just before the standing rules");
+  assert.ok(p.indexOf("[Reminder]") < p.indexOf("Speak as "), "reminder sits just before the standing rules");
 });
 
 test("a plain character's prompt is unchanged by the new fields", () => {

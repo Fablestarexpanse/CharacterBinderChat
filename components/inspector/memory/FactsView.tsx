@@ -206,7 +206,8 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
 
       {!loading && !error && facts.length === 0 && !isExtracting && (
         <div className="text-[11px] text-[var(--muted-fg)] italic">
-          No facts recorded yet. Facts are extracted automatically after each exchange.
+          No facts recorded yet. Memory is written once an exchange settles: when you send your next message, or two
+          minutes after the last reply (so a re-rolled reply never writes twice).
         </div>
       )}
 

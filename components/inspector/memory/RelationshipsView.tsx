@@ -46,7 +46,7 @@ export function RelationshipsView({ chatId, characterId, extractionVersion }: Pr
   if (!hasAnyValue) {
     return (
       <div className="text-[11px] text-[var(--muted-fg)] italic">
-        No relationship stats recorded yet. Stats update automatically as the story develops.
+        No relationship changes yet. Only moments that would really move how someone feels (a confession, a gift, a betrayal, a rescue) change these; friendly small talk leaves them as they are.
       </div>
     );
   }

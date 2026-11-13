@@ -26,7 +26,8 @@ const num = (x) => (Number.isFinite(Number(x)) ? Number(x) : 0);
 const turns = [];
 for (const file of fs.readdirSync(docs).filter((f) => /^transcript-.*\.md$/.test(f)).sort()) {
   let prev = null;
-  for (const m of fs.readFileSync(path.join(docs, file), "utf8").matchAll(BLOCK)) {
+  // A Windows checkout stores these with CRLF; the pattern is written for LF
+  for (const m of fs.readFileSync(path.join(docs, file), "utf8").replace(/\r\n/g, "\n").matchAll(BLOCK)) {
     const [, , user, , asst, , facts, trust, aff, conn] = m;
     const cur = { user: user.trim(), asst: asst.trim(), facts: +facts, stats: [num(trust), num(aff), num(conn)] };
     if (prev) {
@@ -39,6 +40,11 @@ for (const file of fs.readdirSync(docs).filter((f) => /^transcript-.*\.md$/.test
   }
 }
 
+// Finding nothing is a failure, not a pass: an unreadable transcript once made this report "0 exchanges" and exit 0
+if (turns.length === 0) {
+  console.error("FAIL: no recorded exchanges found in docs/transcript-*.md");
+  process.exit(1);
+}
 const productive = turns.filter((t) => t.productive).length;
 const skipped = turns.filter((t) => isTrivialExchange(t.user, t.asst));
 const lost = skipped.filter((t) => t.productive);

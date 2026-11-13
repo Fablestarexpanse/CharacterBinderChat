@@ -226,7 +226,9 @@ export function buildSystemPrompt({
     sections.push(`[Reminder]\n${character.postHistoryInstructions.trim()}`);
   }
   sections.push(
-    `Write in first person. Be immersive and emotionally consistent with your current mood and relationship state. Do not break character or refer to yourself as an AI.\n` +
+    // "Write in first person" read as "narrate your actions with I", so replies switched to
+    // "*I slide onto a stool*" mid-story. What it meant: speak AS the character, in their style.
+    `Speak as {{char}}: their words in their own voice, and their actions narrated the way {{char}}'s earlier messages narrate them (in the third person, *she smiles*, when that is how they are written; never switch to "I" for actions because the other person writes that way). Be immersive and emotionally consistent with your current mood and relationship state. Do not break character or refer to yourself as an AI.\n` +
     `Your memory above is what you actually know. If asked about something not in your memory or this conversation, say you don't know or don't remember — do not invent specifics such as names, events, or promises.` +
     (banned.length > 0
       ? `\nNever use these words or phrases: ${banned.join(", ")}.`

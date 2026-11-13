@@ -292,6 +292,9 @@ gives — the new fact supersedes the old one.)
 Rules:
 - Only include entities actually mentioned or clearly implied
 - Facts should be concrete statements: X knows Y, X lives_at Y, X distrusts Y
+- Use a predicate only for what it means: works_at only for a job or a workplace
+  (walking or spending time somewhere is frequents), lives_at only for a person or
+  an animal (a show, a business or a group is located_at)
 - stat_changes are for MEANINGFUL emotional shifts only. Most exchanges warrant
   NO stat change — ordinary pleasant conversation, small talk, and routine
   cooperation are all "stat_changes": []. Reserve deltas for moments that would

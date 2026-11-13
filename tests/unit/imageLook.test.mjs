@@ -155,3 +155,13 @@ test("a model's suggested tags are made safe for the form", async () => {
   assert.equal(cleanLookSuggestion(null), null);
   assert.equal(cleanLookSuggestion({ tags: "x".repeat(900) }).tags.length, 600);
 });
+
+test("names come out of a picture prompt; a first name that is also a word stays unless it is a tag of its own", async () => {
+  const { withoutNames } = await import("../../lib/media/imageLook.ts");
+  const names = ["June Okafor", "Nora Vale"];
+  assert.equal(withoutNames("DSLR photo, June Okafor, 31, tall, at the microphone", names), "DSLR photo, 31, tall, at the microphone");
+  assert.equal(withoutNames("June, cardigan, rain on the window", names), "cardigan, rain on the window");
+  assert.equal(withoutNames("a warm June evening on the quay, Nora Vale laughing", names), "a warm June evening on the quay, laughing");
+  assert.equal(withoutNames("close-up of June's hands on the mixing desk", names), "close-up of their hands on the mixing desk");
+  assert.equal(withoutNames("harbour at night", []), "harbour at night");
+});

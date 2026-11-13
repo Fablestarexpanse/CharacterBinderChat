@@ -11,7 +11,7 @@ import { workflowsForLikeness } from "@/lib/chat/workflowNodes";
 import { useFableStore, DEFAULT_UTILITY_MODEL } from "@/lib/store";
 import { ComfyUIProvider } from "@/lib/providers/comfyui";
 import { sendJson } from "@/lib/api/client";
-import { plainWhenNoLora, settingsForPerson } from "@/lib/media/imageLook";
+import { plainWhenNoLora, settingsForPerson, withoutNames } from "@/lib/media/imageLook";
 import { resolveRouteCredentials } from "@/lib/providers/factory";
 import type { ImageJob, ImageGenerationSettings } from "@/lib/types";
 
@@ -167,7 +167,12 @@ export async function generateSceneImage(
         ...(chat.modelId ? { fallback: { ...resolveRouteCredentials(chat.providerId, store.providerSettings), modelId: chat.modelId } } : {}),
       });
       if (data.prompt) {
-        prompt = data.prompt;
+        // Names mean nothing to an image model (the look tags carry who they are)
+        const people = [
+          ...(chat.memberIds ?? [chat.characterId]).map((id) => store.characters.find((c) => c.id === id)?.name),
+          persona?.name,
+        ].filter((n): n is string => !!n);
+        prompt = withoutNames(data.prompt, people) || data.prompt;
       } else if (!focus) {
         onPhase?.("failed");
         return { ok: false, error: "scene director failed" };
