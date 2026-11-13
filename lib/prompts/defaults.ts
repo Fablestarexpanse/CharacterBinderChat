@@ -154,7 +154,7 @@ Answer with JSON only, no other text:
 
 "tags": 8 to 20 short, comma-separated tags for an image model: apparent age (an adult), gender, build, height if given,
 skin, face, eyes, hair (colour, length, style), distinguishing marks, and their usual clothing and accessories.
-"undressed": the same tags with every clothing and accessory word left out (body and face only), for pictures where
+"undressed": the same tags with every clothing and accessory word left out (body, face and hair stay), for pictures where
 they are undressed: no clothes, no jewellery, no glasses, no accessories. Only the person: never a place, a room,
 a view, the weather or objects around them. Use only what the description says or clearly implies; never add a name,
 a personality trait or anything that is not visible on the person.`,

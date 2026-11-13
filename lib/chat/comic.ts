@@ -10,7 +10,7 @@
 import { useFableStore } from "@/lib/store";
 import { getJson, sendJson } from "@/lib/api/client";
 import { imageSettingsForChat, queueImage } from "@/lib/chat/imageGen";
-import { COMIC_NEGATIVE, PAGE, compileLayout, layoutComicPage, type ComicPerson, type ComicScript } from "@/lib/media/comicPage";
+import { COMIC_NEGATIVE, PAGE, compileLayout, layoutComicPage, lookFromDescription, type ComicPerson, type ComicScript } from "@/lib/media/comicPage";
 import type { Chat, Message } from "@/lib/types";
 
 /** The bundled MOSS-Image workflow (workflows/moss-photo.json): it letters boxed text well */
@@ -39,7 +39,8 @@ export function messagesSinceLastPage(chat: Pick<Chat, "messages" | "comic">): M
   return chat.messages.slice(Math.max(0, start)).filter(real).slice(0, MAX_MESSAGES);
 }
 
-export interface ComicResult { ok: boolean; error?: string; panels?: number; left?: number }
+/** untagged: people on the page with no image tags (drawn from their description, less consistently) */
+export interface ComicResult { ok: boolean; error?: string; panels?: number; left?: number; untagged?: string[] }
 
 /** Make the next comic page for this chat. Resolves once the page is queued (drawing continues in the card). */
 export async function makeComicPage(chatId: string): Promise<ComicResult> {
@@ -55,7 +56,7 @@ export async function makeComicPage(chatId: string): Promise<ComicResult> {
   const memberIds = chat.memberIds?.length ? chat.memberIds : chat.characterId ? [chat.characterId] : [];
   const cast = memberIds.map((id) => st.characters.find((c) => c.id === id)).filter((c): c is NonNullable<typeof c> => !!c);
   const lookOf = (who: { name: string; description?: string; image?: { tags?: string } }) =>
-    who.image?.tags?.trim() || (who.description ?? "").replace(/\s+/g, " ").slice(0, 200) || who.name;
+    who.image?.tags?.trim() || lookFromDescription(who.description ?? "") || "a person";
   const people: Array<ComicPerson & { role: "character" | "you" }> = [
     ...cast.map((c) => ({ name: c.name, look: lookOf(c), role: "character" as const })),
     ...(persona ? [{ name: persona.name, look: lookOf(persona), role: "you" as const }] : []),
@@ -90,7 +91,9 @@ export async function makeComicPage(chatId: string): Promise<ComicResult> {
   const recap = [script.title, ...script.panels.map((p) => p.shot)].filter(Boolean).join(". ").slice(0, 600);
   store().setChatComic(chatId, { upTo: last.id, recap });
   const remaining = chat.messages.slice(chat.messages.findIndex((m) => m.id === last.id) + 1).filter(real).length;
-  return { ok: true, panels: script.panels.length, left: remaining };
+  const onPage = new Set(script.panels.flatMap((p) => p.characters));
+  const untagged = [...cast, ...(persona ? [persona] : [])].filter((w) => onPage.has(w.name) && !w.image?.tags?.trim()).map((w) => w.name);
+  return { ok: true, panels: script.panels.length, left: remaining, ...(untagged.length ? { untagged } : {}) };
 }
 
 const store = () => useFableStore.getState();

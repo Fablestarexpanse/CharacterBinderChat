@@ -159,7 +159,13 @@ export function ChatInput() {
     try {
       const r = await makeComicPage(activeChatId);
       if (!r.ok) setPictureError(`No comic page: ${r.error ?? "it could not be made"}`);
-      else if (r.left) setPictureError(`Comic page started. ${r.left} newer message${r.left === 1 ? " is" : "s are"} left for the next page.`);
+      else {
+        const notes = [
+          r.left ? `${r.left} newer message${r.left === 1 ? " is" : "s are"} left for the next page.` : "",
+          r.untagged?.length ? `${r.untagged.join(" and ")} ${r.untagged.length === 1 ? "has" : "have"} no image tags, so they may look different from page to page (add them under How images draw them).` : "",
+        ].filter(Boolean);
+        if (notes.length) setPictureError(`Comic page started. ${notes.join(" ")}`);
+      }
     } finally {
       setComicBusy(false);
     }

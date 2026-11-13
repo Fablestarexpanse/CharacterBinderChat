@@ -46,6 +46,8 @@ test("the page carries every look, the lettering rule and each line, inside its 
   assert.match(d.summary.caption, /copper-tipped short hair/);
   assert.match(d.summary.caption, /auburn bob/);
   assert.match(d.summary.caption, /spelled exactly as given/);
+  const drawn = d.items.filter((i) => i.label !== "text").map((i) => i.caption).join(" ") + d.summary.caption;
+  assert.equal(/June|Nora|Okafor|Vale/.test(drawn), false, "no name reaches the picture, only looks");
   assert.equal(d.summary.canvas, "multi_panel");
   const texts = d.items.filter((i) => i.label === "text");
   assert.equal(texts.length, 3);
@@ -64,4 +66,14 @@ test("compiling moves boxes to the centre in yxyx, like the official compiler", 
   assert.equal(out.bbox_coord_space, "abs_centralized");
   assert.equal("width" in out, false);
   assert.throws(() => C.compileLayout({ ...d, items: [{ label: "object", caption: "x", bbox: [0, 0, 2000, 10] }] }), /outside/);
+});
+
+test("without image tags, a look comes from the description's appearance", () => {
+  assert.equal(C.lookFromDescription("A courier.\n\nAppearance: tall, shaved head, red coat.\n\nBackground: long."), "tall, shaved head, red coat.");
+  assert.match(C.lookFromDescription("Nora, 28, a photographer. Slight, freckled, with a messy auburn bob and a green waxed jacket. Curious and shy."), /^Slight, freckled, with a messy auburn bob/);
+});
+
+test("an action is not a balloon, but a short spoken word is", () => {
+  const s = C.cleanComicScript({ panels: [{ shot: "Elias turns", characters: ["June"], balloons: [{ speaker: "June", text: "sigh." }, { speaker: "June", text: "Mm." }] }] }, people);
+  assert.deepEqual(s.panels[0].balloons.map((b) => b.text), ["Mm."]);
 });

@@ -110,10 +110,16 @@ function pickSpeaker(chat: Chat, characters: Character[]): string {
     // even though Ronan is also named (and joined the group first).
     let named: string | undefined;
     let best = Infinity;
+    // A member is named by their full name or their first name alone, as a whole
+    // word: people say "Elias, who's Anna?", not "Elias Brandt, …" (matching only
+    // the full name sent that to whoever's turn it was).
     for (const id of present) {
-      const name = characters.find((c) => c.id === id)?.name.toLowerCase();
+      const name = characters.find((c) => c.id === id)?.name.toLowerCase().trim();
       if (!name) continue;
-      const at = text.indexOf(name);
+      const first = name.split(/\s+/)[0];
+      const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const m = new RegExp(`(^|[^\\p{L}\\p{N}])(${esc(name)}|${esc(first)})(?![\\p{L}\\p{N}])`, "u").exec(text);
+      const at = m ? m.index + m[1].length : -1;
       if (at !== -1 && at < best) { best = at; named = id; }
     }
     if (named) return named;
