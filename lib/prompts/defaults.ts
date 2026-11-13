@@ -194,10 +194,13 @@ Answer with JSON only:
              "balloons": [{"speaker": "name", "text": "what they say"}],
              "caption": "optional narration, or empty"}]}
 
-Rules: pick the moments that matter; a panel shows one moment. Balloons are words a person says out loud, inside
-quotation marks in the story, at most 2 per panel and at most 12 words each, taken from or close to what was really
-said. Narration and description ("The ON AIR light hums red") are never a balloon: put them in the caption, or leave
-them to the picture. Never put actions, *asterisks* or (directions) in a balloon. People only talking on the phone are
+Rules: pick the moments that matter, and never leave out the turning point (a confession, a letter read aloud, a
+fight's end); a panel shows one moment. Balloons are words a person says out loud, in "double" or 'single' quotes in
+the story, or a letter or sign they read aloud; at most 2 per panel and at most 12 words each, taken from what THAT
+person said (shorten, never invent, never give one person's line to another). Narration and description ("The ON AIR
+light hums red") are never a balloon: put them in the caption, or leave them to the picture. Show what people hold
+when it matters (the letter, not a knife). Vary the camera from panel to panel: wide, medium, close-up; never two
+panels in a row with the same people framed the same way. Never put actions, *asterisks* or (directions) in a balloon. People only talking on the phone are
 in different places: show each where they are. Use a caption only to bridge time or place. Describe people by what they do, not how they look (their looks
 are added for you).`,
     variables: [

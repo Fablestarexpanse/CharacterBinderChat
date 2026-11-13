@@ -29,6 +29,7 @@ Looks come from each person's image tags; without tags, from the appearance part
 |---|---|---|---|
 | 13 Nov | Night Shift demo (branch), 3 messages | 1 (5 panels) | Worked first time: lettering exact, June consistent. Narration put in a balloon; Nora drawn in the booth though only on the phone. |
 | 13 Nov | Storm on Quay Street (branch), group of 3, 3 rounds of turns | 3 (6, 4, 6 panels), ~30 s each to draw | Each page continued exactly after the last (checked by `comic.upTo` and by reading). Found the issues below. |
+| 13 Nov | "Brakka Stonehide & Sefa Vire": new fantasy cast (half-orc ranger in crimson, elf arcanist in midnight blue and gold, persona Tam, red-haired courier in moss green), 4 rounds of 3 turns in a wraith-haunted shrine | 4 (6 panels each) | Each page continued exactly. **No blending at all across 24 panels**: three people who differ in species, build, hair and one signature colour stay apart, which supports idea 1 under issue 1. Found issues 6–8 below; fixed what the prompt and layout can. |
 
 ## Open issues
 
@@ -46,9 +47,17 @@ glasses in two panels; on page 2 June wore Nora's green jacket and camera. Both 
 - Order the global list the same way the figures appear left to right.
 - Try `moss_image_base` against the SFT model, or a higher CFG for long prompts.
 
+**Evidence (13 Nov, fantasy run):** with clearly different people (species, build, hair, one signature colour each)
+nothing blended in 24 panels. So the strongest fix is in the looks themselves: give similar characters a signature
+colour or item. A hint for this in Fill from description, or in the editor, is worth trying.
+
 ### 2. A line given to the wrong speaker
 
 **Seen:** page 3: "Same time next storm" appeared as Nora's narration caption and again as a balloon from Elias.
+
+**Seen again (fantasy run):** "It's here. The wind knows." given to Brakka (Tam asked "It's here, isn't it?"); "Hold.
+The wraith's not coming." never said by anyone. The script prompt now says to take a balloon from what THAT person said,
+shorten but never invent or move a line; not yet re-tested.
 
 **Ideas to try:**
 - After cleaning, drop a balloon whose words match another panel's balloon or caption on the same page.
@@ -78,6 +87,28 @@ first panel description repeated page 2's opening shot (the balloons were right)
 
 **Ideas to try:** a larger script model when the GPU is free; pass the previous page's panel list rather than a
 one-line recap; test with `long-chat`-style runs.
+
+### 6. The turning point left out (fantasy run, page 3)
+
+**Seen:** Tam reading the letter aloud ('To my student Sefa… Finish the ward.') is not on the page, and Tam holds his
+knife instead of the letter. The line was in 'single quotes' inside an action, which the prompt did not count as speech.
+
+**Done (not yet re-tested):** the script prompt now counts 'single quotes' and letters or signs read aloud as balloons,
+says never to leave out the turning point, and to show what people hold when it matters.
+
+### 7. Near-duplicate panels (fantasy run, pages 2, 3 and 4; Night Shift page 1)
+
+**Seen:** two panels in a row with the same people come out as nearly the same picture (same framing, same pose).
+
+**Done (unit-tested, not yet re-drawn):** the layout adds "a clearly different camera angle and distance from the panel
+before it" to such a panel, and the script prompt asks for wide, medium and close-up in turn.
+
+### 8. MOSS lettering typos
+
+**Seen:** "getes in" (for "gets in"), "wraitht's" (for "wraith's"). The text sent was right; MOSS slipped.
+
+**Ideas to try:** shorter balloons (8 words), larger balloon boxes for long lines, a higher CFG; compare
+`moss_image_base`. Possibly avoid apostrophes next to unusual letter pairs.
 
 ## Fixed
 

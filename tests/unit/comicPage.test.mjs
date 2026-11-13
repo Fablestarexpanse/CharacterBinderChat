@@ -77,3 +77,15 @@ test("an action is not a balloon, but a short spoken word is", () => {
   const s = C.cleanComicScript({ panels: [{ shot: "Elias turns", characters: ["June"], balloons: [{ speaker: "June", text: "sigh." }, { speaker: "June", text: "Mm." }] }] }, people);
   assert.deepEqual(s.panels[0].balloons.map((b) => b.text), ["Mm."]);
 });
+
+test("a panel with the same people as the one before asks for a different shot", () => {
+  const s = C.cleanComicScript({ panels: [
+    { shot: "June at the mic", characters: ["June", "Nora"] },
+    { shot: "June talks", characters: ["Nora", "June"] },
+    { shot: "Nora alone", characters: ["Nora"] },
+  ] }, people);
+  const panels = C.layoutComicPage(s, people, "").items.filter((i) => i.label === "object").map((i) => i.caption);
+  assert.doesNotMatch(panels[0], /different camera angle/);
+  assert.match(panels[1], /different camera angle/);
+  assert.doesNotMatch(panels[2], /different camera angle/);
+});

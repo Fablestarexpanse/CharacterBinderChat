@@ -164,7 +164,12 @@ export function layoutComicPage(script: ComicScript, people: ComicPerson[], styl
   const items: LayoutDraft["items"] = [];
   script.panels.forEach((pn, i) => {
     const p = boxes[i];
-    items.push({ label: "object", caption: `Panel ${i + 1}: ${unnamed(pn.shot)}`, bbox: p });
+    // The same people in two panels running come out as the same picture twice
+    // (seen on three of four test pages), so the second asks for a different shot
+    const prev = script.panels[i - 1];
+    const samePeople = !!prev && prev.characters.length > 0 && prev.characters.length === pn.characters.length && prev.characters.every((c) => pn.characters.includes(c));
+    const vary = samePeople ? " A clearly different camera angle and distance from the panel before it." : "";
+    items.push({ label: "object", caption: `Panel ${i + 1}: ${unnamed(pn.shot)}${vary}`, bbox: p });
     // Figures share the lower part of the panel, left to right
     const figs = pn.characters;
     figs.forEach((name, k) => {
