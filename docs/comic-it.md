@@ -110,6 +110,63 @@ before it" to such a panel, and the script prompt asks for wide, medium and clos
 **Ideas to try:** shorter balloons (8 words), larger balloon boxes for long lines, a higher CFG; compare
 `moss_image_base`. Possibly avoid apostrophes next to unusual letter pairs.
 
+## Foreseen (review of the code, 13 Nov; not yet seen in a run)
+
+Ranked by how likely they are to bite. **Confirmed** means the code was checked and does this today.
+
+**A. Long chats overflow the script model's context (confirmed).** `callOllama` sends no `num_ctx`, so Ollama uses
+its default window (2–4k tokens on most installs); the built-in model runs at 8192. Sixteen long role-play replies can
+exceed that, and Ollama cuts from the *front*, which is where the instructions are. Expect garbled or missing scripts
+on long, wordy chats. Fix: set `num_ctx` for these calls, and cap the excerpt by tokens (keep the newest lines, summarise
+the rest) rather than by 16 messages.
+
+**B. Branching a chat breaks "where the last page ended" (confirmed).** A branch copies `chat.comic`, but gives every
+message a new id, so `upTo` no longer matches and the next page starts again from the very beginning. Fix: remap
+`comic.upTo` through the branch's id map (or drop it when the branch point is before it).
+
+**C. Deleting or re-rolling a covered message has the same effect.** If the message `upTo` points at is deleted or
+replaced, the page boundary is lost and the next page re-covers the whole chat. Fix: fall back to the comic card's own
+position in the chat (the page card sits after what it covered).
+
+**D. The page card shows the raw layout JSON (confirmed).** `ImageCard` prints `job.prompt` as the caption and puts it
+in Re-roll's edit box: a wall of coordinates. Fix: a comic card (or a `kind: "comic"` on the job) that shows the title
+and panel count, keeps the script, and offers **Redo page** (new script for the same stretch) separately from
+**Re-draw** (same script, new seed).
+
+**E. No way to redo or restart a page.** Deleting a page doesn't move `upTo` back, so you can't get a better version
+of the same stretch, and there is no "start the comic over". Fix: Redo page on the card; a reset in the chat menu.
+
+**F. Pages live only in ComfyUI's output folder.** Like scene pictures, the card points at ComfyUI's URL. If ComfyUI is
+off, moved or its output cleaned, the pages are gone ("Image no longer available"), and the chat export can't fetch them.
+Comic pages are worth keeping: store each finished page as an asset (`storePicture`), as photo messages do.
+
+**G. Texts and phone calls are drawn as if everyone is in the room (confirmed).** The excerpt is built from raw content,
+not `historyContent`, so "(by text)" / "(on the phone)" are lost. Fix: use `historyContent` so the script knows.
+
+**H. Who "you" are can change (confirmed).** A chat doesn't record which persona it was played with; the page uses
+whichever persona is active when you press the button. Switch persona between pages and "you" changes face.
+
+**I. Adult content and young-looking art.** Comic pages ignore the undressed tags (fine) but nothing stops an explicit
+scene from being drawn, and stylised art made Tam (19) look like a child. Before Comic-it is used with mature stories:
+add `nsfw` to `COMIC_NEGATIVE` unless the user opts in, put "adult" in every figure's look, and never combine
+undressed looks with comic pages.
+
+**J. People the cast doesn't include drift.** The wraith / Master Elowen had no look, so MOSS invented one each page.
+Fix: let the script name recurring extras with a one-line look, and carry those looks forward in the recap.
+
+**K. GPU memory.** The script call doesn't ask Ollama to unload the memory model afterwards (the scene director sends
+`keep_alive: 0`), so the 4B model can stay in VRAM while MOSS draws. On a smaller card this means slow pages or
+out-of-memory. Fix: unload after the script, as the director does.
+
+**L. Wider text support.** Balloon wrapping assumes ~15 px per Latin character; CJK and long German words will wrap
+badly. Name removal uses `\b`, which misses names with accents ("Zoë"), so those could still be lettered into the
+picture. `ACTION_ONLY` knows English words only. Manga reads right to left; the grid assumes left to right.
+
+**M. Smaller things.** The art style is global (a per-chat style would let one chat be manga and another noir); the
+on/off switch is cached for 10 s and only rechecked when you change chat; the button gives no progress while MOSS draws
+(the card does); MOSS's settings (30 steps, 1024×1536) are fixed; there is no end-to-end test, only unit tests of the
+layout and script cleaning.
+
 ## Fixed
 
 | Issue | Fix | Checked |
