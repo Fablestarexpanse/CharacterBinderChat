@@ -25,7 +25,7 @@ const ctx = {
   characters: [{ id: "june", name: "June" }],
   imageJobs: [{ id: "j1", prompt: "June at the mic", status: "complete", outputUrls: ["http://127.0.0.1:8188/view?filename=x.png&type=output"], settings: {}, createdAt: T }],
 };
-const all = { pictures: true, clips: true, voice: true };
+const all = { pictures: true, clips: true };
 
 test("the transcript skips errors and failed media, keeps calls and texts", () => {
   const lines = E.transcript(ctx, all);
@@ -37,11 +37,11 @@ test("the transcript skips errors and failed media, keeps calls and texts", () =
   assert.equal(lines[1].who, "Nora");
 });
 
-test("without pictures, a picture-only message and an image card drop out; voice only when asked", () => {
-  const lines = E.transcript(ctx, { pictures: false, clips: true, voice: false });
+test("without pictures, a picture-only message and an image card drop out; spoken replies never go", () => {
+  const lines = E.transcript(ctx, { pictures: false, clips: true });
   assert.deepEqual(lines.map((l) => l.id), ["m1", "m2", "m6"]);
   assert.equal(lines[0].media.length, 0);
-  assert.equal(E.mediaOf(E.transcript(ctx, all)).length, 3, "speech, a photo and an image card, once each");
+  assert.equal(E.mediaOf(E.transcript(ctx, all)).length, 2, "a photo and an image card; the spoken reply is not exported");
 });
 
 test("a ComfyUI picture is fetched through the server's proxy; our own assets directly", () => {
@@ -62,10 +62,10 @@ test("the web page escapes what the chat says and carries pictures inside it", (
 
 test("markdown links media files; a picture not fetched says so", () => {
   const lines = E.transcript(ctx, all);
-  const media = new Map(E.mediaOf(lines).map((m, i) => [m.url, { ...m, file: i === 1 ? `media/00${i + 1}.png` : undefined }]));
+  const media = new Map(E.mediaOf(lines).map((m, i) => [m.url, { ...m, file: i === 0 ? "media/001.png" : undefined }]));
   const md = E.toMarkdown(ctx, lines, media);
   assert.match(md, /^# Rain <night>/);
-  assert.match(md, /!\[a rainy street\]\(media\/002\.png\)/);
+  assert.match(md, /!\[a rainy street\]\(media\/001\.png\)/);
   assert.match(md, /\*\[picture not included\]\*/);
 });
 

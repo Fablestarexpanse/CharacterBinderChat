@@ -7,7 +7,8 @@
 //   jsonl     SillyTavern's chat file, which other chat apps import
 //   json      FableChat's own record: every message and field, and optionally its memory
 //
-// Pictures, clips and voice can go with it. The web page carries them inside
+// Pictures and clips can go with it, each optional; spoken replies never do
+// (they can be spoken again from the words). The web page carries them inside
 // itself; every other format with media becomes a .zip holding the file and a
 // media/ folder. The builders here are pure (they take the media already
 // fetched, as a map from URL to file), so they are unit-tested; fetching and
@@ -24,8 +25,6 @@ export interface ChatExportOptions {
   pictures: boolean;
   /** Clips (video) */
   clips: boolean;
-  /** Replies spoken aloud (voice) */
-  voice: boolean;
   /** FableChat format only: facts and Core Memory */
   memory: boolean;
 }
@@ -41,7 +40,7 @@ export const FORMATS: Array<{ id: ChatExportFormat; label: string; ext: string; 
 /** One piece of media in the chat, and the file it becomes */
 export interface MediaItem {
   url: string;
-  kind: "image" | "video" | "audio";
+  kind: "image" | "video";
   /** media/<n>.<ext>, set once fetched */
   file?: string;
   /** data: URL for the web page, set once fetched */
@@ -74,7 +73,7 @@ export interface Line {
 const callText = (e: CallEvent) => { const t = callNote(e).replace(/^\[|\]$/g, ""); return t.charAt(0).toUpperCase() + t.slice(1); };
 
 /** The chat as lines, in order, without failed or removed things */
-export function transcript(ctx: ExportContext, opts: Pick<ChatExportOptions, "pictures" | "clips" | "voice">): Line[] {
+export function transcript(ctx: ExportContext, opts: Pick<ChatExportOptions, "pictures" | "clips">): Line[] {
   const nameOf = (m: Message) =>
     m.role === "user" ? ctx.userName
     : ctx.characters.find((c) => c.id === (m.characterId ?? ctx.chat.characterId))?.name ?? "Character";
@@ -83,10 +82,9 @@ export function transcript(ctx: ExportContext, opts: Pick<ChatExportOptions, "pi
     if (m.error || m.role === "system") continue;
     const media: Line["media"] = [];
     for (const a of m.attachments ?? []) {
-      if (a.status !== "ready" || !a.url) continue;
+      if (a.status !== "ready" || !a.url || a.kind === "audio") continue;
       if (a.kind === "image" && !opts.pictures) continue;
       if (a.kind === "video" && !opts.clips) continue;
-      if (a.kind === "audio" && !opts.voice) continue;
       media.push({ url: a.url, kind: a.kind, caption: a.prompt });
     }
     if (m.imageJobId) {
@@ -96,7 +94,6 @@ export function transcript(ctx: ExportContext, opts: Pick<ChatExportOptions, "pi
       job.outputUrls.forEach((u, i) => media.push({ url: job.keptAs?.[i] ?? u, kind: job.kind === "video" ? "video" : "image", caption: job.prompt }));
       if (media.length === 0) continue;
     }
-    if (opts.voice && m.speech?.url) media.push({ url: m.speech.url, kind: "audio", caption: "Spoken" });
     const event = m.callEvent ? callText(m.callEvent) : undefined;
     if (!event && !m.content.trim() && media.length === 0) continue;
     lines.push({
@@ -139,7 +136,7 @@ export function toText(ctx: ExportContext, lines: Line[], media: Map<string, Med
     if (l.event) { out.push(`[${l.event}, ${stamp(l.time)}]`, ""); continue; }
     out.push(`${l.who}${l.how ? ` (${l.how})` : ""}, ${stamp(l.time)}:`);
     if (l.text.trim()) out.push(l.text.trim());
-    for (const m of l.media) out.push(`[${m.kind === "image" ? "picture" : m.kind === "video" ? "clip" : "voice"}${media.get(m.url)?.file ? `: ${media.get(m.url)!.file}` : ""}${m.caption && m.kind !== "audio" ? ` (${oneLine(m.caption)})` : ""}]`);
+    for (const m of l.media) out.push(`[${m.kind === "image" ? "picture" : "clip"}${media.get(m.url)?.file ? `: ${media.get(m.url)!.file}` : ""}${m.caption ? ` (${oneLine(m.caption)})` : ""}]`);
     out.push("");
   }
   return out.join("\n");
@@ -155,10 +152,10 @@ export function toMarkdown(ctx: ExportContext, lines: Line[], media: Map<string,
     if (l.text.trim()) out.push(l.text.trim(), "");
     for (const m of l.media) {
       const file = media.get(m.url)?.file;
-      const label = oneLine(m.caption ?? (m.kind === "audio" ? "Voice" : "Picture"), 120).replace(/[[\]]/g, "");
-      if (!file) out.push(`*[${m.kind === "image" ? "picture" : m.kind === "video" ? "clip" : "voice"} not included]*`, "");
+      const label = oneLine(m.caption ?? "Picture", 120).replace(/[[\]]/g, "");
+      if (!file) out.push(`*[${m.kind === "image" ? "picture" : "clip"} not included]*`, "");
       else if (m.kind === "image") out.push(`![${label}](${file})`, "");
-      else out.push(`[${m.kind === "video" ? "Clip" : "Voice"}: ${label}](${file})`, "");
+      else out.push(`[Clip: ${label}](${file})`, "");
     }
   }
   return out.join("\n");
@@ -173,11 +170,10 @@ export function toHtml(ctx: ExportContext, lines: Line[], media: Map<string, Med
     if (l.event) return `<p class="event">${esc(l.event)} · ${esc(stamp(l.time))}</p>`;
     const items = l.media.map((m) => {
       const src = media.get(m.url)?.dataUrl ?? media.get(m.url)?.file;
-      const cap = m.caption && m.kind !== "audio" ? `<figcaption>${esc(oneLine(m.caption, 300))}</figcaption>` : "";
+      const cap = m.caption ? `<figcaption>${esc(oneLine(m.caption, 300))}</figcaption>` : "";
       if (!src) return "";
       if (m.kind === "image") return `<figure><img src="${esc(src)}" alt="${esc(oneLine(m.caption ?? "Picture", 120))}">${cap}</figure>`;
-      if (m.kind === "video") return `<figure><video src="${esc(src)}" controls></video>${cap}</figure>`;
-      return `<audio src="${esc(src)}" controls></audio>`;
+      return `<figure><video src="${esc(src)}" controls></video>${cap}</figure>`;
     }).join("");
     return `<article class="${l.isUser ? "you" : "them"}"><header><b>${esc(l.who)}</b>${l.how ? ` <i>${esc(l.how)}</i>` : ""} <time>${esc(stamp(l.time))}</time></header>${l.text.trim() ? `<p>${prose(l.text)}</p>` : ""}${items}</article>`;
   }).join("\n");
@@ -194,7 +190,7 @@ article{background:var(--them);border:1px solid var(--line);border-radius:12px;p
 article.you{background:var(--you)}header{font:13px system-ui,sans-serif;color:var(--muted);margin-bottom:4px}header b{color:var(--fg)}
 p{margin:0}em{color:var(--muted)}.event{text-align:center;color:var(--muted);font:13px system-ui,sans-serif;margin:16px 0}
 figure{margin:10px 0 0}img,video{max-width:100%;border-radius:8px;display:block}figcaption{font:12px system-ui,sans-serif;color:var(--muted);margin-top:4px}
-audio{width:100%;margin-top:8px}@media print{body{background:#fff;color:#000}article{border-color:#ccc}audio,video{display:none}}
+@media print{body{background:#fff;color:#000}article{border-color:#ccc}video{display:none}}
 </style></head>
 <body><main><h1>${esc(title(ctx))}</h1><p class="sub">With ${esc([...people(ctx), ctx.userName].join(", "))}. Started ${esc(stamp(ctx.chat.createdAt))}.</p>
 ${body}
@@ -231,7 +227,7 @@ export function toFableJson(ctx: ExportContext, media: Map<string, MediaItem>, m
 
 const EXT: Record<string, string> = {
   "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif",
-  "video/mp4": "mp4", "video/webm": "webm", "audio/wav": "wav", "audio/x-wav": "wav", "audio/mpeg": "mp3", "audio/ogg": "ogg", "audio/flac": "flac",
+  "video/mp4": "mp4", "video/webm": "webm",
 };
 
 /** Our own assets are fetched directly; a ComfyUI output goes through the server's proxy (ComfyUI sends no CORS headers) */
@@ -267,7 +263,7 @@ export async function exportChat(ctx: ExportContext, opts: ChatExportOptions, on
       const res = await fetch(fetchableUrl(m.url));
       if (!res.ok) throw new Error(String(res.status));
       const blob = await res.blob();
-      const ext = EXT[blob.type.split(";")[0]] ?? (m.kind === "image" ? "png" : m.kind === "video" ? "mp4" : "wav");
+      const ext = EXT[blob.type.split(";")[0]] ?? (m.kind === "image" ? "png" : "mp4");
       m.file = `media/${String(i + 1).padStart(3, "0")}.${ext}`;
       if (opts.format === "html") m.dataUrl = await toDataUrl(blob);
       else bytes.set(m.file, new Uint8Array(await blob.arrayBuffer()));

@@ -37,7 +37,7 @@ backup.
 - **SillyTavern chat** (.jsonl): imports into SillyTavern and apps that read its chat files (words only).
 - **FableChat (full)** (.json): every message and field, optionally with the chat's memory (facts and Core Memory).
 
-Tick **Pictures**, **Clips** and **Spoken replies** to include them. Apart from the web page, a chat with media comes as
+**Pictures** (and **Clips**, when the chat has any) are optional: untick them for the words only. Spoken replies are not exported. Apart from the web page, a chat with media comes as
 a .zip holding the file and a media folder. An image card's picture is fetched from ComfyUI, so ComfyUI must be running
 for it; anything that could not be fetched is left out and the dialog says how many.
 

@@ -1,8 +1,9 @@
 "use client";
 
 // ─── "Export this chat" ───────────────────────────────────────────────────────
-// Pick a format (lib/chat/chatExport.ts) and what goes with it: pictures, clips,
-// voice, and, for FableChat's own format, the memory. Shown from a chat's row
+// Pick a format (lib/chat/chatExport.ts) and what goes with it: pictures and
+// clips (each optional, always offered), and, for FableChat's own format, the
+// memory. Spoken replies are never exported. Shown from a chat's row
 // in Chats and in Archive.
 
 import { useState } from "react";
@@ -17,18 +18,20 @@ export function ExportChatDialog({ chat, open, onClose }: { chat: Chat; open: bo
   const characters = useFableStore((s) => s.characters);
   const imageJobs = useFableStore((s) => s.imageJobs);
   const personaName = useFableStore((s) => s.personas.find((p) => p.id === s.activePersonaId)?.name);
-  const [opts, setOpts] = useState<ChatExportOptions>({ format: "html", pictures: true, clips: true, voice: false, memory: true });
+  const [opts, setOpts] = useState<ChatExportOptions>({ format: "html", pictures: true, clips: true, memory: true });
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
   const ctx = { chat, characters, imageJobs, userName: personaName ?? "You" };
   // What there is to include, so options with nothing behind them are not offered
-  const all = mediaOf(transcript(ctx, { pictures: true, clips: true, voice: true }));
+  const all = mediaOf(transcript(ctx, { pictures: true, clips: true }));
   const count = (k: string) => all.filter((m) => m.kind === k).length;
-  const has = { image: count("image"), video: count("video"), audio: count("audio") };
+  const has = { image: count("image"), video: count("video") };
   const noMedia = opts.format === "jsonl";
   const fmt = FORMATS.find((f) => f.id === opts.format)!;
-  const withFiles = !noMedia && opts.format !== "html" && ((opts.pictures && has.image) || (opts.clips && has.video) || (opts.voice && has.audio));
+  /** Media that will actually go in: ticked, and the chat has some */
+  const anyMedia = (opts.pictures && has.image > 0) || (opts.clips && has.video > 0);
+  const withFiles = !noMedia && opts.format !== "html" && anyMedia;
 
   const run = async () => {
     setResult(null);
@@ -43,7 +46,7 @@ export function ExportChatDialog({ chat, open, onClose }: { chat: Chat; open: bo
     }
   };
 
-  const box = (key: "pictures" | "clips" | "voice" | "memory", label: string, n?: number) => (
+  const box = (key: "pictures" | "clips" | "memory", label: string, n?: number) => (
     <label className="flex items-center gap-2 text-sm cursor-pointer">
       <input type="checkbox" checked={opts[key]} onChange={(e) => setOpts({ ...opts, [key]: e.target.checked })}
         className="h-4 w-4 accent-[var(--purple)]" aria-label={label} />
@@ -74,13 +77,13 @@ export function ExportChatDialog({ chat, open, onClose }: { chat: Chat; open: bo
         ) : (
           <div className="space-y-1.5">
             <div className="text-xs font-medium">Include</div>
-            {has.image > 0 && box("pictures", "Pictures", has.image)}
+            {box("pictures", "Pictures", has.image)}
             {has.video > 0 && box("clips", "Clips", has.video)}
-            {has.audio > 0 && box("voice", "Spoken replies (voice)", has.audio)}
             {opts.format === "json" && box("memory", "Memory (facts and Core Memory)")}
-            {!has.image && !has.video && !has.audio && opts.format !== "json" && <p className="text-[11px] text-[var(--muted-fg)]">No pictures, clips or voice in this chat.</p>}
             <p className="text-[11px] text-[var(--muted-fg)]">
-              {opts.format === "html" ? "One file: pictures and clips are inside the page." : withFiles ? "A .zip: the file plus a media folder." : "One file."}
+              {!anyMedia ? "Words only, one file."
+                : opts.format === "html" ? "One file: pictures and clips are inside the page."
+                : withFiles ? "A .zip: the file plus a media folder." : "One file."}
             </p>
           </div>
         )}
