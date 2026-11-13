@@ -1,95 +1,42 @@
 #!/usr/bin/env node
-// ─── FableChat launcher ───────────────────────────────────────────────────────
-// One command to run the app, from a fresh download or an old one:
+// ─── FableChat: start ─────────────────────────────────────────────────────────
+// Runs the app; installs and builds nothing (that is install and update):
 //   • checks Node is new enough, and says where to get it if not
-//   • installs dependencies the first time, and again when they change
-//   • builds the app the first time, and again when the source changes
+//   • refuses, saying what to run, when FableChat was never installed
+//   • says so when there is code here that is not built yet (run update)
 //   • starts it on 127.0.0.1, or, if FableChat is already running, just opens it
 //   • opens your browser
 //
 // Used by start.sh and start.bat; also fine to run directly:  node scripts/start.mjs
-// Options: --port N   --no-open   --rebuild
+// Options: --port N   --no-open
 //
 // Node is spawned directly, never through a shell: a shell wrapper around the server
 // orphaned real servers three separate times (see AGENTS.md), and Next refuses to
 // start while an orphan owns .next.
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { nodeIsNewEnough, minimumNode, stamp, choosePort, openCommand, installAdvice } from "./launcher-lib.mjs";
+import { choosePort, openCommand } from "./launcher-lib.mjs";
+import { buildCurrent, buildPresent, checkNode, depsCurrent, depsPresent, fail, root, say, script } from "./setup-steps.mjs";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
 const valueOf = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
 
-const say = (msg = "") => console.log(msg);
-const fail = (msg, code = 1) => { console.error(`\n${msg}\n`); process.exit(code); };
-
 // ── 1. Node ──────────────────────────────────────────────────────────────────
-const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-const need = minimumNode(pkg.engines?.node);
-if (need && !nodeIsNewEnough(process.versions.node, need)) {
-  fail(`FableChat needs Node.js ${need} or newer, and this is ${process.versions.node}.\n` +
-       `Get the current version from https://nodejs.org (the "LTS" download is fine), then run this again.`);
+checkNode();
+
+// ── 2. Installed and built? Never fixed here: install and update do that ───────
+if (!depsPresent() || !buildPresent()) {
+  fail(`FableChat is not installed yet. Run ${script("install")} first (once), then ${script("start")}.`);
+}
+if (!depsCurrent() || !buildCurrent()) {
+  say(`Note: there are changes here that are not built yet, so you get the last build. Run ${script("update")} to build them.`);
 }
 
-// ── 2. Dependencies ──────────────────────────────────────────────────────────
-const lockFile = path.join(root, "package-lock.json");
-const lockHash = fs.existsSync(lockFile) ? stamp(fs.readFileSync(lockFile)) : "nolock";
-const installStamp = path.join(root, "node_modules", ".fable-install-stamp");
-const readStamp = (f) => { try { return fs.readFileSync(f, "utf8").trim(); } catch { return null; } };
-
-/** Run npm without a shell by finding its CLI script next to Node. */
-function npm(npmArgs) {
-  const candidates = [
-    process.env.npm_execpath,
-    path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js"),
-    path.join(path.dirname(process.execPath), "..", "lib", "node_modules", "npm", "bin", "npm-cli.js"),
-  ].filter((p) => p && /npm-cli\.js$/.test(p) && fs.existsSync(p));
-  const r = candidates.length > 0
-    ? spawnSync(process.execPath, [candidates[0], ...npmArgs], { cwd: root, stdio: "inherit" })
-    // Last resort: npm on PATH. Windows needs the .cmd shim, which needs a shell; this runs
-    // to completion and exits, so it is not the long-lived-server case the rule is about.
-    : spawnSync(process.platform === "win32" ? "npm.cmd" : "npm", npmArgs, { cwd: root, stdio: "inherit", shell: process.platform === "win32" });
-  return r.status === 0;
-}
-
-if (!fs.existsSync(path.join(root, "node_modules")) || readStamp(installStamp) !== lockHash) {
-  say("Installing FableChat's dependencies. This takes a minute or two the first time.");
-  if (!npm(["ci", "--no-audit", "--no-fund"])) fail(installAdvice());
-  fs.mkdirSync(path.dirname(installStamp), { recursive: true });
-  fs.writeFileSync(installStamp, lockHash);
-}
-
-// ── 3. Build ─────────────────────────────────────────────────────────────────
-/** The newest modification time among the files the build is made from. */
-function newestSource() {
-  let newest = 0;
-  const visit = (p) => {
-    let st; try { st = fs.statSync(p); } catch { return; }
-    if (st.isDirectory()) { for (const f of fs.readdirSync(p)) if (f !== "node_modules" && f !== ".next") visit(path.join(p, f)); }
-    else newest = Math.max(newest, st.mtimeMs);
-  };
-  for (const p of ["app", "components", "lib", "public", "proxy.ts", "next.config.ts", "postcss.config.mjs", "tsconfig.json", "package.json"]) visit(path.join(root, p));
-  return Math.floor(newest);
-}
-const buildStamp = path.join(root, ".next", ".fable-build-stamp");
-const wantStamp = stamp(pkg.version, lockHash, newestSource());
-
-if (flag("--rebuild") || !fs.existsSync(path.join(root, ".next", "BUILD_ID")) || readStamp(buildStamp) !== wantStamp) {
-  say("Building FableChat. This takes about a minute the first time, and again after an update.");
-  const nextBin = require.resolve("next/dist/bin/next");
-  const r = spawnSync(process.execPath, [nextBin, "build"], { cwd: root, stdio: "inherit" });
-  if (r.status !== 0) fail("The build failed. The messages above say why; if you have changed the code, that is the place to look.\nIf you have not, delete the .next folder and try again.");
-  fs.writeFileSync(buildStamp, wantStamp);
-}
-
-// ── 4. Where to serve ────────────────────────────────────────────────────────
+// ── 3. Where to serve ────────────────────────────────────────────────────────
 const wanted = Number(valueOf("--port") ?? process.env.PORT ?? 3000);
 
 /** What is listening on a port: nothing, FableChat, or something else. */
@@ -123,8 +70,8 @@ if (picked.running) {
 }
 if (picked.port !== wanted) say(`Port ${wanted} is in use by something else, so FableChat will use ${picked.port}.`);
 
-// ── 5. Run ───────────────────────────────────────────────────────────────────
-const nextBin = require.resolve("next/dist/bin/next");
+// ── 4. Run ───────────────────────────────────────────────────────────────────
+const nextBin = require.resolve("next/dist/bin/next", { paths: [root] });
 const child = spawn(process.execPath, [nextBin, "start", "-H", "127.0.0.1", "-p", String(picked.port)], { cwd: root, stdio: "inherit", env: process.env });
 
 // Take the server down with us. An orphaned server keeps the port and the database.

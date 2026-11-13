@@ -13,14 +13,23 @@ Images, video and voice are optional and set up later ([Images and video](Images
 ## Install and start
 
 1. Download the repository (green **Code** button → **Download ZIP**, then unzip it) or clone it with git.
-2. Start it:
+2. Install it, once:
+   - **Windows:** double-click **`install.bat`**.
+   - **macOS / Linux:** in a terminal in that folder, run **`./install.sh`**.
+
+   This downloads about 300 MB and builds the app; it takes a few minutes.
+3. Start it, every time you want to use it:
    - **Windows:** double-click **`start.bat`**.
-   - **macOS / Linux:** in a terminal in that folder, run **`./start.sh`**.
-3. Your browser opens at **http://localhost:3000**. Keep the launcher window open while you use FableChat; **Ctrl+C**
+   - **macOS / Linux:** run **`./start.sh`**.
+4. Your browser opens at **http://localhost:3000**. Keep the start window open while you use FableChat; **Ctrl+C**
    in it stops the app.
 
-The first run downloads about 300 MB and takes a minute or two. Running the launcher again opens the copy that is already
-running instead of starting a second one. If port 3000 is busy it picks the next free one and tells you.
+Starting again while FableChat is running opens the copy that is already running instead of starting a second one. If
+port 3000 is busy it picks the next free one and tells you.
+
+**Getting a new version:** close FableChat, then run **`update.bat`** (or **`./update.sh`**). It fetches the new version
+with git and rebuilds only what changed. Your chats and characters (the `data` folder) are not touched. A copy downloaded
+as a ZIP cannot update itself: download the new ZIP, move your `data` folder into it, and run install there.
 
 ## The first screen: a demo story
 

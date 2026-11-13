@@ -33,15 +33,19 @@ The result is characters that remember, change and stay consistent over hundreds
 You need **[Node.js](https://nodejs.org) 22.18 or newer** (the LTS download is fine) and at least one model provider:
 [Ollama](https://ollama.ai), [LM Studio](https://lmstudio.ai), or an [OpenRouter](https://openrouter.ai) API key.
 
-Download or clone the repository, then:
+Download or clone the repository. There are three scripts, each with a Windows (`.bat`, double-click it) and a
+macOS / Linux (`.sh`, run it in a terminal) version:
 
-- **Windows:** double-click **`start.bat`**
-- **macOS / Linux:** run **`./start.sh`**
+| Script | When | What it does |
+|---|---|---|
+| **`install`** | Once, the first time (or to repair) | Installs the dependencies (about 300 MB) and builds the app |
+| **`start`** | Every time you use it | Starts FableChat and opens [http://localhost:3000](http://localhost:3000). Installs nothing |
+| **`update`** | To get a new version | `git pull`, then reinstalls only if the dependencies changed and rebuilds only if the code changed |
 
-The launcher checks Node, installs dependencies the first time, builds the app, starts it and opens
-[http://localhost:3000](http://localhost:3000). Run it again and it opens the copy already running instead of starting
-a second one; after an update it rebuilds by itself. Keep its window open while you use FableChat; Ctrl+C stops it. If
-port 3000 is busy it uses the next free one and says so.
+`start` refuses, saying to run `install`, until FableChat is installed, and says so when there is code that is not built
+yet. Run it again while FableChat is running and it opens that copy instead of starting a second one. Keep its window
+open while you use FableChat; Ctrl+C stops it. If port 3000 is busy it uses the next free one and says so. `install`
+and `update` refuse while FableChat is running, because they rebuild what it is serving.
 
 The first time it opens, you land in a **demo story** set in Port Ellery, a rainy harbour city: June, a night radio
 host, has just taken your call on air (you are Nora, a photographer new in town), with Elias the baker one tap away, a
@@ -321,7 +325,7 @@ port to it. Conventions for working on the code are in [`AGENTS.md`](AGENTS.md).
 
 ```
 CharacterBinderChat/
-├── start.sh, start.bat     # one-click launcher (both call scripts/start.mjs)
+├── install, start, update  # .bat and .sh launchers (scripts/install.mjs, start.mjs, update.mjs)
 ├── app/api/
 │   ├── chat/core-memory/   # Drawer 1: read, patch, LLM refresh
 │   ├── drawer/             # Drawer 2: entities, facts, stats, extract, branch, transfer

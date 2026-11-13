@@ -1,5 +1,5 @@
 @echo off
-rem FableChat launcher for Windows. Double-click it.
+rem FableChat: run the app. Double-click it.
 cd /d "%~dp0"
 
 where node >nul 2>nul

@@ -9,10 +9,11 @@ be checked where those exist. Tick items off in `docs/plan-contact-media.md` as 
 ```bash
 git clone https://github.com/Fablestarexpanse/CharacterBinderChat.git
 cd CharacterBinderChat
+./install.sh          # Windows: install.bat (once)
 ./start.sh            # Windows: start.bat
 ```
 
-Already have a copy? `git pull origin master`, then run the launcher again (it rebuilds after an update).
+Already have a copy? Run `./update.sh` (Windows: `update.bat`): it pulls and rebuilds what changed.
 
 ## The automated checks
 
@@ -36,18 +37,18 @@ FABLE_TEST_URL=http://localhost:3001 npm run test:api      # in a second termina
 ## What only a real setup can confirm
 
 Use a scratch database for these (`FABLE_DB_PATH=/tmp/fable-try.db ./start.sh`) so nothing touches your real library.
-A fresh one opens on the demo story with Ronan.
+A fresh one opens on the Port Ellery demo story (June and Elias).
 
 **1. Likeness with a real ComfyUI** (plan B4, not yet confirmed anywhere)
 - Install the ComfyUI_IPAdapter_plus nodes, insightface, and the FaceID Plus V2 SDXL model and LoRA.
 - Workflows → **Check nodes**: "SDXL Likeness (IP-Adapter FaceID)" should say all nodes installed.
-- Ronan's editor → How images draw Ronan: add a clear face photo under Reference pictures and tick
-  **Make pictures look like Ronan**.
-- Images tab → Draw as Ronan → generate five pictures with different prompts. Do they look like the same person?
+- June's editor → How images draw June: add a clear face photo under Reference pictures and tick
+  **Make pictures look like June**.
+- Images tab → Draw as June → generate five pictures with different prompts. Do they look like the same person?
 
 **2. Photos from a character** (plan C3–C5)
 - Settings → Contact & media → **Allow photos and messages from characters**.
-- Ronan's editor → Contact → **May send you photos**.
+- June's editor → Contact → **May send you photos**.
 - Ask him for a photo in chat. With a real model, does he use `[photo: …]` when it fits (and not every reply)?
 - Review the prompt, take it, then try Redo, an earlier take, Use as portrait and Remove → Undo.
 
@@ -56,9 +57,9 @@ A fresh one opens on the demo story with Ronan.
 - Settings → Prompts → "Replying by text message": edit it and see the next reply change.
 
 **4. Reaching out** (plan D)
-- Ronan's editor → Contact → **May contact you**, set **Wait at least** to 30 minutes.
+- June's editor → Contact → **May contact you**, set **Wait at least** to 30 minutes.
 - Leave the chat for 30+ minutes with FableChat open in a tab (another tab or app in front is fine).
-- Expected: one text, with "Ronan reached out because …" under it, and an unread badge if you were elsewhere.
+- Expected: one text, with "June reached out because …" under it, and an unread badge if you were elsewhere.
 - Turn on **Notifications** in Contact & media: the browser should ask once, then notify for the next one. Not yet
   observed anywhere (the cloud container has no display).
 - In development (`npm run dev`) you can skip the wait: open the browser console and run `fableOutreachTick()`. It
