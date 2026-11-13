@@ -30,6 +30,17 @@ replaces.
 The **JSON export** is a portable copy of your cards and chats **without memory** — handy for moving cards, but not a
 backup.
 
+**One chat** can be exported from its row in **Chats** or **Archive** (the download button). Choose:
+
+- **Web page**: opens in any browser and prints to PDF; pictures and clips are inside the page.
+- **Markdown** or **Plain text**: for notes apps and editors.
+- **SillyTavern chat** (.jsonl): imports into SillyTavern and apps that read its chat files (words only).
+- **FableChat (full)** (.json): every message and field, optionally with the chat's memory (facts and Core Memory).
+
+Tick **Pictures**, **Clips** and **Spoken replies** to include them. Apart from the web page, a chat with media comes as
+a .zip holding the file and a media folder. An image card's picture is fetched from ComfyUI, so ComfyUI must be running
+for it; anything that could not be fetched is left out and the dialog says how many.
+
 API keys are encrypted with a key in `data/.fable-secret`. Do not share that file.
 
 ## Using FableChat from another device

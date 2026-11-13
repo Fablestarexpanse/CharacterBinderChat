@@ -274,7 +274,7 @@ The current plan is [`docs/plan-2026-11.md`](docs/plan-2026-11.md), drawn from t
 - [ ] Agent activity view and memory tools over MCP
 - [ ] Context-budget breakdown per prompt section
 - [ ] GPU / VRAM monitoring
-- [ ] Export a chat as a story document
+- [x] Export a chat: web page, Markdown, text, SillyTavern or FableChat file, with or without pictures, clips and voice
 - [x] Characters who text and call you, with photos and video clips that look like them (opt-in)
 - [x] Voices for characters and personas (local VibeVoice), Play and Read replies aloud, and a narrator
 - [x] Memory and image prompts on a free local model (Ollama, or a built-in llama.cpp model FableChat downloads and runs)

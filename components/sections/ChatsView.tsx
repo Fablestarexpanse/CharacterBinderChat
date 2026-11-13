@@ -6,7 +6,7 @@
 // with more than a couple of stories going, "take me to the last one" is the
 // wrong default. Opening a chat sets activeChatId; the header's back button
 // clears it to come back here. Each chat can be archived (put away, nothing
-// lost) or deleted, which always asks first. The same view with `archived`
+// lost), exported (ExportChatDialog) or deleted, which always asks first. The same view with `archived`
 // is the Archive section: only archived chats, each with Unarchive.
 
 import { useState } from "react";
@@ -17,9 +17,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useHydrated } from "@/lib/hooks/useHydrated";
 import { formatAgeFromIso, truncate } from "@/lib/utils";
-import { MessageSquare, Search, Plus, Users, ImageIcon, Archive, ArchiveRestore, Trash2 } from "lucide-react";
+import { MessageSquare, Search, Plus, Users, ImageIcon, Archive, ArchiveRestore, Trash2, Download } from "lucide-react";
 import { useUiStore } from "@/lib/store/ui";
 import { DeleteChatDialog } from "@/components/chat/DeleteChatDialog";
+import { ExportChatDialog } from "@/components/chat/ExportChatDialog";
 import type { Chat } from "@/lib/types";
 
 export function ChatsView({ archived: showArchived = false }: { archived?: boolean } = {}) {
@@ -27,6 +28,7 @@ export function ChatsView({ archived: showArchived = false }: { archived?: boole
   const { setChatBuilderOpen, setActiveSection } = useUiStore();
   const [query, setQuery] = useState("");
   const [deleting, setDeleting] = useState<Chat | null>(null);
+  const [exporting, setExporting] = useState<Chat | null>(null);
   const archivedCount = chats.filter((c) => c.archived).length;
   // Relative times depend on the clock, so they can't render during SSR
   const hydrated = useHydrated();
@@ -157,6 +159,10 @@ export function ChatsView({ archived: showArchived = false }: { archived?: boole
                   onClick={() => setChatArchived(chat.id, !chat.archived)}>
                   {chat.archived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
                 </Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7" title="Export: a web page, Markdown, text, SillyTavern or FableChat file, with or without pictures"
+                  aria-label={`Export ${chat.name}`} onClick={() => setExporting(chat)}>
+                  <Download className="h-3.5 w-3.5" />
+                </Button>
                 <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-red-600" title="Delete this chat and its memory"
                   aria-label={`Delete ${chat.name}`} onClick={() => setDeleting(chat)}>
                   <Trash2 className="h-3.5 w-3.5" />
@@ -168,6 +174,7 @@ export function ChatsView({ archived: showArchived = false }: { archived?: boole
         </div>
       </div>
       {deleting && <DeleteChatDialog chat={deleting} open onClose={() => setDeleting(null)} />}
+      {exporting && <ExportChatDialog chat={exporting} open onClose={() => setExporting(null)} />}
     </div>
   );
 }
