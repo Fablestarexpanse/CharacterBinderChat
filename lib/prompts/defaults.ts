@@ -29,6 +29,7 @@ export type PromptId =
   | "image.describe"
   | "image.look-from-text"
   | "image.portrait"
+  | "image.comic-script"
   | "video.clip"
   | "video.reference-clip";
 
@@ -169,6 +170,42 @@ a personality trait or anything that is not visible on the person.`,
     usedFor: "The Generate button next to a portrait: the picture prompt. Their image tags are added in front of it.",
     template: `head and shoulders portrait, looking at the camera, soft natural light, plain softly blurred background, realistic photo, sharp focus`,
     variables: [],
+  },
+  {
+    id: "image.comic-script",
+    title: "Comic page script",
+    group: "Images",
+    usedFor: "Comic-it: turns the chat since the last comic page into panels, speech balloons and narration. Runs on the memory model; FableChat lays the panels out and MOSS-Image draws the page.",
+    warning: "The reply must still be JSON with a \"panels\" array of { shot, characters, balloons: [{ speaker, text }], caption }, or the page cannot be made.",
+    template: `/no_think
+You are a comic-book writer. Turn this stretch of a roleplay into ONE comic page of 3 to {{max_panels}} panels that tells
+what happened, in order. {{recap}}
+
+PEOPLE (use these names exactly):
+{{people}}
+
+STORY SO FAR ON THIS PAGE:
+{{excerpt}}
+
+Answer with JSON only:
+{"title": "a short page title", "setting": "where and when, in a few words",
+ "panels": [{"shot": "what the camera sees: framing, who is where, action, expression",
+             "characters": ["names in the panel"],
+             "balloons": [{"speaker": "name", "text": "what they say"}],
+             "caption": "optional narration, or empty"}]}
+
+Rules: pick the moments that matter; a panel shows one moment. Balloons are words a person says out loud, inside
+quotation marks in the story, at most 2 per panel and at most 12 words each, taken from or close to what was really
+said. Narration and description ("The ON AIR light hums red") are never a balloon: put them in the caption, or leave
+them to the picture. Never put actions, *asterisks* or (directions) in a balloon. People only talking on the phone are
+in different places: show each where they are. Use a caption only to bridge time or place. Describe people by what they do, not how they look (their looks
+are added for you).`,
+    variables: [
+      { name: "max_panels", required: true, description: "The most panels a page may have.", sample: "6" },
+      { name: "recap", description: "What the previous comic page covered, so this one continues it; empty for the first page.", sample: "The previous page ended with June putting Nora's call on air." },
+      { name: "people", required: true, description: "Who can appear, one per line.", sample: "June Okafor (character)\nNora Vale (you)" },
+      { name: "excerpt", required: true, description: "The messages since the last page, each starting with the speaker.", sample: "June: It's twenty past two and you're on the air.\n\nNora: Hi. It's Nora." },
+    ],
   },
   {
     id: "video.clip",

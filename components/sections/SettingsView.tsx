@@ -1,5 +1,6 @@
 "use client";
 
+import { ComicCard } from "@/components/settings/ComicCard";
 import { addDemoStory } from "@/lib/demo";
 import { useRef, useState } from "react";
 import { useFableStore, DEFAULT_UTILITY_MODEL } from "@/lib/store";
@@ -600,6 +601,8 @@ export function SettingsView() {
 
         <Panel id="media" tab={tab}>
         <MediaConnectionsCard />
+
+        <ComicCard />
 
         <VoiceSetupCard />
 

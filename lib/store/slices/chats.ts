@@ -71,6 +71,8 @@ export interface ChatsSlice {
   deleteChat: (chatId: string) => void;
   /** Archive (hide) or bring back a chat; its messages and memory are kept */
   setChatArchived: (chatId: string, archived: boolean) => void;
+  /** Comic-it: record where the last comic page ended (so the next one starts after it) */
+  setChatComic: (chatId: string, comic: { upTo: string; recap: string }) => void;
   /** Change this chat's own picture settings; null goes back to Image Studio's */
   setChatImageSettings: (chatId: string, patch: Partial<ImageGenerationSettings> | null) => void;
   renameChat: (chatId: string, name: string) => void;
@@ -419,6 +421,9 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
 
   setChatArchived: (chatId, archived) =>
     set((state) => patchChat(state, chatId, (c) => ({ ...c, archived: archived || undefined }))),
+
+  setChatComic: (chatId, comic) =>
+    set((state) => patchChat(state, chatId, (c) => ({ ...c, comic }))),
 
   setChatImageSettings: (chatId, patch) =>
     set((state) => patchChat(state, chatId, (c) => ({ ...c, imageSettings: patch === null ? undefined : { ...c.imageSettings, ...patch } }))),

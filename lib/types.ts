@@ -205,6 +205,8 @@ export interface Chat {
   readAloud?: boolean;
   /** Put away: hidden from Chats and Recent Chats until you show archived chats. Nothing is deleted */
   archived?: boolean;
+  /** Comic-it: the last message the previous comic page covered, and what that page told (lib/chat/comic.ts) */
+  comic?: { upTo: string; recap: string };
   /** This chat's own picture settings (workflow, size, steps…), over Image Studio's. Unset = Image Studio's */
   imageSettings?: Partial<ImageGenerationSettings>;
   /** Which preset applies. Unset falls back to the store's defaultPresetId,

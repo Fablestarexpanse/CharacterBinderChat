@@ -26,7 +26,12 @@ seed and size inputs itself.
   settings (workflow, size, steps…) are kept for that chat. Every picture made in the chat uses them: `/image`, photo
   messages and clips. **Use Image Studio's settings** goes back to the shared ones. The **Image Studio** page keeps the
   shared settings that new chats start from.
-- **Gallery** keeps everything made.
+- **Comic it** (switch it on in Settings → Media → Comic-it) turns the story since the last comic page into a comic
+  page: the memory model writes up to six panels with speech balloons and narration, FableChat lays the page out, and
+  MOSS-Image draws it with the lettering spelled exactly. Each press continues from where the last page ended. The art
+  style is set on the same card. It needs ComfyUI with the MOSS photo workflow's models.
+- **Gallery** keeps everything made. Deleting a chat keeps its pictures (under "Deleted chat") unless you tick "Also
+  delete its pictures".
 
 ## A character's look
 

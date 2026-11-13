@@ -22,6 +22,7 @@ import { CharacterEditorDialog } from "@/components/characters/CharacterEditorDi
 import { NewChatDialog } from "@/components/chat/NewChatDialog";
 import { StateSync } from "@/components/StateSync";
 import { SecretsSync } from "@/components/SecretsSync";
+import { ProviderSettingsSync } from "@/components/ProviderSettingsSync";
 import { RemoteChanges } from "@/components/RemoteChanges";
 import { OutreachRunner } from "@/components/OutreachRunner";
 import { CallScreen } from "@/components/phone/CallScreen";
@@ -78,6 +79,8 @@ export default function Home() {
       <StateSync />
       {/* Keeps the OpenRouter key encrypted on the server, out of localStorage */}
       <SecretsSync />
+      {/* Keeps the chat-model settings (addresses, default model…) on the server too */}
+      <ProviderSettingsSync />
       {/* Characters you allowed to reach out (off unless Contact & media is on) */}
       <OutreachRunner />
       <CallScreen />

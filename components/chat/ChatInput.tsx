@@ -21,7 +21,10 @@ import {
   Camera,
   Paperclip,
   X,
+  LayoutGrid,
+  Loader2,
 } from "lucide-react";
+import { comicSettings, makeComicPage } from "@/lib/chat/comic";
 import { sendPicture } from "@/lib/chat/userPictures";
 import { parseTextIntent } from "@/lib/chat/channel";
 import { askForPhoto, contactSettings } from "@/lib/chat/photos";
@@ -140,6 +143,27 @@ export function ChatInput() {
   }, [staged]);
   const [pictureError, setPictureError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Comic-it: offered only when switched on (Settings → Media → Comic-it)
+  const [comicOn, setComicOn] = useState(false);
+  const [comicBusy, setComicBusy] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void comicSettings().then((c) => { if (!cancelled) setComicOn(c.enabled); });
+    return () => { cancelled = true; };
+  }, [activeChatId]);
+  const comicIt = async () => {
+    if (!activeChatId || comicBusy) return;
+    setComicBusy(true);
+    setPictureError(null);
+    try {
+      const r = await makeComicPage(activeChatId);
+      if (!r.ok) setPictureError(`No comic page: ${r.error ?? "it could not be made"}`);
+      else if (r.left) setPictureError(`Comic page started. ${r.left} newer message${r.left === 1 ? " is" : "s are"} left for the next page.`);
+    } finally {
+      setComicBusy(false);
+    }
+  };
   const takePicture = (file: File | undefined | null) => {
     if (!file || !file.type.startsWith("image/") || !activeChatId) return;
     setPicture({ chatId: activeChatId, file, preview: URL.createObjectURL(file) });
@@ -348,6 +372,13 @@ export function ChatInput() {
             >
               <ImageIcon className="h-3.5 w-3.5" />
             </Button>
+            {comicOn && (
+              <Button variant="ghost" size="icon" className="h-7 w-7" disabled={comicBusy}
+                title="Comic it: a comic page of what happened since the last one" aria-label="Comic it"
+                onClick={() => void comicIt()}>
+                {comicBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LayoutGrid className="h-3.5 w-3.5" />}
+              </Button>
+            )}
             <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" aria-label="Picture to send"
               onChange={(e) => { takePicture(e.target.files?.[0]); e.target.value = ""; }} />
             <Button
