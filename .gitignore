@@ -49,6 +49,7 @@ next-env.d.ts
 /data/.fable-secret
 # test copies of chat photos and clips (Settings → Media → Save chat media to a folder)
 /data/media-copies/
+/data/local-model/
 
 # memory eval harness: isolated DB and per-run result snapshots
 /tests/memory-eval/.eval-db/

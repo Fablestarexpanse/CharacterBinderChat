@@ -30,7 +30,7 @@ import { randomBytes } from "node:crypto";
  * which program FableChat runs) and the folder media copies are written to. A restore keeps the live
  * values and ignores the backup's.
  */
-export const MACHINE_KEYS = ["voice:runtime", "media:saveFolder"];
+export const MACHINE_KEYS = ["voice:runtime", "media:saveFolder", "builtin:model"];
 
 export const REQUIRED_TABLES = [
   "app_characters", "app_chats", "app_messages", "app_personas", "app_lorebooks", "app_scenarios",

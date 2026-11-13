@@ -15,7 +15,9 @@ export const PROVIDER_TYPES: ProviderType[] = ["ollama", "lmstudio", "openrouter
 // request body. Forwarding a caller-supplied base URL alongside the caller's
 // key meant a hand-crafted body could name any host and receive that key in an
 // Authorization header. The two local providers still need their configured
-// base, and neither is sent a key.
+// base. An OpenAI-compatible local backend is sent only a key that came with
+// the backend itself (the built-in model's per-start key, made on the server);
+// no route fills a server-held key in for one.
 const OPENROUTER_API_BASE = "https://openrouter.ai/api";
 
 export function isProviderType(v: unknown): v is ProviderType {
@@ -48,7 +50,8 @@ export function callLLM(backend: LlmBackend, prompt: string, opts: { maxTokens?:
     if (!apiKey) return Promise.reject(new Error("no OpenRouter key: add it in Settings → Chat models"));
     return callOpenAICompat(OPENROUTER_API_BASE, modelId, prompt, apiKey, undefined, opts.maxTokens);
   }
-  return callOpenAICompat(providerBaseUrl, modelId, prompt, undefined, undefined, opts.maxTokens);
+  // Local models can run on the CPU, which is slower than any cloud model
+  return callOpenAICompat(providerBaseUrl, modelId, prompt, apiKey, 180_000, opts.maxTokens);
 }
 
 /**

@@ -6,7 +6,9 @@
 // Which one, in order:
 //   1. Ollama on this computer, with the memory model (or the utility model you
 //      chose). FableChat starts Ollama itself if it is installed but not running.
-//   2. The chat's own model, ONLY if you allowed it (Settings → Memory →
+//   2. The built-in model (lib/server/builtinModel.ts): llama.cpp and the same
+//      memory model, downloaded and run by FableChat, for people without Ollama.
+//   3. The chat's own model, ONLY if you allowed it (Settings → Memory →
 //      "Use my chat model when no local model is running"). Off by default, so
 //      nothing is spent without you choosing it.
 // Otherwise the job fails with a reason that says what to do.
@@ -18,6 +20,7 @@ import { getStore } from "@/lib/db";
 import { parseProviderBase, type LlmBackend } from "@/lib/llm/callers";
 
 import { MEMORY_MODEL } from "@/lib/llm/memoryModel";
+import { builtinReady, ensureBuiltin } from "@/lib/server/builtinModel";
 export { MEMORY_MODEL };
 
 const KEY = "background:model";
@@ -123,7 +126,9 @@ export async function backgroundModel(req: BackgroundRequest, chat: LlmBackend |
   const settings = getBackground();
   const reasons: string[] = [];
   const base = parseProviderBase(req.ollamaBaseUrl || "http://127.0.0.1:11434");
-  if (base) {
+  // Ollama is only started when it is installed here; with no Ollama, do not wait on one
+  const tryOllama = !!base && (!builtinReady() || !!ollamaExecutable() || (await ollamaModels(base)) !== null);
+  if (base && tryOllama) {
     if (await ensureOllama(base)) {
       const have = (await ollamaModels(base)) ?? [];
       const wanted = [settings.ollamaModel, MEMORY_MODEL.id, req.utilityModel].filter((m): m is string => !!m);
@@ -133,6 +138,12 @@ export async function backgroundModel(req: BackgroundRequest, chat: LlmBackend |
     } else {
       reasons.push(ollamaExecutable() ? "Ollama did not start" : "Ollama is not installed");
     }
+  }
+  if (builtinReady()) {
+    try { return await ensureBuiltin(); }
+    catch (e) { reasons.push(e instanceof Error ? e.message : String(e)); }
+  } else if (!reasons.some((r) => r.startsWith("Ollama is running"))) {
+    reasons.push("the built-in model is not set up (Settings → Memory)");
   }
   if (settings.fallbackToChat && chat) return chat;
   if (chat) reasons.push("using your chat model for this is switched off (Settings → Memory)");
