@@ -28,7 +28,12 @@ seed and size inputs itself.
 
 In the editor, **How images draw them** describes them for image models:
 
+- **Fill from description** — the local memory model reads their description and personality and writes both tag sets
+  below for you. **Undo** puts back what was there.
 - **Image tags** — a short description used word for word in every picture of them (hair, eyes, build, clothes).
+- **Image tags, undressed** (optional) — the same person with no clothing words. Each picture picks one set by itself:
+  when its prompt (written by the scene director from the story, a photo line, or what you typed) has them nude or
+  undressed, these lead; otherwise the usual tags. Portraits always use the usual tags. For adult characters only.
 - **Avoid** — what to keep out.
 - **LoRA** — a LoRA trained on them, with its trigger word and weight.
 - **Fixed seed** — the same face more often, less variety.

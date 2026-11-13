@@ -129,3 +129,29 @@ test("a clip's people: the sender first, each once, only with a picture; labels 
   assert.ok(isReferenceWorkflow(["CLIPLoader", "MiniMaxH3ReferenceToVideo"]));
   assert.ok(!isReferenceWorkflow(["MiniMaxH3ImageToVideo"]));
 });
+
+test("the undressed tags lead only a picture whose prompt has them undressed", async () => {
+  const { isUndressedPrompt, tagsFor } = await import("../../lib/media/imageLook.ts");
+  for (const p of ["nude woman on a bed", "topless, morning light", "naked in the shower", "she is wearing nothing but a smile", "NSFW, bedroom"]) {
+    assert.equal(isUndressedPrompt(p), true, p);
+  }
+  for (const p of ["red dress, city at night", "fully clothed, not nude", "lingerie shop window", "denuded hillside", "bare feet on the sand"]) {
+    assert.equal(isUndressedPrompt(p), false, p);
+  }
+  const look = { tags: "silver hair, leather jacket", undressedTags: "silver hair, athletic build" };
+  assert.equal(tagsFor(look, "on the balcony, rain"), "silver hair, leather jacket");
+  assert.equal(tagsFor(look, "nude on the balcony"), "silver hair, athletic build");
+  assert.equal(tagsFor({ tags: "silver hair" }, "nude on the balcony"), "silver hair", "no undressed set: the usual tags");
+  const base = { prompt: "", negativePrompt: "", loras: [], seed: -1 };
+  assert.match(applyImageLook({ ...base, prompt: "naked, candlelight" }, look).prompt, /^silver hair, athletic build, naked/);
+  assert.match(applyImageLook({ ...base, prompt: "coffee shop, candid" }, look).prompt, /^silver hair, leather jacket, coffee shop/);
+  assert.deepEqual(cleanImageLook({ undressedTags: "  freckles  " }), { undressedTags: "freckles" });
+});
+
+test("a model's suggested tags are made safe for the form", async () => {
+  const { cleanLookSuggestion } = await import("../../lib/media/imageLook.ts");
+  assert.deepEqual(cleanLookSuggestion({ tags: " tall,  glasses, ", undressed: ["tall", "freckles", 3] }), { tags: "tall, glasses", undressedTags: "tall, freckles" });
+  assert.equal(cleanLookSuggestion({ tags: 5 }), null);
+  assert.equal(cleanLookSuggestion(null), null);
+  assert.equal(cleanLookSuggestion({ tags: "x".repeat(900) }).tags.length, 600);
+});

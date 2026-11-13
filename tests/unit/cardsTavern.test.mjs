@@ -18,7 +18,7 @@ const FULL = {
   systemPrompt: "Stay terse.", postHistoryInstructions: "Never narrate {{user}}'s actions.",
   alternateGreetings: ["Late again.", "You're early."], creator: "me", creatorNotes: "v2 draft", characterVersion: "2.1",
   cardExtensions: { talkativeness: "0.4", world: "harbor" },
-  image: { tags: "silver hair, scar on jaw", avoid: "glasses", lora: { name: "ash_v2", trigger: "a5h", weight: 0.8 }, seed: 1234 },
+  image: { tags: "silver hair, scar on jaw, leather jacket", undressedTags: "silver hair, scar on jaw, athletic build", avoid: "glasses", lora: { name: "ash_v2", trigger: "a5h", weight: 0.8 }, seed: 1234 },
   createdAt: "", updatedAt: "",
 };
 

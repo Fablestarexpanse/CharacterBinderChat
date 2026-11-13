@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useDiscardGuard, DiscardBar, type CloseRelay } from "@/components/ui/discardGuard";
 import { ImageLookFields, toLookDraft, fromLookDraft, type LookDraft } from "@/components/characters/ImageLookFields";
+import { generatePortrait } from "@/lib/chat/portrait";
 import { ReferencePictures } from "@/components/characters/ReferencePictures";
 import { ContactFields } from "@/components/characters/ContactFields";
 import { VoiceFields } from "@/components/characters/VoiceFields";
@@ -176,6 +177,7 @@ function EditorForm({ editing, draft, closeRef }: { editing: Character | null; d
           name={form.name}
           value={form.avatar}
           onChange={(avatar) => setForm((f) => ({ ...f, avatar }))}
+          onGenerate={() => generatePortrait({ name: form.name, image: fromLookDraft(form.image), avatar: form.avatar || undefined, referenceImages: form.referenceImages })}
         />
 
         <Field label="Tags" hint="comma-separated">
@@ -213,7 +215,8 @@ function EditorForm({ editing, draft, closeRef }: { editing: Character | null; d
           </select>
         </Field>
 
-        <ImageLookFields value={form.image} onChange={(image) => setForm((f) => ({ ...f, image }))} who={form.name.trim() || "them"} open={form.referenceImages.length > 0}>
+        <ImageLookFields value={form.image} onChange={(image) => setForm((f) => ({ ...f, image }))} who={form.name.trim() || "them"} open={form.referenceImages.length > 0}
+          describe={() => [form.description, form.personality].filter((t) => t.trim()).join("\n\n")}>
           <ReferencePictures value={form.referenceImages} onChange={(referenceImages) => setForm((f) => ({ ...f, referenceImages }))}
             avatar={form.avatar} who={form.name.trim() || "them"} />
         </ImageLookFields>

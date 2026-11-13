@@ -27,6 +27,8 @@ export type PromptId =
   | "chat.call-outreach"
   | "image.photo"
   | "image.describe"
+  | "image.look-from-text"
+  | "image.portrait"
   | "video.clip"
   | "video.reference-clip";
 
@@ -133,6 +135,40 @@ export const PROMPTS: readonly PromptDef[] = [
     usedFor: "When you send a picture in a chat: the picture reader (Settings → Chat models) describes it once, and the character reads that description.",
     template: `{{user_label}} just sent {{character_name}} this picture. Describe what it shows in one or two plain sentences: who or what is in it, what they are doing, the setting and anything notable (text, mood, time of day). Do not guess anyone's name and do not address anyone. Answer with the description only.`,
     variables: [characterNameVar, userLabelVar],
+  },
+  {
+    id: "image.look-from-text",
+    title: "Image tags from a description",
+    group: "Images",
+    usedFor: "The Fill from description button in a character's or persona's look: turns what they wrote into image tags. Runs on the memory model.",
+    warning: "The reply must still be JSON with \"tags\" and \"undressed\", or the button reports that it could not read the answer.",
+    template: `/no_think
+Read this description of {{name}} and write image-generation tags for how {{name}} looks.
+
+DESCRIPTION:
+{{text}}
+
+Answer with JSON only, no other text:
+{"tags": "...", "undressed": "..."}
+
+"tags": 8 to 20 short, comma-separated tags for an image model: apparent age (an adult), gender, build, height if given,
+skin, face, eyes, hair (colour, length, style), distinguishing marks, and their usual clothing and accessories.
+"undressed": the same tags with every clothing and accessory word left out (body and face only), for pictures where
+they are undressed: no clothes, no jewellery, no glasses, no accessories. Only the person: never a place, a room,
+a view, the weather or objects around them. Use only what the description says or clearly implies; never add a name,
+a personality trait or anything that is not visible on the person.`,
+    variables: [
+      { name: "name", required: true, description: "The character's or persona's name.", sample: "June Okafor" },
+      { name: "text", required: true, description: "What they wrote: description, personality and anything else in the editor.", sample: "June Okafor, 31, hosts The Night Shift. Tall, close-cropped natural hair, round tortoiseshell glasses, a vintage cardigan over band T-shirts." },
+    ],
+  },
+  {
+    id: "image.portrait",
+    title: "Portrait picture",
+    group: "Images",
+    usedFor: "The Generate button next to a portrait: the picture prompt. Their image tags are added in front of it.",
+    template: `head and shoulders portrait, looking at the camera, soft natural light, plain softly blurred background, realistic photo, sharp focus`,
+    variables: [],
   },
   {
     id: "video.clip",

@@ -4,29 +4,50 @@
 // Click the portrait to choose an image file. The ORIGINAL is uploaded to the asset
 // store and the avatar becomes a short /api/assets/<hash> reference, so exports keep
 // full-resolution art and rows stay small; display asks for a resized copy. Pasting
-// a URL still works underneath.
+// a URL still works underneath. With `onGenerate`, a Generate button makes one
+// instead (lib/chat/portrait.ts); the old portrait comes back with Undo.
 
 import { useRef, useState } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { imageToAvatar, isAssetUrl } from "@/lib/chat/assets";
-import { Upload, X, Loader2 } from "lucide-react";
+import { Upload, X, Loader2, Sparkles, Undo2 } from "lucide-react";
 
 export function AvatarPicker({
   name,
   value,
   onChange,
+  onGenerate,
 }: {
   /** Display name — drives the initials placeholder */
   name: string;
   /** Data URI or URL, "" when unset */
   value: string;
   onChange: (next: string) => void;
+  /** Make a portrait and return its asset URL (throws with a reason) */
+  onGenerate?: () => Promise<string>;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [previous, setPrevious] = useState<string | null>(null);
+
+  const generate = async () => {
+    if (!onGenerate) return;
+    setGenerating(true);
+    setError(null);
+    try {
+      const url = await onGenerate();
+      setPrevious(value);
+      onChange(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -60,7 +81,7 @@ export function AvatarPicker({
           className="relative rounded-full cursor-pointer transition-opacity hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-[var(--purple)]"
         >
           <Avatar name={name || "?"} src={value.trim() || undefined} size="lg" />
-          {busy && (
+          {(busy || generating) && (
             <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40">
               <Loader2 className="h-4 w-4 animate-spin text-white" />
             </span>
@@ -69,17 +90,29 @@ export function AvatarPicker({
 
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-1.5">
-            <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={busy}>
+            <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={busy || generating}>
               <Upload className="mr-1.5 h-3 w-3" />
               {value ? "Replace image" : "Upload image"}
             </Button>
+            {onGenerate && (
+              <Button variant="outline" size="sm" onClick={() => void generate()} disabled={busy || generating}
+                title="Draw a portrait from their image tags (ComfyUI)">
+                {generating ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <Sparkles className="mr-1.5 h-3 w-3" />}
+                {generating ? "Generating…" : "Generate"}
+              </Button>
+            )}
+            {previous !== null && !generating && (
+              <Button variant="ghost" size="sm" className="text-[var(--muted-fg)]" onClick={() => { onChange(previous); setPrevious(null); }}>
+                <Undo2 className="mr-1 h-3 w-3" />Undo
+              </Button>
+            )}
             {value && (
               <Button
                 variant="ghost"
                 size="sm"
                 className="text-[var(--muted-fg)]"
                 onClick={() => { onChange(""); setError(null); }}
-                disabled={busy}
+                disabled={busy || generating}
               >
                 <X className="mr-1 h-3 w-3" />
                 Remove

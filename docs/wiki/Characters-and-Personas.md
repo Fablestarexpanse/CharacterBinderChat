@@ -25,8 +25,10 @@ The editor asks before throwing away unsaved changes.
 
 ### A portrait
 
-Upload one in the editor, or make one: in **Image Studio**, under a render, choose **Use for a character → Set as
-portrait of…**, or **New character from this** to start a character from the picture.
+Upload one in the editor, or press **Generate** next to it: ComfyUI draws a head-and-shoulders portrait from their
+image tags (and their LoRA and likeness setting, if set). Don't like it? **Undo** brings the old one back, or Generate
+again. Nothing is kept until you save. You can also make one in **Image Studio**: under a render, choose **Use for a
+character → Set as portrait of…**, or **New character from this** to start a character from the picture.
 
 ## Importing cards
 

@@ -13,6 +13,7 @@ import { AvatarPicker } from "@/components/ui/AvatarPicker";
 import { Trash2 } from "lucide-react";
 import { Field } from "@/components/ui/field";
 import { ImageLookFields, toLookDraft, fromLookDraft } from "@/components/characters/ImageLookFields";
+import { generatePortrait } from "@/lib/chat/portrait";
 import { VoiceFields } from "@/components/characters/VoiceFields";
 import type { CharacterVoice } from "@/lib/media/voice";
 import { ReferencePictures } from "@/components/characters/ReferencePictures";
@@ -78,7 +79,8 @@ function EditorForm({
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nora Vale" autoFocus />
         </Field>
 
-        <AvatarPicker name={name} value={avatar} onChange={setAvatar} />
+        <AvatarPicker name={name} value={avatar} onChange={setAvatar}
+          onGenerate={() => generatePortrait({ name, image: fromLookDraft(look), avatar: avatar || undefined, referenceImages: refs })} />
 
         <Field label="Description" hint="who you are in the story — appearance, role, backstory">
           <Textarea
@@ -88,7 +90,7 @@ function EditorForm({
             placeholder="A freelance courier working the lower city. Quick on her feet, slow to trust…"
           />
         </Field>
-        <ImageLookFields value={look} onChange={setLook} who={name.trim() || "you"} open={refs.length > 0}>
+        <ImageLookFields value={look} onChange={setLook} who={name.trim() || "you"} open={refs.length > 0} describe={() => description}>
           <ReferencePictures value={refs} onChange={setRefs} avatar={avatar} who={name.trim() || "you"} />
         </ImageLookFields>
         <VoiceFields value={voice} onChange={setVoice} who={name.trim() || "you"} />
