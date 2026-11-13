@@ -45,6 +45,9 @@ interface RawExtraction {
 
 const normKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
+/** A field the model was asked to fill with text: the text, or "" when it sent anything else (model output is untrusted) */
+const text = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+
 // Clamp model-supplied numbers: an out-of-range confidence would trip the
 // schema CHECK mid-pipeline and leave a half-written turn.
 const clamp01 = (v: unknown, dflt: number) =>
@@ -265,9 +268,9 @@ function writeCommitments(
 
   const writtenCommitments: string[] = [];
   for (const rawC of extracted.commitments ?? []) {
-    if (!rawC.promisor || !rawC.description?.trim()) continue;
-    const promisor = resolver.resolve(rawC.promisor);
-    const promisee = rawC.promisee ? resolver.resolve(rawC.promisee) : undefined;
+    if (!text(rawC?.promisor) || !text(rawC?.description)) continue;
+    const promisor = resolver.resolve(text(rawC.promisor));
+    const promisee = text(rawC.promisee) ? resolver.resolve(text(rawC.promisee)) : undefined;
     store.ensureEntity(chatId, promisor, "character", promisor);
     if (promisee) store.ensureEntity(chatId, promisee, "character", promisee);
 
@@ -287,7 +290,7 @@ function resolveCommitments(
   store: FableStore, chatId: string, extracted: RawExtraction
 ): void {
   for (const res of extracted.resolved_commitments ?? []) {
-    if (!res.match?.trim() || !["fulfilled", "broken"].includes(res.status)) continue;
+    if (!text(res?.match) || !["fulfilled", "broken"].includes(text(res.status))) continue;
     const words = contentWords(res.match);
     if (words.size === 0) continue;
     // Coverage, not Jaccard: the model quotes a fragment of a longer promise,
@@ -314,8 +317,8 @@ function writeSharedLanguage(
   const writtenSharedLanguage: string[] = [];
   const validKinds = ["nickname", "joke", "ritual", "phrase"];
   for (const entry of extracted.shared_language ?? []) {
-    if (!entry.text?.trim()) continue;
-    const kind = validKinds.includes(entry.kind) ? entry.kind : "phrase";
+    if (!text(entry?.text)) continue;
+    const kind = validKinds.includes(text(entry.kind)) ? text(entry.kind) : "phrase";
     const { reinforced } = store.upsertSharedLanguageCard(chatId, kind, entry.text.trim());
     writtenSharedLanguage.push(`${kind}:${entry.text.trim().slice(0, 40)}${reinforced ? " (reinforced)" : ""}`);
   }

@@ -599,6 +599,9 @@ function runExtraction(chatId: string, speakerId?: string, messageId?: string): 
     providerBaseUrl,
     modelId,
     apiKey,
+    // Memory runs on the local background model; the chat's model above is only
+    // a fallback, used when allowed in Settings → Memory
+    background: { ollamaBaseUrl: providerSettings.ollama.baseUrl, utilityModel: providerSettings.ollama.utilityModel },
   };
 
   // POST and return a readable error string (or null on success) so a

@@ -365,6 +365,9 @@ export interface MemoryTaskRequest {
   apiKey?:         string;
   /** /api/drawer/episode only */
   mode?:           "episode" | "reflect";
+  /** Run on the background model (lib/server/backgroundModel.ts) instead of the
+   *  provider above, which is then only a fallback the user may allow */
+  background?:     { ollamaBaseUrl?: string; utilityModel?: string };
 }
 
 // ─── Generation Parameters ───────────────────────────────────────────────────

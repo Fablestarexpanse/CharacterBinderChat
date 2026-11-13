@@ -40,14 +40,24 @@ export interface LlmBackend {
  * can get prose with the JSON embedded in it, which is why every caller goes
  * through parseLLMJson rather than JSON.parse.
  */
-export function callLLM(backend: LlmBackend, prompt: string): Promise<string> {
+export function callLLM(backend: LlmBackend, prompt: string, opts: { maxTokens?: number } = {}): Promise<string> {
   const { providerType, providerBaseUrl, modelId, apiKey } = backend;
   if (providerType === "ollama") return callOllama(providerBaseUrl, modelId, prompt);
   if (providerType === "openrouter") {
-    return callOpenAICompat(OPENROUTER_API_BASE, modelId, prompt, apiKey);
+    // Without a key OpenRouter answers 401; say what is missing instead
+    if (!apiKey) return Promise.reject(new Error("no OpenRouter key: add it in Settings → Chat models"));
+    return callOpenAICompat(OPENROUTER_API_BASE, modelId, prompt, apiKey, undefined, opts.maxTokens);
   }
-  return callOpenAICompat(providerBaseUrl, modelId, prompt);
+  return callOpenAICompat(providerBaseUrl, modelId, prompt, undefined, undefined, opts.maxTokens);
 }
+
+/**
+ * The longest answer a behind-the-scenes call may produce. Without a limit
+ * OpenRouter reserves credit for the model's whole output window (tens of
+ * thousands of tokens on large models) and refuses with 402 when the balance
+ * cannot cover that, even though the answer is a few hundred tokens.
+ */
+export const DEFAULT_MAX_TOKENS = 2048;
 
 /**
  * Validate a caller-supplied provider base URL and return it without its
@@ -95,7 +105,8 @@ export async function callOpenAICompat(
   modelId:    string,
   prompt:     string,
   apiKey?:    string,
-  timeoutMs = 45_000
+  timeoutMs = 45_000,
+  maxTokens = DEFAULT_MAX_TOKENS,
 ): Promise<string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
@@ -105,10 +116,17 @@ export async function callOpenAICompat(
     body:    JSON.stringify({
       model:    modelId,
       stream:   false,
+      max_tokens: maxTokens,
       messages: [{ role: "user", content: prompt }],
     }),
     signal: AbortSignal.timeout(timeoutMs),
   });
+  if (res.status === 401 || res.status === 403) {
+    throw new Error(`the provider refused the API key (HTTP ${res.status}): check it in Settings → Chat models`);
+  }
+  if (res.status === 402) {
+    throw new Error("the provider wants more credit for this request (HTTP 402): top up, or choose a cheaper model for this chat");
+  }
   if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
   const data = (await res.json()) as {
     choices?: Array<{ message?: { content?: string } }>;

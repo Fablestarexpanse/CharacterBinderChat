@@ -99,7 +99,7 @@ export interface SetupState {
 let setup: SetupState = { running: false, step: "", steps: [], done: 0, log: [] };
 export const setupState = (): SetupState => setup;
 
-const STEPS = ["Find or get uv", "Create the Python environment", "Install PyTorch", "Install the VibeVoice engine", "Download the model", "Download demo voices", "Check it starts"];
+const STEPS = ["Find or get uv", "Create the Python environment", "Install PyTorch", "Install the VibeVoice engine", "Download the model", "Download demo voices", "Check it speaks"];
 
 /** Where the setup log is also written, so a restart of FableChat cannot lose it */
 let logFile: string | null = null;
@@ -205,7 +205,14 @@ export function startSetup(folder: string, model: string): { ok: true } | { ok: 
       // Every download at a fixed revision: a change upstream cannot change what you get
       const revision = VOICE_MODELS.find((m) => m.id === model)!.revision;
       await run(py, ["-c", "import sys; from huggingface_hub import snapshot_download; snapshot_download(sys.argv[1], revision=sys.argv[3], local_dir=sys.argv[2])", model, modelDir(r.folder!, model), revision]);
-      await run(py, ["-c", "import sys; from huggingface_hub import snapshot_download; snapshot_download(sys.argv[1], revision=sys.argv[2], allow_patterns=['tokenizer*', 'vocab.json', 'merges.txt', 'config.json', 'generation_config.json'])", TOKENIZER_REPO, TOKENIZER_REVISION],
+      // The engine loads the tokenizer by name, offline, which reads the cache's refs/main. A download
+      // by commit does not write that pointer, so it is written here (without it the model never loads)
+      await run(py, ["-c", [
+        "import sys, os; from huggingface_hub import snapshot_download",
+        "p = snapshot_download(sys.argv[1], revision=sys.argv[2], allow_patterns=['tokenizer*', 'vocab.json', 'merges.txt', 'config.json', 'generation_config.json'])",
+        "refs = os.path.join(os.path.dirname(os.path.dirname(p)), 'refs'); os.makedirs(refs, exist_ok=True)",
+        "open(os.path.join(refs, 'main'), 'w').write(sys.argv[2])",
+      ].join("; "), TOKENIZER_REPO, TOKENIZER_REVISION],
         { env: { HF_HOME: hfHome(r.folder!) } });
       // Vocal isolation (cleans voice samples): the fork fetches it on first use, but the server runs
       // offline, so it is fetched here, into the folder the fork looks in
@@ -230,6 +237,18 @@ export function startSetup(folder: string, model: string): { ok: true } | { ok: 
       step(6);
       saveRuntime({ ...r, installed: true, installedAt: new Date().toISOString() });
       await ensureRunning();
+      // A running server is not enough: speak one short line, so a model that cannot load
+      // (a missing tokenizer, too little graphics memory) fails here, not on the first reply
+      log("Speaking a test line (this loads the model, about half a minute)…");
+      const test = await fetch(`http://127.0.0.1:${r.port}/v1/audio/speech`, {
+        method: "POST", headers: voiceHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ input: "Voice is ready.", voice: `demo:${DEMO_FILES[0]}`, response_format: "wav" }),
+        signal: AbortSignal.timeout(900_000),
+      });
+      if (!test.ok) {
+        const j = (await test.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(`the voice model did not load: ${j?.error ?? `HTTP ${test.status}`}`);
+      }
       setup.done = STEPS.length;
       setup.step = "Ready";
       log("Voice is ready.");

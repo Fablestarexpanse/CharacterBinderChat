@@ -55,6 +55,26 @@ export function SecretsSync() {
       }
       if (disposed) return;
 
+      // The server can lose the key while this tab still holds it: a fresh copy of FableChat at
+      // the same address, a restored backup (backups never carry keys). Whenever the tab comes
+      // back into view, and every minute, a server without a key gets this tab's one again.
+      const heal = async () => {
+        const held = useFableStore.getState().providerSettings.openrouter.apiKey;
+        if (!held || disposed) return;
+        try {
+          const { openrouterApiKey } = await getJson<{ openrouterApiKey: string | null }>("/api/secrets");
+          if (!openrouterApiKey && !disposed) {
+            await sendJson("PUT", "/api/secrets", { openrouterApiKey: held });
+            confirmed(held);
+          }
+        } catch { /* server unreachable: try again next time */ }
+      };
+      const onVisible = () => { if (document.visibilityState === "visible") void heal(); };
+      document.addEventListener("visibilitychange", onVisible);
+      window.addEventListener("focus", onVisible);
+      const every = setInterval(() => void heal(), 60_000);
+      const stopHeal = () => { document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("focus", onVisible); clearInterval(every); };
+
       unsubscribe = useFableStore.subscribe((state, prev) => {
         const key = state.providerSettings.openrouter.apiKey;
         if (key === prev.providerSettings.openrouter.apiKey || key === lastSent) return;
@@ -65,6 +85,8 @@ export function SecretsSync() {
             .catch((e: Error) => console.warn("[secrets] save failed:", e.message));
         }, DEBOUNCE_MS);
       });
+      const unsubscribeStore = unsubscribe;
+      unsubscribe = () => { unsubscribeStore(); stopHeal(); };
     })();
 
     return () => { disposed = true; unsubscribe(); if (timer) clearTimeout(timer); };

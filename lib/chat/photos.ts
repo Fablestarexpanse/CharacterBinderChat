@@ -5,6 +5,7 @@
 // references, likeness workflow), stored as an asset, and remembered as a
 // dated fact so the character knows what they sent.
 
+import { workflowsForLikeness } from "@/lib/chat/workflowNodes";
 import { useFableStore } from "@/lib/store";
 import { getJson, sendJson } from "@/lib/api/client";
 import { queueImage } from "@/lib/chat/imageGen";
@@ -13,7 +14,6 @@ import { clientPromptTemplate } from "@/lib/chat/promptOverrides";
 import { renderTemplate } from "@/lib/prompts/render";
 import { settingsForPerson } from "@/lib/media/imageLook";
 import { DEFAULT_CONTACT, cleanContactSettings, type ContactSettings } from "@/lib/media/contact";
-import type { WorkflowSummary } from "@/lib/api/dto";
 import { whileMaking } from "@/lib/chat/inflight";
 import type { Attachment, Character, ImageJob } from "@/lib/types";
 
@@ -98,7 +98,7 @@ async function photoNow(chatId: string, messageId: string, attachmentId: string,
   update({ status: "pending", awaitingReview: false, error: undefined, prompt });
 
   const workflows = character.image?.likeness
-    ? await getJson<{ workflows?: WorkflowSummary[] }>("/api/workflows").then((d) => d.workflows ?? []).catch(() => [])
+    ? await workflowsForLikeness()
     : [];
   const settings = settingsForPerson({ ...st.imageSettings, prompt, batchCount: 1 }, character, workflows);
   const job = queueImage(settings, chatId);

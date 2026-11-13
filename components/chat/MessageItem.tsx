@@ -86,8 +86,11 @@ export function MessageItem({ message }: MessageItemProps) {
   const handleSceneImage = async () => {
     if (imagining) return;
     setImagining(true);
+    setSpeakError(null);
     try {
-      await generateSceneImage(message.chatId, { uptoMessageId: message.id });
+      // A failure is shown under the message, not only in the console (the button looked dead)
+      const r = await generateSceneImage(message.chatId, { uptoMessageId: message.id });
+      if (!r.ok) setSpeakError(`No picture: ${r.error ?? "the scene director failed"}`);
     } finally {
       setImagining(false);
     }

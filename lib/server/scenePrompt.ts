@@ -6,6 +6,7 @@
 import type { MessageRole } from "@/lib/types";
 import { promptDef } from "@/lib/prompts/defaults";
 import { renderTemplate } from "@/lib/prompts/render";
+import { isProviderType, parseProviderBase, type LlmBackend } from "@/lib/llm/callers";
 
 export interface SceneDirectorInput {
   messages:      Array<{ role: MessageRole; content: string; speaker?: string }>;
@@ -44,4 +45,17 @@ export function buildDirectorMessages(
 // never send that to the image model.
 export function looksLikeInstructionLeak(p: string): boolean {
   return /FINAL_IMAGE_PROMPT|thinking process|restat(e|ing) (these )?(rules|instructions)|image-prompt director|roleplay excerpt|no narration/i.test(p);
+}
+
+/**
+ * The chat's own model, for when the local director (Ollama) cannot run: the
+ * body's `fallback`, if it names a usable backend. OpenRouter always goes to
+ * openrouter.ai; any other base must be an http(s) URL.
+ */
+export function directorFallback(raw: unknown): LlmBackend | null {
+  const f = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  if (!isProviderType(f.providerType) || typeof f.modelId !== "string" || !f.modelId.trim()) return null;
+  const base = f.providerType === "openrouter" ? "https://openrouter.ai/api" : parseProviderBase(String(f.providerBaseUrl ?? ""));
+  if (!base) return null;
+  return { providerType: f.providerType, providerBaseUrl: base, modelId: f.modelId, apiKey: typeof f.apiKey === "string" ? f.apiKey : undefined };
 }

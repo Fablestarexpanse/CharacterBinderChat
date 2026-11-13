@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { badRequest, parseMemoryTaskRequest, routeError, upstreamError } from "@/lib/api/server";
+import { withBackground } from "@/lib/server/backgroundModel";
 import { writeEpisode } from "@/lib/server/episodeWriter";
 
 export const dynamic = "force-dynamic";
@@ -20,8 +21,11 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const task = parseMemoryTaskRequest(await req.json(), { requireMessages: false });
-    if (!task.ok) return task.response;
+    const parsed = parseMemoryTaskRequest(await req.json(), { requireMessages: false });
+    if (!parsed.ok) return parsed.response;
+    const value = await withBackground(parsed.value);
+    if (value instanceof Response) return value;
+    const task = { ...parsed, value };
 
     const mode = task.value.mode ?? "episode";
     if (mode !== "reflect" && !task.value.messages?.length) {

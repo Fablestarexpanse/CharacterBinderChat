@@ -7,11 +7,12 @@
 // the local uncensored utility model → distilled visual prompt → ComfyUI job
 // → image message placed at the right spot in the chat.
 
+import { workflowsForLikeness } from "@/lib/chat/workflowNodes";
 import { useFableStore, DEFAULT_UTILITY_MODEL } from "@/lib/store";
 import { ComfyUIProvider } from "@/lib/providers/comfyui";
-import { getJson, sendJson } from "@/lib/api/client";
-import { settingsForPerson } from "@/lib/media/imageLook";
-import type { WorkflowSummary } from "@/lib/api/dto";
+import { sendJson } from "@/lib/api/client";
+import { plainWhenNoLora, settingsForPerson } from "@/lib/media/imageLook";
+import { resolveRouteCredentials } from "@/lib/providers/factory";
 import type { ImageJob, ImageGenerationSettings } from "@/lib/types";
 
 /**
@@ -41,7 +42,9 @@ export interface QueueOptions {
   kind?: "video";
 }
 
-export function queueImage(settings: ImageGenerationSettings, chatId?: string, opts: QueueOptions = {}): ImageJob {
+export function queueImage(requested: ImageGenerationSettings, chatId?: string, opts: QueueOptions = {}): ImageJob {
+  // With no LoRA to apply, a LoRA pipeline is made with its plain workflow
+  const settings = plainWhenNoLora(requested);
   const store = useFableStore.getState();
   const comfyui = new ComfyUIProvider(store.providerSettings.comfyui.baseUrl);
   const job: ImageJob = {
@@ -149,6 +152,8 @@ export async function generateSceneImage(
           : undefined,
         ollamaBaseUrl: store.providerSettings.ollama.baseUrl,
         modelId:       store.providerSettings.ollama.utilityModel ?? DEFAULT_UTILITY_MODEL,
+        // Without a local Ollama the director runs on this chat's own model instead
+        ...(chat.modelId ? { fallback: { ...resolveRouteCredentials(chat.providerId, store.providerSettings), modelId: chat.modelId } } : {}),
       });
       if (data.prompt) {
         prompt = data.prompt;
@@ -177,7 +182,7 @@ export async function generateSceneImage(
   // LoRA, avoid-tags and fixed seed), so the scene director cannot paraphrase it away
   // Only fetch the workflow list when a likeness workflow might be needed
   const workflows = character?.image?.likeness
-    ? await getJson<{ workflows?: WorkflowSummary[] }>("/api/workflows").then((d) => d.workflows ?? []).catch(() => [])
+    ? await workflowsForLikeness()
     : [];
   const job = queueImage(settingsForPerson({ ...store.imageSettings, prompt }, character, workflows), chatId);
 

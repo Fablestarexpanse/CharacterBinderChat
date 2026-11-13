@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getStore } from "@/lib/db";
 import { rewriteCoreMemory } from "@/lib/server/memoryRewriter";
 import { parseMemoryTaskRequest, routeError } from "@/lib/api/server";
+import { withBackground } from "@/lib/server/backgroundModel";
 
 export const dynamic = "force-dynamic";
 
@@ -19,10 +20,12 @@ export async function POST(req: NextRequest) {
   try {
     const parsed = parseMemoryTaskRequest(await req.json());
     if (!parsed.ok) return parsed.response;
+    const task = await withBackground(parsed.value);
+    if (task instanceof Response) return task;
     const {
       chatId, characterId, characterName, personaName, characterAnchor,
       messages, providerType, providerBaseUrl, modelId, apiKey,
-    } = parsed.value;
+    } = task;
 
     // Ensure core memory exists before trying to rewrite it
     getStore().ensureCoreMemory(chatId, characterId, characterName ?? characterId);

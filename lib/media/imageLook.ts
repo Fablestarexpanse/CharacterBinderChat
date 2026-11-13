@@ -157,3 +157,16 @@ export function settingsForPerson(
   const slug = who.image?.likeness && refs.length ? likenessWorkflow(workflows) : null;
   return slug ? { ...out, workflow: slug } : out;
 }
+
+/**
+ * LoRA pipelines and the plain workflow each is built on. A LoRA pipeline with
+ * no LoRA to apply would only add nodes (and model files the plain workflow
+ * does not need), so the picture is made with the plain one.
+ */
+export const PLAIN_FOR_LORA_PIPELINE: Readonly<Record<string, string>> = { "krea2-lora-pipeline": "krea2-photo" };
+
+/** The settings to queue: a LoRA pipeline with an empty LoRA list becomes its plain workflow */
+export function plainWhenNoLora(settings: ImageGenerationSettings): ImageGenerationSettings {
+  const plain = PLAIN_FOR_LORA_PIPELINE[settings.workflow];
+  return plain && !settings.loras?.length ? { ...settings, workflow: plain } : settings;
+}

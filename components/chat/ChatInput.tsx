@@ -118,7 +118,7 @@ export function ChatInput() {
         focus: focus || undefined,
         onPhase: (phase) => setDirecting(phase === "directing"),
       });
-      if (!result.ok) console.warn("[/image] scene director failed:", result.error);
+      if (!result.ok) setPictureError(`No picture: ${result.error ?? "the scene director failed"}`);
     } finally {
       setDirecting(false);
     }
