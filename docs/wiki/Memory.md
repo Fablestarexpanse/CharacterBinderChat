@@ -39,6 +39,29 @@ On any fact:
 
 The **🧠** button under a reply shows the memory that shaped it.
 
+## The memory model (runs on your computer)
+
+Memory is written after every reply, and that work does not use your chat model. A chat model may be a paid cloud
+one, and memory runs often, so FableChat uses a small free model on your own computer instead: **Qwen3 4B Instruct**
+(2.5 GB). It also writes the prompts for scene pictures.
+
+**Settings → Memory → Memory model** shows which model is in use and how to get one. There are two ways:
+
+- **With Ollama.** If [Ollama](https://ollama.com) is installed, FableChat starts it when needed. Press **Download
+  Qwen3 4B Instruct** once to add the model to Ollama.
+- **Without Ollama: the built-in model.** Press **Set up the built-in model**. FableChat downloads
+  [llama.cpp](https://github.com/ggml-org/llama.cpp) (about 37 MB) and the model (2.5 GB) into a folder you choose
+  (`data/local-model` unless you change it) and runs it itself. Both downloads are fixed versions checked against a
+  known fingerprint, so a changed or damaged file is refused. It uses your graphics card when it can, otherwise the
+  processor, starts only when memory needs it and stops after ten idle minutes, so it does not hold memory you need
+  for pictures or voice. **Stop now** and **Remove** are on the same card.
+
+FableChat tries Ollama first, then the built-in model.
+
+**Use my chat model when no local model is running** is a separate switch, off by default. Off: when neither local
+model is there, memory waits and tells you why. On: memory uses the chat's own model instead, which costs money on a
+paid model.
+
 ## Seeing the whole prompt
 
 The **eye icon** in the chat header (**Peek Prompt**) shows exactly what the model receives: the last prompt sent, or
@@ -51,6 +74,7 @@ moment*. Branches from recent messages are exact; very old ones are marked appro
 
 ## Tips
 
-- Memory is written after each reply, by the chat model. A slow model means the inspector catches up a little later.
+- Memory is written after each reply, by the memory model above. On a computer without a graphics card it is slower,
+  so the inspector catches up a little later.
 - Correct a wrong fact rather than arguing with the character: edit or lock it in **Memory**.
 - Local Ollama with the `nomic-embed-text` model makes fact retrieval smarter. Without it, FableChat matches words.

@@ -277,6 +277,9 @@ The current plan is [`docs/plan-2026-11.md`](docs/plan-2026-11.md), drawn from t
 - [ ] Export a chat as a story document
 - [x] Characters who text and call you, with photos and video clips that look like them (opt-in)
 - [x] Voices for characters and personas (local VibeVoice), Play and Read replies aloud, and a narrator
+- [x] Memory and image prompts on a free local model (Ollama, or a built-in llama.cpp model FableChat downloads and runs)
+- [x] Start a chat by choosing persona, scenario, lorebooks and first message; saved first messages; archive and delete chats
+- [x] Separate install, update and start scripts (start never installs)
 - [ ] Voice notes, spoken calls and group dialogue, and the rest of [`docs/plan-contact-media.md`](docs/plan-contact-media.md)
 
 ---
@@ -291,7 +294,7 @@ npm run dev        # dev server with hot reload
 npm run build      # production build
 npm run lint       # ESLint
 npm run typecheck  # tsc --noEmit
-npm test           # ~525 unit tests (node --test, no server, no API key)
+npm test           # ~565 unit tests (node --test, no server, no API key)
 npm run audit:prod # high/critical advisories in what ships
 npm run eval:gate  # offline check of the extraction gate against recorded soaks
 ```
