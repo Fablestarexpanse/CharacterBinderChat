@@ -40,7 +40,7 @@ import { putAsset, getAsset, gcAssets, referencedAssets, decodeDataUrl, assetUrl
 
 const APP_TABLES: Record<string, string> = {
   characters: "app_characters", chats: "app_chats", personas: "app_personas",
-  lorebooks: "app_lorebooks", scenarios: "app_scenarios", presets: "app_presets",
+  lorebooks: "app_lorebooks", scenarios: "app_scenarios", openers: "app_openers", presets: "app_presets",
 };
 
 function now(): number {
@@ -106,7 +106,7 @@ export class FableStore {
     addCol("facts", "pinned", "pinned INTEGER NOT NULL DEFAULT 0");
     addCol("facts", "locked", "locked INTEGER NOT NULL DEFAULT 0");
     // Revision that last wrote each app row (see app_tombstones in the schema)
-    for (const t of ["app_characters", "app_chats", "app_personas", "app_lorebooks", "app_scenarios", "app_presets"]) {
+    for (const t of ["app_characters", "app_chats", "app_personas", "app_lorebooks", "app_scenarios", "app_openers", "app_presets"]) {
       addCol(t, "rev", "rev INTEGER NOT NULL DEFAULT 0");
     }
   }

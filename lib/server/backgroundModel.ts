@@ -17,8 +17,8 @@ import path from "node:path";
 import { getStore } from "@/lib/db";
 import { parseProviderBase, type LlmBackend } from "@/lib/llm/callers";
 
-/** The small model FableChat downloads into Ollama for memory and image prompts */
-export const MEMORY_MODEL = { id: "qwen3:4b-instruct-2507-q4_K_M", label: "Qwen3 4B Instruct", gb: 2.5 } as const;
+import { MEMORY_MODEL } from "@/lib/llm/memoryModel";
+export { MEMORY_MODEL };
 
 const KEY = "background:model";
 

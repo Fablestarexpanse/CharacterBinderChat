@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useFableStore, type SidebarSection } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { NavItem } from "./NavItem";
 import { SystemStatus } from "./SystemStatus";
 import { ContactPill } from "./ContactPill";
@@ -12,9 +11,10 @@ import { useHydrated } from "@/lib/hooks/useHydrated";
 import { truncate, formatAgeFromIso } from "@/lib/utils";
 import type { Chat, Character } from "@/lib/types";
 import { answerCall, declineCall } from "@/lib/chat/calls";
+import { DeleteChatDialog } from "@/components/chat/DeleteChatDialog";
 import { unlockSounds } from "@/lib/chat/sounds";
 import {
-  MessageSquare, Group, BookOpen, Sliders, ImageIcon, GalleryHorizontal, GitBranch, Settings, Plus, Sparkles, Pencil, Trash2, Clapperboard, Library, Phone, PhoneOff, PhoneMissed, MessageCircle,
+  MessageSquare, Group, BookOpen, Sliders, ImageIcon, GalleryHorizontal, GitBranch, Settings, Plus, Sparkles, Pencil, Trash2, Clapperboard, Library, MessageSquareQuote, Phone, PhoneOff, PhoneMissed, MessageCircle,
 } from "lucide-react";
 import { useUiStore } from "@/lib/store/ui";
 
@@ -24,6 +24,7 @@ export const NAV_ITEMS: { id: SidebarSection; label: string; icon: React.Element
   { id: "groups", label: "Groups", icon: Group },
   { id: "lorebooks", label: "Lorebooks", icon: BookOpen },
   { id: "scenarios", label: "Scenarios", icon: Clapperboard },
+  { id: "openers", label: "First messages", icon: MessageSquareQuote },
   { id: "presets", label: "Presets", icon: Sliders },
   { id: "image-studio", label: "Image Studio", icon: ImageIcon },
   { id: "gallery", label: "Gallery", icon: GalleryHorizontal },
@@ -38,7 +39,8 @@ export function Sidebar() {
   // All chats, newest first. This list is the only way to open a chat, so it
   // must never be capped — a slice(0, 8) here once made older chats
   // permanently unreachable. The container scrolls.
-  const recentChats = [...chats]
+  // Archived chats are put away: not in Recent Chats (the Chats screen can show them)
+  const recentChats = chats.filter((c) => !c.archived)
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
   return (
@@ -125,7 +127,7 @@ function ChatRow({
   character?: Character;
   isActive: boolean;
 }) {
-  const { setActiveChatId, renameChat, deleteChat } = useFableStore();
+  const { setActiveChatId, renameChat } = useFableStore();
   const { setActiveSection } = useUiStore();
   const unread = useUiStore((s) => s.unreadChats[chat.id] ?? 0);
   // What just came in on this chat, shown on its row rather than over the screen
@@ -254,33 +256,7 @@ function ChatRow({
       )}
 
       {/* Deleting a chat purges its memory too — always ask first */}
-      <Dialog open={confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(false)}>
-        <DialogContent
-          className="max-w-sm p-5"
-          aria-describedby={undefined}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <DialogTitle>Delete “{chat.name}”?</DialogTitle>
-          <p className="text-xs text-[var(--muted-fg)] mt-2 leading-relaxed">
-            This permanently deletes the chat and everything the character
-            remembers from it — {chat.messages.length} message{chat.messages.length !== 1 ? "s" : ""},
-            facts, stats, and episodes. This can’t be undone.
-          </p>
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" size="sm" onClick={() => setConfirmDelete(false)}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              className="bg-red-600 hover:bg-red-700 text-white"
-              onClick={() => { setConfirmDelete(false); deleteChat(chat.id); }}
-            >
-              <Trash2 className="h-3 w-3 mr-1.5" />
-              Delete chat
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <DeleteChatDialog chat={chat} open={confirmDelete} onClose={() => setConfirmDelete(false)} />
     </div>
   );
 }

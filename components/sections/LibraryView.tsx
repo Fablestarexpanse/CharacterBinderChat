@@ -1,7 +1,8 @@
 "use client";
 
 // ─── Library ──────────────────────────────────────────────────────────────────
-// Every card in one place: characters, personas, lorebooks, scenarios. Search,
+// Every card in one place: characters, personas, lorebooks, scenarios and saved
+// first messages (which are not cards, so they are not exported). Search,
 // sort, filter by tag, select several, export them as one archive (which imports
 // back here or into CharacterBinder), or delete them with a clear account of what
 // depends on them. Editing still happens in each kind's own editor; the Library is
@@ -9,7 +10,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import {
-  BookOpen, Check, CheckSquare, Clapperboard, Download, MessageSquare, Plus, Search, Square, Trash2, Upload,
+  BookOpen, Check, CheckSquare, Clapperboard, Download, MessageSquare, MessageSquareQuote, Plus, Search, Square, Trash2, Upload,
   UserCircle2, Users, X,
   Sparkles,
 } from "lucide-react";
@@ -31,7 +32,7 @@ import { chatsUsingCharacter, charactersUsingLorebook, plural } from "@/lib/chat
 import type { Character } from "@/lib/types";
 import { addDemoStory } from "@/lib/demo";
 
-type Tab = "characters" | "personas" | "lorebooks" | "scenarios";
+type Tab = "characters" | "personas" | "lorebooks" | "scenarios" | "openers";
 type Sort = "updated" | "name" | "created";
 
 /** One row in any tab, so search, sort and selection are written once. */
@@ -52,13 +53,14 @@ const TABS: Array<{ id: Tab; label: string; icon: typeof Users }> = [
   { id: "personas",   label: "Personas",   icon: UserCircle2 },
   { id: "lorebooks",  label: "Lorebooks",  icon: BookOpen },
   { id: "scenarios",  label: "Scenarios",  icon: Clapperboard },
+  { id: "openers",    label: "First messages", icon: MessageSquareQuote },
 ];
 
 const oneLine = (s: string | undefined, n = 140) => (s ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
 export function LibraryView() {
   const store = useFableStore();
-  const { characters, personas, lorebooks, scenarios, chats, activePersonaId, setActivePersona } = store;
+  const { characters, personas, lorebooks, scenarios, openers, chats, activePersonaId, setActivePersona } = store;
   const { openCharacterEditor, setActiveSection, setFocusCardId } = useUiStore();
 
   const [tab, setTab] = useState<Tab>("characters");
@@ -81,8 +83,9 @@ export function LibraryView() {
       case "personas":   return personas.map((p) => ({ id: p.id, name: p.name, detail: oneLine(p.description), tags: [], avatar: p.avatar, created: p.createdAt, updated: p.updatedAt }));
       case "lorebooks":  return lorebooks.map((b) => ({ id: b.id, name: b.name, detail: `${plural(b.entries.length, "entry", "entries")}${b.description ? ` · ${oneLine(b.description, 80)}` : ""}`, tags: [], banner: b.banner, created: b.createdAt, updated: b.createdAt }));
       case "scenarios":  return scenarios.map((s) => ({ id: s.id, name: s.name, detail: oneLine(s.scenario), tags: [], banner: s.banner, created: s.createdAt, updated: s.updatedAt }));
+      case "openers":    return openers.map((o) => ({ id: o.id, name: o.name, detail: oneLine(o.text), tags: [], created: o.createdAt, updated: o.updatedAt }));
     }
-  }, [tab, characters, personas, lorebooks, scenarios]);
+  }, [tab, characters, personas, lorebooks, scenarios, openers]);
 
   const allTags = useMemo(() => {
     const counts = new Map<string, number>();
@@ -159,9 +162,10 @@ export function LibraryView() {
       if (tab === "characters") s.deleteCharacter(i.id);
       else if (tab === "personas") s.deletePersona(i.id);
       else if (tab === "lorebooks") s.deleteLorebook(i.id);
-      else s.deleteScenario(i.id);
+      else if (tab === "scenarios") s.deleteScenario(i.id);
+      else s.deleteOpener(i.id);
     }
-    setNotice({ kind: "info", text: `Deleted ${plural(picked.length, tab.slice(0, -1))}.` });
+    setNotice({ kind: "info", text: `Deleted ${plural(picked.length, tabLabel.slice(0, -1).toLowerCase())}.` });
     setSelected(new Set()); setConfirmDelete(false); setSelecting(false);
   };
 
@@ -190,7 +194,7 @@ export function LibraryView() {
     else { setFocusCardId(id); setActiveSection(tab); }
   };
 
-  const counts: Record<Tab, number> = { characters: characters.length, personas: personas.length, lorebooks: lorebooks.length, scenarios: scenarios.length };
+  const counts: Record<Tab, number> = { characters: characters.length, personas: personas.length, lorebooks: lorebooks.length, scenarios: scenarios.length, openers: openers.length };
   const total = counts.characters + counts.personas + counts.lorebooks + counts.scenarios;
   const tabLabel = TABS.find((t) => t.id === tab)!.label;
 
@@ -272,9 +276,11 @@ export function LibraryView() {
             <button className="underline cursor-pointer text-[var(--foreground)]" onClick={() => setSelected(new Set(visible.map((i) => i.id)))}>Select all {visible.length}</button>
             <span className="text-[var(--muted-fg)]">{picked.length} selected</span>
             <div className="flex-1" />
-            <Button variant="outline" size="sm" disabled={picked.length === 0} onClick={() => exportSelection(new Set(picked.map((i) => i.id)))}>
-              <Download className="h-3 w-3 mr-1" />Export {picked.length || ""} as .zip
-            </Button>
+            {tab !== "openers" && (
+              <Button variant="outline" size="sm" disabled={picked.length === 0} onClick={() => exportSelection(new Set(picked.map((i) => i.id)))}>
+                <Download className="h-3 w-3 mr-1" />Export {picked.length || ""} as .zip
+              </Button>
+            )}
             <Button variant="outline" size="sm" className="text-red-600 border-red-200" disabled={picked.length === 0} onClick={() => setConfirmDelete(true)}>
               <Trash2 className="h-3 w-3 mr-1" />Delete…
             </Button>
@@ -376,6 +382,9 @@ export function LibraryView() {
                           <Button variant="outline" size="sm" onClick={() => openItem(i.id)}>Edit</Button>
                           <ExportButtons png={false} run={(f) => exportLorebook(lorebooks.find((b) => b.id === i.id)!, f)} />
                         </>
+                      )}
+                      {tab === "openers" && (
+                        <Button variant="outline" size="sm" onClick={() => openItem(i.id)}>Edit</Button>
                       )}
                       {tab === "scenarios" && (
                         <>

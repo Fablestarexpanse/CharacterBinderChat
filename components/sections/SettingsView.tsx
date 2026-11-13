@@ -20,6 +20,7 @@ import { PictureReaderCard } from "@/components/settings/PictureReaderCard";
 import { VoiceSetupCard } from "@/components/settings/VoiceSetupCard";
 import { NarratorCard } from "@/components/settings/NarratorCard";
 import { BackgroundModelCard } from "@/components/settings/BackgroundModelCard";
+import { OpenRouterDefaultModel } from "@/components/settings/OpenRouterDefaultModel";
 import { ContactCard } from "@/components/settings/ContactCard";
 import { useUiStore, SETTINGS_TABS, type SettingsTab } from "@/lib/store/ui";
 
@@ -577,6 +578,7 @@ export function SettingsView() {
               placeholder="sk-or-…"
             />
           </div>
+          <OpenRouterDefaultModel />
         </ProviderCard>
 
         <PictureReaderCard />

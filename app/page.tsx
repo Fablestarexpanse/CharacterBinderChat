@@ -12,6 +12,7 @@ import { SettingsView } from "@/components/sections/SettingsView";
 import { LibraryView } from "@/components/sections/LibraryView";
 import { LorebooksView } from "@/components/sections/LorebooksView";
 import { ScenariosView } from "@/components/sections/ScenariosView";
+import { OpenersView } from "@/components/sections/OpenersView";
 import { ImageStudioView } from "@/components/sections/ImageStudioView";
 import { GalleryView } from "@/components/sections/GalleryView";
 import { WorkflowsView } from "@/components/sections/WorkflowsView";
@@ -102,6 +103,7 @@ export default function Home() {
         {activeSection === "groups" && <GroupsView />}
         {activeSection === "lorebooks" && <LorebooksView />}
         {activeSection === "scenarios" && <ScenariosView />}
+        {activeSection === "openers" && <OpenersView />}
         {activeSection === "presets" && <PresetsView />}
         {activeSection === "image-studio" && <ImageStudioView />}
         {activeSection === "gallery" && <GalleryView />}

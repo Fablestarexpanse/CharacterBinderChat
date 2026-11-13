@@ -47,7 +47,7 @@ const MAX_WAIT_MS = 5000;  // during constant streaming, save at least this ofte
  * its own table for the same reason.
  */
 const SYNCED_COLLECTIONS = [
-  "characters", "chats", "personas", "lorebooks", "scenarios", "presets",
+  "characters", "chats", "personas", "lorebooks", "scenarios", "openers", "presets",
 ] as const;
 
 /** Singletons: not arrays, so they are counted and copied differently. */
@@ -284,6 +284,7 @@ export function startSync(): () => void {
           personas:   withIds(data.personas),
           lorebooks:  withIds(data.lorebooks),
           scenarios:  withIds(data.scenarios),
+          openers:    withIds(data.openers),
           presets:    withIds(data.presets),
           // Chats carry nested messages, so they get the extra check.
           chats:      withIds(data.chats).filter((c) => Array.isArray(c.messages)),

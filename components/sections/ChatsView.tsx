@@ -5,7 +5,8 @@
 // rather than dropping straight into whichever chat happened to be open —
 // with more than a couple of stories going, "take me to the last one" is the
 // wrong default. Opening a chat sets activeChatId; the header's back button
-// clears it to come back here.
+// clears it to come back here. Each chat can be archived (put away, nothing
+// lost; "Show archived" brings it back) or deleted, which always asks first.
 
 import { useState } from "react";
 import { useFableStore } from "@/lib/store";
@@ -15,18 +16,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useHydrated } from "@/lib/hooks/useHydrated";
 import { formatAgeFromIso, truncate } from "@/lib/utils";
-import { MessageSquare, Search, Plus, Users, ImageIcon } from "lucide-react";
+import { MessageSquare, Search, Plus, Users, ImageIcon, Archive, ArchiveRestore, Trash2 } from "lucide-react";
 import { useUiStore } from "@/lib/store/ui";
+import { DeleteChatDialog } from "@/components/chat/DeleteChatDialog";
+import type { Chat } from "@/lib/types";
 
 export function ChatsView() {
-  const { chats, characters, setActiveChatId } = useFableStore();
+  const { chats, characters, setActiveChatId, setChatArchived } = useFableStore();
   const { setChatBuilderOpen } = useUiStore();
   const [query, setQuery] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
+  const [deleting, setDeleting] = useState<Chat | null>(null);
+  const archivedCount = chats.filter((c) => c.archived).length;
   // Relative times depend on the clock, so they can't render during SSR
   const hydrated = useHydrated();
 
   const q = query.trim().toLowerCase();
   const visible = [...chats]
+    .filter((c) => !!c.archived === showArchived)
     .filter((c) => {
       if (!q) return true;
       const character = characters.find((ch) => ch.id === c.characterId)?.name ?? "";
@@ -45,7 +52,14 @@ export function ChatsView() {
           <div>
             <h1 className="text-xl font-bold text-[var(--foreground)]">Chats</h1>
             <p className="text-sm text-[var(--muted-fg)] mt-1">
-              {chats.length} conversation{chats.length === 1 ? "" : "s"}
+              {showArchived
+                ? `${archivedCount} archived`
+                : `${chats.length - archivedCount} conversation${chats.length - archivedCount === 1 ? "" : "s"}`}
+              {(archivedCount > 0 || showArchived) && (
+                <button onClick={() => setShowArchived((v) => !v)} className="ml-2 underline cursor-pointer hover:text-[var(--foreground)]">
+                  {showArchived ? "Back to chats" : `Show archived (${archivedCount})`}
+                </button>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -69,7 +83,7 @@ export function ChatsView() {
           <div className="rounded-xl border border-dashed border-[var(--border)] p-10 text-center">
             <MessageSquare className="h-6 w-6 text-[var(--muted-fg)] mx-auto mb-2" />
             <div className="text-sm text-[var(--muted-fg)]">
-              {q ? `No chats match “${query}”.` : "No chats yet — start one to begin a story."}
+              {q ? `No chats match “${query}”.` : showArchived ? "Nothing archived." : "No chats yet — start one to begin a story."}
             </div>
           </div>
         )}
@@ -85,10 +99,12 @@ export function ChatsView() {
             const imageCount = chat.messages.filter((m) => m.imageJobId).length;
 
             return (
+              <div key={chat.id}
+                className="group flex items-start gap-2 rounded-xl border border-[var(--border)] p-3 hover:border-[var(--purple)] hover:bg-[var(--purple-light)] transition-colors">
               <button
-                key={chat.id}
                 onClick={() => setActiveChatId(chat.id)}
-                className="w-full flex items-start gap-3 rounded-xl border border-[var(--border)] p-3 text-left hover:border-[var(--purple)] hover:bg-[var(--purple-light)] transition-colors cursor-pointer"
+                aria-label={`Open ${chat.name}`}
+                className="flex flex-1 min-w-0 items-start gap-3 text-left cursor-pointer"
               >
                 {isGroup ? (
                   <div className="flex -space-x-2 flex-shrink-0">
@@ -134,10 +150,24 @@ export function ChatsView() {
                   </div>
                 </div>
               </button>
+              <div className="flex flex-col gap-1 flex-shrink-0">
+                <Button variant="ghost" size="icon" className="h-7 w-7"
+                  title={chat.archived ? "Bring back to Chats" : "Archive: put it away, nothing is deleted"}
+                  aria-label={chat.archived ? `Unarchive ${chat.name}` : `Archive ${chat.name}`}
+                  onClick={() => setChatArchived(chat.id, !chat.archived)}>
+                  {chat.archived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
+                </Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-red-600" title="Delete this chat and its memory"
+                  aria-label={`Delete ${chat.name}`} onClick={() => setDeleting(chat)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              </div>
             );
           })}
         </div>
       </div>
+      {deleting && <DeleteChatDialog chat={deleting} open onClose={() => setDeleting(null)} />}
     </div>
   );
 }

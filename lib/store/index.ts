@@ -19,6 +19,7 @@ export type SidebarSection =
   | "groups"
   | "lorebooks"
   | "scenarios"
+  | "openers"
   | "presets"
   | "image-studio"
   | "gallery"
@@ -82,6 +83,7 @@ export const useFableStore = create<FableStore>()(
         customModels: state.customModels,
         lorebooks: state.lorebooks,
         scenarios: state.scenarios,
+        openers: state.openers,
         presets: state.presets,
         defaultPresetId: state.defaultPresetId,
         globalInstructions: state.globalInstructions,

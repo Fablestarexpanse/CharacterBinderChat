@@ -24,6 +24,7 @@ export const APP_COLLECTIONS = [
   ["personas",   "app_personas"],
   ["lorebooks",  "app_lorebooks"],
   ["scenarios",  "app_scenarios"],
+  ["openers",    "app_openers"],
   ["presets",    "app_presets"],
 ] as const satisfies ReadonlyArray<readonly [keyof PersistedAppState, string]>;
 
@@ -92,6 +93,7 @@ export function getAppState(db: DB): PersistedAppState {
     personas:   read("app_personas"),
     lorebooks:  read("app_lorebooks"),
     scenarios:  read("app_scenarios"),
+    openers:    read("app_openers"),
     presets:    read("app_presets"),
     chats,
     defaultPresetId:    getKv<string | null>(db, "defaultPresetId", null),
@@ -231,7 +233,7 @@ export function countAfterPatch(
  * it. Chats are the opposite: only the browser that is generating writes them, so
  * its copy always wins.
  */
-export const SERVER_WINS: readonly PatchName[] = ["characters", "lorebooks", "personas", "scenarios", "presets"];
+export const SERVER_WINS: readonly PatchName[] = ["characters", "lorebooks", "personas", "scenarios", "openers", "presets"];
 
 export interface PatchConflict {
   collection: PatchName;

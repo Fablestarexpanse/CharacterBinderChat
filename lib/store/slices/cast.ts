@@ -5,7 +5,7 @@ import type { StateCreator } from "zustand";
 import { uniqueSlugId } from "../defaults";
 import type { FableStore } from "../index";
 import type {
-  Character, Persona, Scenario,
+  Character, Opener, Persona, Scenario,
 } from "@/lib/types";
 
 export interface CastSlice {
@@ -30,6 +30,12 @@ export interface CastSlice {
   addScenario: (data: Omit<Scenario, "id" | "createdAt" | "updatedAt">) => string;
   updateScenario: (id: string, updates: Partial<Omit<Scenario, "id" | "createdAt">>) => void;
   deleteScenario: (id: string) => void;
+
+  // First messages — saved openers that can start any chat
+  openers: Opener[];
+  addOpener: (data: Omit<Opener, "id" | "createdAt" | "updatedAt">) => string;
+  updateOpener: (id: string, updates: Partial<Omit<Opener, "id" | "createdAt">>) => void;
+  deleteOpener: (id: string) => void;
 }
 
 export const createCastSlice: StateCreator<FableStore, [], [], CastSlice> = (set, get) => ({
@@ -104,6 +110,24 @@ export const createCastSlice: StateCreator<FableStore, [], [], CastSlice> = (set
   },
   deleteScenario: (id) => {
     set((s) => ({ scenarios: s.scenarios.filter((sc) => sc.id !== id) }));
+  },
+
+  openers: [],
+  addOpener: (data) => {
+    const id = `opener-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const now = new Date().toISOString();
+    set((s) => ({ openers: [...s.openers, { ...data, id, createdAt: now, updatedAt: now }] }));
+    return id;
+  },
+  updateOpener: (id, updates) => {
+    set((s) => ({
+      openers: s.openers.map((o) =>
+        o.id === id ? { ...o, ...updates, id, updatedAt: new Date().toISOString() } : o
+      ),
+    }));
+  },
+  deleteOpener: (id) => {
+    set((s) => ({ openers: s.openers.filter((o) => o.id !== id) }));
   },
 
   // ── Presets ─────────────────────────────────────────────────────────

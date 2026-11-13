@@ -6,7 +6,7 @@
 // "changed" is a reference comparison, not a deep one. A row that was rebuilt
 // with equal content is re-sent, which is wasteful but never wrong.
 
-export type SyncedName = "characters" | "chats" | "personas" | "lorebooks" | "scenarios" | "presets";
+export type SyncedName = "characters" | "chats" | "personas" | "lorebooks" | "scenarios" | "openers" | "presets";
 
 export interface AppStatePatch {
   upserts: Partial<Record<SyncedName, Array<{ id: string }>>>;

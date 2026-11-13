@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { GenerationSettingsDialog } from "./GenerationSettingsDialog";
 import { CustomModelDialog } from "./CustomModelDialog";
 import { PeekPromptDialog } from "./PeekPromptDialog";
+import { MEMORY_MODEL } from "@/lib/llm/memoryModel";
 import { regenerateLastReply } from "@/lib/chat/generation";
 import type { ModelInfo } from "@/lib/types";
 import {
@@ -70,7 +71,8 @@ export function ChatHeader() {
   // all. They still RUN — just not as a conversational choice here.
   const providerSettings = useFableStore((s) => s.providerSettings);
   const utilityModel = providerSettings.ollama.utilityModel ?? DEFAULT_UTILITY_MODEL;
-  const isBackendModel = (m: ModelInfo) => m.id === utilityModel || /embed/i.test(m.id);
+  // The memory model is for background jobs (lib/server/backgroundModel.ts), not for chatting
+  const isBackendModel = (m: ModelInfo) => m.id === utilityModel || m.id === MEMORY_MODEL.id || /embed/i.test(m.id);
   const chatModels = models.filter((m) => !isBackendModel(m));
 
   // A chat with no model yet DISPLAYS the first available model, but

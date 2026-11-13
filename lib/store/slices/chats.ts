@@ -16,7 +16,7 @@ export interface ChatsSlice {
    *  Object-shaped: the positional list had grown past readability. */
   hydrateFromServer: (data: PersistedAppState) => void;
   /** Take in rows another writer changed (see lib/sync/remote.ts). Replaces whole collections. */
-  applyRemoteCollections: (next: Partial<Pick<PersistedAppState, "characters" | "chats" | "personas" | "lorebooks" | "scenarios" | "presets">>) => void;
+  applyRemoteCollections: (next: Partial<Pick<PersistedAppState, "characters" | "chats" | "personas" | "lorebooks" | "scenarios" | "openers" | "presets">>) => void;
   /** Adds a message and returns its generated ID */
   addMessage: (chatId: string, message: Omit<Message, "id" | "timestamp">) => string;
   /** Insert a message directly after another (per-message image generation) */
@@ -69,6 +69,8 @@ export interface ChatsSlice {
   /** Toggle a group member in/out of the scene (absent = silent + unwitnessing) */
   toggleMemberPresence: (chatId: string, characterId: string) => void;
   deleteChat: (chatId: string) => void;
+  /** Archive (hide) or bring back a chat; its messages and memory are kept */
+  setChatArchived: (chatId: string, archived: boolean) => void;
   renameChat: (chatId: string, name: string) => void;
   /** Wipe messages (re-seeds the character's greeting if they have one) */
   clearChat: (chatId: string) => void;
@@ -118,6 +120,12 @@ function fillGreeting(
   return expandMacros(text, { char: characterName, user: persona?.name ?? "User" });
 }
 
+/** The model a new chat starts on: the default chosen in Settings → Chat models, if any */
+function defaultModelFor(state: FableStore): Pick<Chat, "providerId" | "modelId"> {
+  const m = state.providerSettings.openrouter.defaultModel?.trim();
+  return m ? { providerId: "openrouter", modelId: m } : {};
+}
+
 export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (set, get) => ({
   chats: [],
   activeChatId: null,
@@ -136,7 +144,7 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
     }),
 
   hydrateFromServer: ({
-    characters, chats, personas, lorebooks, scenarios,
+    characters, chats, personas, lorebooks, scenarios, openers,
     presets, defaultPresetId, globalInstructions,
   }) => {
     set((s) => ({
@@ -148,6 +156,7 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
       // (the localStorage seed re-pushed them after a cache clear).
       lorebooks,
       scenarios,
+      openers,
       presets,
       defaultPresetId,
       globalInstructions,
@@ -311,6 +320,8 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
       updatedAt: new Date().toISOString(),
       contextUsed: 0,
       contextMax: 8192,
+      // Your default model (Settings → Chat models), if you chose one
+      ...defaultModelFor(get()),
     };
     set((state) => ({ chats: [newChat, ...state.chats], activeChatId: id }));
     return id;
@@ -342,6 +353,8 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
       updatedAt: new Date().toISOString(),
       contextUsed: 0,
       contextMax: 8192,
+      // Your default model (Settings → Chat models), if you chose one
+      ...defaultModelFor(get()),
       ...(lorebookIds !== undefined ? { lorebookIds } : {}),
       ...(scenarioText?.trim() ? { scenarioText: scenarioText.trim() } : {}),
     };
@@ -385,6 +398,8 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
       updatedAt: new Date().toISOString(),
       contextUsed: 0,
       contextMax: 8192,
+      // Your default model (Settings → Chat models), if you chose one
+      ...defaultModelFor(get()),
     };
     set((state) => ({ chats: [newChat, ...state.chats], activeChatId: id }));
     return id;
@@ -399,6 +414,9 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
       return { ...c, absentIds: [...absent] };
     }));
   },
+
+  setChatArchived: (chatId, archived) =>
+    set((state) => patchChat(state, chatId, (c) => ({ ...c, archived: archived || undefined }))),
 
   deleteChat: (chatId) => {
     set((state) => {

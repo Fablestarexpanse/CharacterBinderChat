@@ -53,6 +53,19 @@ export interface Character {
  * Picked in the chat builder to override the character sheet's own
  * scenario/first message — one character, many stories.
  */
+/**
+ * A saved first message: an opening line that greets you when a chat starts,
+ * kept so it can open any chat with any character (Library → First messages).
+ * `{{char}}` and `{{user}}` are filled in when it is used.
+ */
+export interface Opener {
+  id: string;
+  name: string;
+  text: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Scenario {
   id: string;
   name: string;
@@ -190,6 +203,8 @@ export interface Chat {
   contextMax?: number;
   /** Speak each new reply in its writer's voice as it finishes (lib/chat/speech.ts) */
   readAloud?: boolean;
+  /** Put away: hidden from Chats and Recent Chats until you show archived chats. Nothing is deleted */
+  archived?: boolean;
   /** Which preset applies. Unset falls back to the store's defaultPresetId,
    *  resolved at read time so old chats pick up the default too. */
   presetId?: string;
@@ -312,7 +327,8 @@ export interface ProviderSettings {
    *  the /image scene-director step. */
   ollama: { baseUrl: string; enabled: boolean; utilityModel?: string };
   lmstudio: { baseUrl: string; enabled: boolean };
-  openrouter: { apiKey: string; enabled: boolean };
+  /** defaultModel: the OpenRouter model new chats start on (Settings → Chat models); unset = the first model listed */
+  openrouter: { apiKey: string; enabled: boolean; defaultModel?: string };
   comfyui: { baseUrl: string; enabled: boolean };
   /** The model that reads pictures you send (one that can see images); absent until you choose one */
   vision?: { provider: ProviderType; model: string };
@@ -458,6 +474,7 @@ export interface PersistedAppState {
   personas:           Persona[];
   lorebooks:          Lorebook[];
   scenarios:          Scenario[];
+  openers:            Opener[];
   presets:            Preset[];
   /** null clears the selection; the collections above are always present. */
   defaultPresetId:    string | null;
