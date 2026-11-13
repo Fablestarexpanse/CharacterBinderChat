@@ -41,7 +41,7 @@ export default function Home() {
   const hydrated = useHydrated();
 
   // No open chat means we're browsing the list, which has nothing to inspect
-  const showInspector = activeSection === "chats" && !!activeChatId;
+  const showInspector = (activeSection === "chats" || activeSection === "archive") && !!activeChatId;
 
   // StateSync stays mounted at ONE position across the gate: it is what sets
   // syncReady, and returning it as a bare early return meant the root element
@@ -98,6 +98,7 @@ export default function Home() {
       {narrow && <MobileBar />}
       <main className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
         {activeSection === "chats" && (activeChatId ? <ChatArea /> : <ChatsView />)}
+        {activeSection === "archive" && (activeChatId ? <ChatArea /> : <ChatsView archived />)}
         {activeSection === "characters" && <LibraryView />}
         {activeSection === "settings" && <SettingsView />}
         {activeSection === "groups" && <GroupsView />}

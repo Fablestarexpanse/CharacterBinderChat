@@ -14,13 +14,14 @@ import { answerCall, declineCall } from "@/lib/chat/calls";
 import { DeleteChatDialog } from "@/components/chat/DeleteChatDialog";
 import { unlockSounds } from "@/lib/chat/sounds";
 import {
-  MessageSquare, Group, BookOpen, Sliders, ImageIcon, GalleryHorizontal, GitBranch, Settings, Plus, Sparkles, Pencil, Trash2, Clapperboard, Library, MessageSquareQuote, Phone, PhoneOff, PhoneMissed, MessageCircle,
+  MessageSquare, Archive, Group, BookOpen, Sliders, ImageIcon, GalleryHorizontal, GitBranch, Settings, Plus, Sparkles, Pencil, Trash2, Clapperboard, Library, MessageSquareQuote, Phone, PhoneOff, PhoneMissed, MessageCircle,
 } from "lucide-react";
 import { useUiStore } from "@/lib/store/ui";
 
 export const NAV_ITEMS: { id: SidebarSection; label: string; icon: React.ElementType }[] = [
   { id: "characters", label: "Library", icon: Library },
   { id: "chats", label: "Chats", icon: MessageSquare },
+  { id: "archive", label: "Archive", icon: Archive },
   { id: "groups", label: "Groups", icon: Group },
   { id: "lorebooks", label: "Lorebooks", icon: BookOpen },
   { id: "scenarios", label: "Scenarios", icon: Clapperboard },
@@ -83,7 +84,7 @@ export function Sidebar() {
               setActiveSection(item.id);
               // "Chats" means browse them all. Jumping straight back into
               // whichever was last open makes the list unreachable.
-              if (item.id === "chats") setActiveChatId(null);
+              if (item.id === "chats" || item.id === "archive") setActiveChatId(null);
             }}
           />
         ))}

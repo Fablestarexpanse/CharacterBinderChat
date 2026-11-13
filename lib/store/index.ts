@@ -16,6 +16,7 @@ export { DEFAULT_UTILITY_MODEL } from "./defaults";
 export type SidebarSection =
   | "characters"
   | "chats"
+  | "archive"
   | "groups"
   | "lorebooks"
   | "scenarios"

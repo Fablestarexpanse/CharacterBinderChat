@@ -14,7 +14,7 @@ import { Sidebar, NAV_ITEMS } from "./Sidebar";
 function useNavKey(): string {
   const { activeChatId } = useFableStore();
   const { activeSection } = useUiStore();
-  return `${activeSection}|${activeSection === "chats" ? activeChatId ?? "" : ""}`;
+  return `${activeSection}|${(activeSection === "chats" || activeSection === "archive") ? activeChatId ?? "" : ""}`;
 }
 
 export function MobileBar() {

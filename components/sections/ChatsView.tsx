@@ -6,7 +6,8 @@
 // with more than a couple of stories going, "take me to the last one" is the
 // wrong default. Opening a chat sets activeChatId; the header's back button
 // clears it to come back here. Each chat can be archived (put away, nothing
-// lost; "Show archived" brings it back) or deleted, which always asks first.
+// lost) or deleted, which always asks first. The same view with `archived`
+// is the Archive section: only archived chats, each with Unarchive.
 
 import { useState } from "react";
 import { useFableStore } from "@/lib/store";
@@ -21,11 +22,10 @@ import { useUiStore } from "@/lib/store/ui";
 import { DeleteChatDialog } from "@/components/chat/DeleteChatDialog";
 import type { Chat } from "@/lib/types";
 
-export function ChatsView() {
+export function ChatsView({ archived: showArchived = false }: { archived?: boolean } = {}) {
   const { chats, characters, setActiveChatId, setChatArchived } = useFableStore();
-  const { setChatBuilderOpen } = useUiStore();
+  const { setChatBuilderOpen, setActiveSection } = useUiStore();
   const [query, setQuery] = useState("");
-  const [showArchived, setShowArchived] = useState(false);
   const [deleting, setDeleting] = useState<Chat | null>(null);
   const archivedCount = chats.filter((c) => c.archived).length;
   // Relative times depend on the clock, so they can't render during SSR
@@ -50,14 +50,14 @@ export function ChatsView() {
       <div className="max-w-4xl mx-auto">
         <div className="flex items-start justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-xl font-bold text-[var(--foreground)]">Chats</h1>
+            <h1 className="text-xl font-bold text-[var(--foreground)]">{showArchived ? "Archive" : "Chats"}</h1>
             <p className="text-sm text-[var(--muted-fg)] mt-1">
               {showArchived
-                ? `${archivedCount} archived`
+                ? `${archivedCount} archived chat${archivedCount === 1 ? "" : "s"}: put away, nothing deleted. Unarchive one to bring it back to Chats.`
                 : `${chats.length - archivedCount} conversation${chats.length - archivedCount === 1 ? "" : "s"}`}
-              {(archivedCount > 0 || showArchived) && (
-                <button onClick={() => setShowArchived((v) => !v)} className="ml-2 underline cursor-pointer hover:text-[var(--foreground)]">
-                  {showArchived ? "Back to chats" : `Show archived (${archivedCount})`}
+              {!showArchived && archivedCount > 0 && (
+                <button onClick={() => setActiveSection("archive")} className="ml-2 underline cursor-pointer hover:text-[var(--foreground)]">
+                  {archivedCount} in Archive
                 </button>
               )}
             </p>

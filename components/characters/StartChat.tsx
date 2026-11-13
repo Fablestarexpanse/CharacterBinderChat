@@ -4,7 +4,8 @@
 // One dialog before the chat opens: who you are in this story (your personas,
 // the current one chosen), which scenario it opens in (or the character's own),
 // the first message that greets you (the character's own, one of its alternate
-// greetings, or a saved one from First messages), and which lorebooks it uses (all of them unless you untick some). Then each
+// greetings, a saved one from First messages, or one you write there and then,
+// which is saved to First messages too), and which lorebooks it uses (all of them unless you untick some). Then each
 // chat is a fresh start; if earlier chats hold memories of this character, offer
 // to carry one forward, explicitly (memory never carries over by itself).
 // Extracted from the old Characters screen so the Library and anything else can
@@ -17,6 +18,8 @@ import { useFableStore } from "@/lib/store";
 import { useUiStore } from "@/lib/store/ui";
 import { getJson, sendJson } from "@/lib/api/client";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 interface MemorySource { chatId: string; chatName: string | null; facts: number; updatedAt: number }
 
@@ -28,8 +31,11 @@ interface Chooser {
   scenarioId: string;
   /** The lorebooks ticked */
   lorebookIds: string[];
-  /** "" = the scenario's or character's own; "alt:<n>" = an alternate greeting; "op:<id>" = a saved first message */
+  /** "" = the scenario's or character's own; "alt:<n>" = an alternate greeting; "op:<id>" = a saved first message; "new" = written here */
   opener: string;
+  /** A first message written in the dialog ("new"), saved to First messages when the chat starts */
+  newName: string;
+  newText: string;
 }
 
 const card = "rounded-xl border p-2 text-left transition-colors cursor-pointer";
@@ -37,7 +43,7 @@ const onCard = "border-[var(--purple)] bg-[var(--purple-light)]";
 const offCard = "border-[var(--border)] hover:border-[var(--purple)]";
 
 export function useStartChat(onError: (message: string) => void) {
-  const { createChatFromBuilder, setActiveChatId, personas, activePersonaId, scenarios, lorebooks, openers, characters } = useFableStore();
+  const { createChatFromBuilder, setActiveChatId, personas, activePersonaId, scenarios, lorebooks, openers, characters, addOpener } = useFableStore();
   const { setActiveSection } = useUiStore();
   const [chooser, setChooser] = useState<Chooser | null>(null);
 
@@ -47,7 +53,12 @@ export function useStartChat(onError: (message: string) => void) {
     // A first message you picked wins; then the scenario's; then the character's own
     const picked = c.opener.startsWith("op:") ? openers.find((o) => o.id === c.opener.slice(3))?.text
       : c.opener.startsWith("alt:") ? character?.alternateGreetings?.[Number(c.opener.slice(4))]
+      : c.opener === "new" ? c.newText
       : undefined;
+    // A first message written here is kept, so it can open other chats too
+    if (c.opener === "new" && c.newText.trim()) {
+      addOpener({ name: c.newName.trim() || `First message ${openers.length + 1}`, text: c.newText });
+    }
     const chatId = createChatFromBuilder({
       characterId: c.characterId,
       // The opening message is written to whoever you chose to be
@@ -75,11 +86,8 @@ export function useStartChat(onError: (message: string) => void) {
       sources = (data.sources ?? []).filter((s) => s.facts > 0).slice(0, 4);
     } catch { /* offline or route error: no memories to offer */ }
     const personaId = personas.some((p) => p.id === activePersonaId) ? activePersonaId : personas[0]?.id ?? null;
-    const c: Chooser = { characterId, sources, personaId, scenarioId: "", lorebookIds: lorebooks.map((b) => b.id), opener: "" };
-    const alternates = (characters.find((ch) => ch.id === characterId)?.alternateGreetings ?? []).filter((g) => g.trim());
-    // Nothing to choose: straight in
-    if (personas.length === 0 && sources.length === 0 && scenarios.length === 0 && lorebooks.length === 0
-      && openers.length === 0 && alternates.length === 0) { begin(c); return; }
+    const c: Chooser = { characterId, sources, personaId, scenarioId: "", lorebookIds: lorebooks.map((b) => b.id), opener: "", newName: "", newText: "" };
+    // Always asked: there is always a first message to choose (or write)
     setChooser(c);
   };
 
@@ -134,17 +142,19 @@ export function useStartChat(onError: (message: string) => void) {
           {(() => {
             const character = characters.find((ch) => ch.id === chooser.characterId);
             const alternates = (character?.alternateGreetings ?? []).map((g, i) => ({ g, i })).filter(({ g }) => g.trim());
-            if (openers.length === 0 && alternates.length === 0) return null;
-            const scenarioOpens = !!scenarios.find((s) => s.id === chooser.scenarioId)?.firstMessage?.trim();
+            const scenario = scenarios.find((s) => s.id === chooser.scenarioId);
+            const scenarioOpens = !!scenario?.firstMessage?.trim();
+            const ownLabel = scenarioOpens ? "The scenario's opening"
+              : character?.firstMessage?.trim() ? `${character.name}'s own greeting` : `None: ${character?.name ?? "they"} has no greeting, you start`;
             const preview = chooser.opener.startsWith("op:") ? openers.find((o) => o.id === chooser.opener.slice(3))?.text
               : chooser.opener.startsWith("alt:") ? character?.alternateGreetings?.[Number(chooser.opener.slice(4))]
-              : scenarioOpens ? scenarios.find((s) => s.id === chooser.scenarioId)?.firstMessage : character?.firstMessage;
+              : scenarioOpens ? scenario?.firstMessage : character?.firstMessage;
             return (
-              <label className="block space-y-1.5">
-                <span className="block text-xs font-medium text-[var(--foreground)]">First message</span>
-                <select value={chooser.opener} onChange={(e) => setChooser({ ...chooser, opener: e.target.value })}
-                  aria-label="First message" className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-sm">
-                  <option value="">{scenarioOpens ? "The scenario's opening" : `${character?.name ?? "The character"}'s own greeting`}</option>
+              <div className="space-y-1.5">
+                <label htmlFor="start-first-message" className="block text-xs font-medium text-[var(--foreground)]">First message</label>
+                <select id="start-first-message" value={chooser.opener} onChange={(e) => setChooser({ ...chooser, opener: e.target.value })}
+                  className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-sm">
+                  <option value="">{ownLabel}</option>
                   {alternates.length > 0 && (
                     <optgroup label="Alternate greetings">
                       {alternates.map(({ i }) => <option key={i} value={`alt:${i}`}>Alternate greeting {i + 1}</option>)}
@@ -155,11 +165,24 @@ export function useStartChat(onError: (message: string) => void) {
                       {openers.map((o) => <option key={o.id} value={`op:${o.id}`}>{o.name}</option>)}
                     </optgroup>
                   )}
+                  <option value="new">Write a new one…</option>
                 </select>
-                <span className="block text-[11px] text-[var(--muted-fg)] line-clamp-2">
-                  {preview?.trim() || "No first message: you start the chat."}
-                </span>
-              </label>
+                {chooser.opener === "new" ? (
+                  <div className="space-y-1.5">
+                    <Input value={chooser.newName} onChange={(e) => setChooser({ ...chooser, newName: e.target.value })}
+                      placeholder={`Name (e.g. "Rainy night at the station")`} aria-label="Name for the new first message" className="h-8 text-xs" />
+                    <Textarea value={chooser.newText} onChange={(e) => setChooser({ ...chooser, newText: e.target.value })} rows={4}
+                      placeholder={'*{{char}} looks up as you come in.* "There you are."'} aria-label="New first message" />
+                    <span className="block text-[11px] text-[var(--muted-fg)]">
+                      Saved to First messages when the chat starts, so you can use it again. {"{{char}}"} and {"{{user}}"} are filled in.
+                    </span>
+                  </div>
+                ) : (
+                  <span className="block text-[11px] text-[var(--muted-fg)] line-clamp-2">
+                    {preview?.trim() || "No first message: you start the chat."}
+                  </span>
+                )}
+              </div>
             );
           })()}
 

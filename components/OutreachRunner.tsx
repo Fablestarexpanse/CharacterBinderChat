@@ -48,7 +48,7 @@ export function OutreachRunner() {
   }, []);
 
   useEffect(() => {
-    if (activeChatId && section === "chats") clearUnread(activeChatId);
+    if (activeChatId && (section === "chats" || section === "archive")) clearUnread(activeChatId);
   }, [activeChatId, section, clearUnread]);
 
   return null;
