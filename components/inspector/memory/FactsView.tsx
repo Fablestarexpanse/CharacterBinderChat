@@ -21,6 +21,12 @@ interface Props {
 export function FactsView({ chatId, characterId, extractionVersion, isExtracting }: Props) {
   const bumpExtraction = useFableStore((s) => s.bumpExtraction);
   const [showHistory, setShowHistory] = useState(false);
+  // Whose facts: the character's, or what they know about you (subject "player").
+  // Only the character's were reachable before, so everything learned about you
+  // could not be seen, corrected, pinned or locked.
+  const [about, setAbout] = useState<"character" | "player">("character");
+  const subject = about === "player" ? "player" : characterId;
+  const characterName = useFableStore((s) => s.characters.find((c) => c.id === characterId)?.name ?? "Them");
   // Curation state: which fact is armed for deletion, and the add-fact draft
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -29,9 +35,9 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
   const [writeError, setWriteError] = useState<string | null>(null);
   // Inline edit of one fact's value
   const [editing, setEditing] = useState<{ id: number; text: string } | null>(null);
-  const url = `/api/drawer/facts?chatId=${encodeURIComponent(chatId)}&subject=${encodeURIComponent(characterId)}${showHistory ? "&includeSuperseded=1" : ""}`;
+  const url = `/api/drawer/facts?chatId=${encodeURIComponent(chatId)}&subject=${encodeURIComponent(subject)}${showHistory ? "&includeSuperseded=1" : ""}`;
   const { data, error, loading } = useDrawerRead<{ facts?: DrawerFact[] }>(
-    `${chatId}:${characterId}:${extractionVersion}:${showHistory ? 1 : 0}`, url);
+    `${chatId}:${subject}:${extractionVersion}:${showHistory ? 1 : 0}`, url);
   const facts = data?.facts ?? [];
 
   // bumpExtraction is the app-wide "memory changed" signal — every inspector
@@ -74,7 +80,7 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
     try {
       await sendJson("POST", "/api/drawer/facts", {
         chatId,
-        subjectId:     characterId,
+        subjectId:     subject,
         predicate,
         objectLiteral: object,
       });
@@ -101,6 +107,15 @@ export function FactsView({ chatId, characterId, extractionVersion, isExtracting
 
   return (
     <div className="space-y-2">
+      {/* Whose facts */}
+      <div role="radiogroup" aria-label="Facts about" className="flex gap-1">
+        {([["character", `About ${characterName.split(" ")[0]}`], ["player", "About you"]] as const).map(([k, label]) => (
+          <button key={k} role="radio" aria-checked={about === k} onClick={() => { setAbout(k); setAdding(false); setEditing(null); }}
+            className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors cursor-pointer ${
+              about === k ? "bg-[var(--purple-light)] border-[var(--purple)] text-[var(--purple-fg)]" : "border-[var(--border)] text-[var(--muted-fg)] hover:text-[var(--foreground)]"
+            }`}>{label}</button>
+        ))}
+      </div>
       {/* History toggle */}
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-[var(--muted-fg)]">

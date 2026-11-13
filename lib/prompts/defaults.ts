@@ -71,7 +71,7 @@ export const PROMPTS: readonly PromptDef[] = [
     group: "Chat",
     usedFor: "Added to the chat prompt when you send a message as a text: tells the character to answer the way they would text.",
     template: `[Texting]
-{{character_name}} and {{user_label}} are not together right now: this exchange is by phone text message. Reply as {{character_name}} would text: short and in their own voice, a few lines at most. No narration of actions or surroundings and no *asterisks*, only what they would type.`,
+{{character_name}} and {{user_label}} are not together right now: this exchange is by phone text message. Reply as {{character_name}} would text: short and in their own voice, a few lines at most. No narration of actions or surroundings and no *asterisks*, only what they would type. Never repeat or quote {{user_label}}'s message, and never start with a label like (by text).`,
     variables: [characterNameVar, userLabelVar],
   },
   {

@@ -4,7 +4,7 @@
 // a time; isGenerating lives in the store so every component sees it, while
 // the AbortController stays module-local (not serialisable).
 
-import { hasHistoryContent, historyContent, replyChannel } from "@/lib/chat/channel";
+import { cleanChannelReply, hasHistoryContent, historyContent, replyChannel } from "@/lib/chat/channel";
 import { clientPromptTemplate } from "@/lib/chat/promptOverrides";
 import { contactSettings, startPhoto, takePhotoMarkers } from "@/lib/chat/photos";
 import { mayOfferPhotos } from "@/lib/media/contact";
@@ -407,6 +407,12 @@ export async function generateAssistantReply(chatId: string, speakerId?: string,
         fit.usedTokens + estimateTokens(accumulated.slice(prefill.length)) + 4,
         fit.contextMax
       );
+      // A text or call reply must not open with the history's "(by text)" label or an echo of your message
+      if (channel !== "scene" || outreach) {
+        const lastUser = [...(useFableStore.getState().chats.find((c) => c.id === chatId)?.messages ?? [])].reverse().find((m) => m.role === "user" && !m.error);
+        const cleaned = cleanChannelReply(accumulated, lastUser?.content ?? "");
+        if (cleaned !== accumulated) { accumulated = cleaned; store.updateMessageContent(chatId, assistantMsgId, cleaned); }
+      }
       // A "[photo: …]" from a character allowed to send photos becomes a photo
       // on this message. From anyone else it stays as text and nothing is made.
       if (character && mayOfferPhotos(await contactSettings(), character)) {

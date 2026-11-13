@@ -208,6 +208,7 @@ export function toSillyTavern(ctx: ExportContext, lines: Line[]): string {
   return [header, ...rows].map((r) => JSON.stringify(r)).join("\n") + "\n";
 }
 
+/** facts: the memory graph (entities, live facts, scene cards) from /api/drawer/graph */
 export interface ChatMemory { facts?: unknown; coreMemory?: unknown }
 
 /** FableChat's own record: the chat as stored, its characters' names, and (when asked) its memory */
@@ -277,7 +278,8 @@ export async function exportChat(ctx: ExportContext, opts: ChatExportOptions, on
     const q = `chatId=${encodeURIComponent(ctx.chat.id)}`;
     const character = ctx.characters.find((c) => c.id === ctx.chat.characterId);
     const [facts, core] = await Promise.all([
-      fetch(`/api/drawer/facts?${q}&includeSuperseded=1`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      // The whole graph: entities, every live fact and the scene cards (the facts route answers one subject at a time)
+      fetch(`/api/drawer/graph?${q}${character ? `&characterId=${encodeURIComponent(character.id)}` : ""}`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
       character ? fetch(`/api/chat/core-memory?${q}&characterId=${encodeURIComponent(character.id)}&name=${encodeURIComponent(character.name)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null,
     ]);
     memory = { facts, coreMemory: core };

@@ -9,7 +9,7 @@ const { characterToCard, loreToCharacterBook } = await import("../../lib/cards/t
 const { validateTavernCardV2 } = await import("../../lib/cards/validate.ts");
 const { useFableStore } = await import("../../lib/store/index.ts");
 
-const empty = { characters: [], personas: [], lorebooks: [], scenarios: [], chats: [], activePersonaId: null, activeChatId: null };
+const empty = { characters: [], personas: [], lorebooks: [], scenarios: [], chats: [], openers: [], presets: [], activePersonaId: null, activeChatId: null };
 beforeEach(() => useFableStore.setState(empty));
 
 test("the demo characters are valid Tavern V2 cards, June's lorebook included, and everyone has a voice", () => {
@@ -26,7 +26,7 @@ test("the demo characters are valid Tavern V2 cards, June's lorebook included, a
 
 test("the demo chat opens in-fiction, addressed to the player, with no placeholders left", () => {
   const d = buildDemo(new Date("2026-11-05T22:00:00Z"), "Sam");
-  const [chat] = d.chats;
+  const chat = d.chats.find((c) => c.id === DEMO_IDS.chat);
   assert.equal(chat.characterId, DEMO_IDS.character);
   assert.equal(chat.messages[0].role, "assistant");
   assert.match(chat.messages[1].content, /^Hi\. It's Sam\./);
@@ -40,7 +40,7 @@ test("the demo chat opens in-fiction, addressed to the player, with no placehold
 test("on an empty store it adds the whole story, makes the persona active and opens the chat", () => {
   assert.equal(addDemoStory(), true);
   const s = useFableStore.getState();
-  assert.deepEqual([s.characters.length, s.personas.length, s.lorebooks.length, s.scenarios.length, s.chats.length], [2, 2, 1, 1, 1]);
+  assert.deepEqual([s.characters.length, s.personas.length, s.lorebooks.length, s.scenarios.length, s.chats.length, s.openers.length, s.presets.length], [2, 2, 1, 1, 2, 1, 1]);
   assert.equal(s.activePersonaId, DEMO_IDS.persona);
   assert.equal(s.activeChatId, DEMO_IDS.chat);
 });
@@ -54,10 +54,21 @@ test("it never touches what is already there, keeps the user's persona, and adds
   assert.deepEqual(s.personas.map((p) => p.id), ["p-me"], "no second persona when the user has one");
   assert.equal(s.activePersonaId, "p-me");
   assert.deepEqual(s.characters.map((c) => c.id), ["c-hero", DEMO_IDS.character, DEMO_IDS.character2]);
-  assert.match(s.chats[0].messages[2].content, /Ada\. Welcome to Port Ellery/);
+  assert.match(s.chats.find((c) => c.id === DEMO_IDS.chat).messages[2].content, /Ada\. Welcome to Port Ellery/);
 
   assert.equal(addDemoStory(), false, "already present: nothing added");
   s = useFableStore.getState();
   assert.equal(s.characters.length, 3);
-  assert.equal(s.chats.length, 1);
+  assert.equal(s.chats.length, 2);
+});
+
+test("the demo has a group chat, a saved first message, an alternate greeting and a preset", () => {
+  const d = buildDemo(new Date("2026-11-05T22:00:00Z"), "Sam");
+  const group = d.chats.find((c) => c.id === DEMO_IDS.group);
+  assert.deepEqual(group.memberIds, [DEMO_IDS.character2, DEMO_IDS.character]);
+  assert.ok(group.messages.every((m) => group.memberIds.includes(m.characterId)), "every line is spoken by a member");
+  assert.ok(group.messages.every((m) => !/\{\{(char|user)\}\}/.test(m.content)));
+  assert.match(d.openers[0].text, /\{\{char\}\}.*\{\{user\}\}/, "the saved opener keeps its placeholders for whoever uses it");
+  assert.equal(d.characters[0].alternateGreetings.length, 1);
+  assert.ok(d.presets[0].params.temperature);
 });

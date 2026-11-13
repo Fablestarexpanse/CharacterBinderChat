@@ -49,7 +49,8 @@ and `update` refuse while FableChat is running, because they rebuild what it is 
 
 The first time it opens, you land in a **demo story** set in Port Ellery, a rainy harbour city: June, a night radio
 host, has just taken your call on air (you are Nora, a photographer new in town), with Elias the baker one tap away, a
-second persona (Theo, a night nurse), a lorebook for the city and a chat a few lines in. Everyone has a demo voice.
+second persona (Theo, a night nurse), a lorebook for the city, a chat a few lines in, and a group chat with June and
+Elias stranded at the bakery by the storm. There is also a saved first message and a preset to try. Everyone has a demo voice.
 Pick a model in the chat header and reply to see memory form in the inspector. Edit or delete any of it; once deleted it stays deleted, and **Library → Add the
 demo story** brings it back.
 

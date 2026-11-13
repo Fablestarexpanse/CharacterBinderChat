@@ -58,3 +58,13 @@ test("a line saying you text someone becomes that text; anything else stays as w
     "",
   ]) assert.equal(t(s), null, s || "(empty)");
 });
+
+test("a text reply loses the history's label and an echo of your message, never the character's own aside", async () => {
+  const { cleanChannelReply } = await import("../../lib/chat/channel.ts");
+  const mine = "thanks for the song, biscuit approves";
+  assert.equal(cleanChannelReply("(thx for the song, biscuit approves)\n\nOf course. Stay dry.", mine), "Of course. Stay dry.");
+  assert.equal(cleanChannelReply("(by text) Of course. Stay dry.", mine), "Of course. Stay dry.");
+  assert.equal(cleanChannelReply("(sent at 4am, sorry)\nCan't sleep either.", mine), "(sent at 4am, sorry)\nCan't sleep either.", "her own aside stays");
+  assert.equal(cleanChannelReply("Of course (for Biscuit).", mine), "Of course (for Biscuit).");
+  assert.equal(cleanChannelReply("(thanks for the song biscuit approves)", mine), "(thanks for the song biscuit approves)", "never empties a reply");
+});

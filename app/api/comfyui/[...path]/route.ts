@@ -8,6 +8,9 @@ export const dynamic = "force-dynamic";
 // headers unless launched with --enable-cors-header, so the browser can't call
 // it directly — but this server process can. The client passes the configured
 // base URL as ?base=…; everything else is forwarded verbatim.
+/** Bases already reported as not running, so a stopped ComfyUI is logged once, not on every poll */
+const downBases = new Set<string>();
+
 async function proxy(
   req: NextRequest,
   params: Promise<{ path: string[] }>
@@ -43,6 +46,7 @@ async function proxy(
     // armed, which could abort a large /view image mid-transfer past the
     // catch block. Local transfers finish well within the window.
     const body = await res.arrayBuffer();
+    downBases.delete(base);
     return new Response(body, {
       status: res.status,
       headers: {
@@ -51,9 +55,12 @@ async function proxy(
       },
     });
   } catch (err) {
-    // Every other route logs its failure through routeError; this one returns
-    // the right status but wrote nothing to the server log.
-    console.error("[comfyui-proxy]", req.method, base, err);
+    // ComfyUI simply not running is reported once per base until it answers
+    // again: the app polls it, and a stack trace per poll buried everything
+    // else in the server log. Anything else is logged in full.
+    const refused = (err as { cause?: { code?: string } })?.cause?.code === "ECONNREFUSED";
+    if (!refused) console.error("[comfyui-proxy]", req.method, base, err);
+    else if (!downBases.has(base)) { downBases.add(base); console.warn(`[comfyui-proxy] ComfyUI is not running at ${base} (said once until it answers again)`); }
     return Response.json(
       { ok: false, error: `ComfyUI unreachable at ${base}: ${err instanceof Error ? err.message : String(err)}` },
       { status: 502 }

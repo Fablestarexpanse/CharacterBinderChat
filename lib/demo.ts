@@ -2,9 +2,11 @@
 // What a brand-new install opens with, so the first screen is a story already
 // under way instead of an empty app: Port Ellery, a rainy harbour city. Two
 // characters (June, a night radio host, and Elias, a baker), two personas for
-// the player (Nora and Theo), a lorebook for the city, a scenario, and a chat
-// with June a few lines in. Everyone has a demo voice, so Play works once voice
-// is set up. The same story the README screenshots show, so the docs and the
+// the player (Nora and Theo), a lorebook for the city, a scenario, a chat with
+// June a few lines in, a group chat with June and Elias stranded by the storm, a
+// saved first message, an alternate greeting for June and a preset, so every
+// screen has something real on it. Everyone has a demo voice, so Play works once
+// voice is set up. The same story the README screenshots show, so the docs and the
 // app agree (the screenshots add portraits, which the demo does not ship).
 //
 // Seeded once, by the sync engine, only when the server has never been written
@@ -14,7 +16,7 @@
 
 import { useFableStore } from "@/lib/store";
 import { expandMacros } from "@/lib/cards/tavern";
-import type { Character, Chat, Lorebook, Persona, Scenario } from "@/lib/types";
+import type { Character, Chat, Lorebook, Opener, Persona, Preset, Scenario } from "@/lib/types";
 
 export const DEMO_IDS = {
   character: "demo-june",
@@ -24,6 +26,9 @@ export const DEMO_IDS = {
   lorebook: "demo-port-ellery",
   scenario: "demo-last-ferry",
   chat: "demo-night-shift",
+  group: "demo-storm-quay",
+  opener: "demo-opener-door",
+  preset: "demo-preset-slow",
 } as const;
 
 const GREETING = "*The ON AIR light hums red over the booth door. Rain runs down the window in sheets, blurring the harbour lights into long gold smears. June leans into the microphone, one hand wrapped around a mug of tea that went cold an hour ago, and lets the last notes of an old soul record fade out.*\n\n\"...and that was for Marcus, still out on the night boats. Stay dry, love.\" *She glances at the phone board. Line two is blinking, the first call in forty minutes. She pushes her glasses up into her hair and flicks the switch.*\n\n\"It's twenty past two, this is The Night Shift on 88.7, and you're on the air.\" *A pause, softer, like she's leaning closer.* \"Who's this, and what's keeping you up tonight?\"";
@@ -42,6 +47,8 @@ export interface DemoStory {
   lorebooks: Lorebook[];
   scenarios: Scenario[];
   chats: Chat[];
+  openers: Opener[];
+  presets: Preset[];
 }
 
 /**
@@ -60,6 +67,9 @@ export function buildDemo(now: Date, userName = "Nora"): DemoStory {
     personality: "Warm, wry and unhurried; the voice people talk to at 3 a.m. when they can't talk to anyone else. A natural listener who asks the second question, remembers callers' names and dogs' names, and keeps a running joke going for months. Quick with a dry line, slow to judge. Hides tiredness and loneliness behind the on-air calm; off air she is more nervous, more honest and a little clumsy. Loves: rain on the window, old soul records, the 4 a.m. silence, bad vending-machine coffee, people's small stories. Dislikes: being rushed, shouting, people who talk over callers, the word \"content\". Fears the station closing and the quiet that would follow. Says \"mm\" when she is thinking, hums when she is nervous, calls people \"love\" on air and never off it.",
     scenario: "Port Ellery, a rainy harbour city, modern day. It is past two in the morning and June is live on The Night Shift. The phone lines are quiet until {{user}} calls in.",
     firstMessage: GREETING,
+    alternateGreetings: [
+      "*Five past four. The request line has been dead for an hour and June has given up pretending otherwise: she's playing a whole side of an old record and reading the station's eviction letter for the third time when line one lights up.* \"The Night Shift, you're on the air.\" *She sounds more awake than she is.* \"Please tell me you've got a request, love. I'm running out of B-sides.\"",
+    ],
     exampleDialogue: "<START>\n{{user}}: Do you ever get lonely doing this?\n{{char}}: *She laughs, low, and doesn't answer straight away.* \"Mm. Ask me at four. At two I've got all of you.\" *She turns her mug in a slow circle on the desk.* \"At four it's just me, the rain and a kettle I'm frightened of.\"\n<START>\n{{user}}: What's the best call you've ever had?\n{{char}}: \"A fisherman, about a year ago. Rang in at three to tell me his daughter had just been born and he couldn't reach anyone on the boat with signal, so he told the whole city instead.\" *Her voice goes soft.* \"I played him Sam Cooke. Half the harbour honked their horns.\"",
     tags: ["demo", ...["modern","slice of life","romance","radio","cosy","port ellery"]],
     creatorNotes: "Slow-burn, cosy, rain-and-radio. Works with either persona: Nora (photographer) or Theo (night nurse). (A demo character: edit or delete her whenever you like.)",
@@ -122,6 +132,48 @@ export function buildDemo(now: Date, userName = "Nora"): DemoStory {
     updatedAt: iso,
   };
 
+  // A group chat: June and Elias, both stuck on Quay Street the night the ferry is cancelled
+  const groupLines: Array<[string, "user" | "assistant", string]> = [
+    [DEMO_IDS.character2, "assistant", "*The bakery's door bangs open on a gust and the bell goes mad. Elias looks up from the bench, flour to the elbows, as June stumbles in out of the rain with her headphones still round her neck and a dripping tote bag over her head.* \"Station flooded again?\""],
+    [DEMO_IDS.character, "assistant", "\"The generator's out and the ferry's cancelled, so I'm off air till morning.\" *She shakes the water off her glasses and spots you by the counter.* \"Oh, hello. Another one the storm washed in? Elias, you're running a shelter now.\""],
+    [DEMO_IDS.character2, "assistant", "*He's already reaching for two more mugs.* \"Kettle's on. Sit by the ovens, they're the only warm thing on the quay.\""],
+  ];
+  const group: Chat = {
+    id: DEMO_IDS.group,
+    name: "Storm on Quay Street (demo)",
+    characterId: DEMO_IDS.character2,
+    memberIds: [DEMO_IDS.character2, DEMO_IDS.character],
+    absentIds: [],
+    lorebookIds: [lorebook.id],
+    scenarioText: scenario.scenario,
+    messages: groupLines.map(([who, role, content], i) => ({
+      id: `${DEMO_IDS.group}-${i}`, chatId: DEMO_IDS.group, role, content: fill(content), characterId: who,
+      timestamp: at(30 - i * 2),
+    })),
+    createdAt: at(31),
+    updatedAt: at(26),
+    contextUsed: 0,
+    contextMax: 8192,
+  };
+
+  // A saved first message: works with anyone ({{char}} and {{user}} are filled in when it is used)
+  const opener: Opener = {
+    id: DEMO_IDS.opener,
+    name: "Knock in the storm (demo)",
+    text: "*Someone is knocking at the door, hard, over the sound of the rain. When {{char}} opens it, {{user}} is standing there soaked to the skin.* \"Sorry. I didn't know where else to go.\"",
+    createdAt: iso,
+    updatedAt: iso,
+  };
+
+  const preset: Preset = {
+    id: DEMO_IDS.preset,
+    name: "Slow and cosy (demo)",
+    params: { temperature: 0.9 },
+    customPrompt: "Keep replies short and unhurried: one or two paragraphs, small details over big events, and leave room for {{user}} to answer.",
+    createdAt: iso,
+    updatedAt: iso,
+  };
+
   const lines: Array<["user" | "assistant", string]> = [["assistant", GREETING], ...OPENING];
   const chat: Chat = {
     id: DEMO_IDS.chat,
@@ -142,7 +194,7 @@ export function buildDemo(now: Date, userName = "Nora"): DemoStory {
     contextMax: 8192,
   };
 
-  return { characters: [june, elias], personas: [nora, theo], lorebooks: [lorebook], scenarios: [scenario], chats: [chat] };
+  return { characters: [june, elias], personas: [nora, theo], lorebooks: [lorebook], scenarios: [scenario], chats: [chat, group], openers: [opener], presets: [preset] };
 }
 
 /**
@@ -162,6 +214,8 @@ export function addDemoStory(now = new Date()): boolean {
     lorebooks: fresh(s.lorebooks, demo.lorebooks),
     scenarios: fresh(s.scenarios, demo.scenarios),
     chats: fresh(s.chats, demo.chats),
+    openers: fresh(s.openers, demo.openers),
+    presets: fresh(s.presets, demo.presets),
   };
   if (Object.values(add).every((rows) => rows.length === 0)) return false;
   useFableStore.setState({
@@ -170,6 +224,8 @@ export function addDemoStory(now = new Date()): boolean {
     lorebooks: [...s.lorebooks, ...add.lorebooks],
     scenarios: [...s.scenarios, ...add.scenarios],
     chats: [...add.chats, ...s.chats],
+    openers: [...s.openers, ...add.openers],
+    presets: [...s.presets, ...add.presets],
     activePersonaId: s.activePersonaId ?? (add.personas[0]?.id ?? null),
     activeChatId: add.chats[0]?.id ?? DEMO_IDS.chat,
   });

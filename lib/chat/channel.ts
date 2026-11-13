@@ -51,6 +51,26 @@ export function historyContent(m: Pick<Message, "content" | "channel" | "attachm
   return ch === "text" ? `(by text) ${body}` : ch === "call" ? `(on the phone) ${body}` : body;
 }
 
+const words = (s: string) => s.toLowerCase().match(/[a-z0-9']+/g) ?? [];
+
+/**
+ * A text or phone reply as it should be kept. History marks those lines
+ * "(by text) …", and models copy the habit: a reply that opens with the label,
+ * or with the user's own message echoed back in brackets ("(thx for the song,
+ * biscuit approves)"), loses the label and the echo. A bracketed opening that is
+ * not mostly the user's words is the character's own aside and is kept.
+ */
+export function cleanChannelReply(reply: string, lastUser: string): string {
+  let out = reply.replace(/^\s*\((by text|on the phone)\)\s*/i, "");
+  const m = /^\s*\(([^()\n]{3,})\)\s*(\n+|$)/.exec(out);
+  if (m) {
+    const echo = words(m[1]), mine = new Set(words(lastUser));
+    const shared = echo.filter((w) => mine.has(w)).length;
+    if (echo.length > 0 && shared / echo.length >= 0.6) out = out.slice(m[0].length);
+  }
+  return out.trim() ? out.replace(/^\s+/, "") : reply;
+}
+
 /** Whether a message has anything for the model at all (text, or an attachment that is ready). */
 export const hasHistoryContent = (m: Pick<Message, "content" | "attachments" | "callEvent">) =>
   !!m.callEvent || m.content.trim().length > 0 || (m.attachments ?? []).some((a) => a.status === "ready");

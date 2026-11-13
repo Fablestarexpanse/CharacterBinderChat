@@ -50,7 +50,7 @@ export function ChatsView({ archived: showArchived = false }: { archived?: boole
   return (
     <div className="flex-1 overflow-y-auto p-6 bg-[var(--card)]">
       <div className="max-w-4xl mx-auto">
-        <div className="flex items-start justify-between gap-4 mb-6">
+        <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
           <div>
             <h1 className="text-xl font-bold text-[var(--foreground)]">{showArchived ? "Archive" : "Chats"}</h1>
             <p className="text-sm text-[var(--muted-fg)] mt-1">
@@ -64,8 +64,8 @@ export function ChatsView({ archived: showArchived = false }: { archived?: boole
               )}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="relative w-56">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="relative flex-1 min-w-0 sm:flex-none sm:w-56">
               <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted-fg)] pointer-events-none" />
               <Input
                 value={query}

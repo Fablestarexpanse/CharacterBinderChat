@@ -81,7 +81,12 @@ export function ChatHeader() {
   // before the early return below.)
   // Only commit once the REAL provider lists have loaded — committing while
   // the static fallback list is showing wrote a model that isn't installed.
-  const firstAvailable = customModels[0] ?? (realModelsLoaded ? chatModels[0] : undefined);
+  // Your default model (Settings → Chat models) comes first, as it does for a new
+  // chat: a chat made without one (the demo, an import) used to take whichever
+  // model happened to be first in the list.
+  const defaultModel = providerSettings.openrouter.defaultModel;
+  const preferred = defaultModel && realModelsLoaded ? chatModels.find((m) => m.id === defaultModel && m.providerId === "openrouter") : undefined;
+  const firstAvailable = preferred ?? customModels[0] ?? (realModelsLoaded ? chatModels[0] : undefined);
   useEffect(() => {
     if (chat && !chat.modelId && firstAvailable) {
       setChatModel(chat.id, firstAvailable.id, firstAvailable.providerId);
@@ -209,7 +214,7 @@ export function ChatHeader() {
           {loadingModels && (
             <Loader2 className="h-3 w-3 animate-spin text-[var(--muted-fg)] absolute left-2 pointer-events-none z-10" />
           )}
-          <select
+          <select aria-label="Chat model"
             value={currentModel}
             onChange={handleModelChange}
             className={`h-8 min-w-0 max-w-full rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs text-[var(--foreground)] pr-2 focus:outline-none focus:ring-1 focus:ring-[var(--purple)] focus:border-[var(--purple)] ${

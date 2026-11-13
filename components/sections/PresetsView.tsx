@@ -249,9 +249,9 @@ export function PresetsView() {
             </div>
           </div>
         ) : (
-          <div className="flex gap-6 items-start">
-            {/* Preset rail */}
-            <div className="w-52 flex-shrink-0 space-y-1">
+          <div className="flex flex-col md:flex-row gap-6 items-stretch md:items-start">
+            {/* Preset rail: above the editor on a phone, beside it from md up */}
+            <div className="w-full md:w-52 flex-shrink-0 space-y-1">
               {presets.map((p) => {
                 const isSel = p.id === selected?.id;
                 return (

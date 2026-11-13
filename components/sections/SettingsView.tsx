@@ -1,5 +1,6 @@
 "use client";
 
+import { addDemoStory } from "@/lib/demo";
 import { useRef, useState } from "react";
 import { useFableStore, DEFAULT_UTILITY_MODEL } from "@/lib/store";
 import { Input } from "@/components/ui/input";
@@ -412,6 +413,19 @@ function Panel({ id, tab, children }: { id: SettingsTab; tab: SettingsTab; child
   );
 }
 
+/** Adds the demo story back: only what is missing, never changing what you have (lib/demo.ts) */
+function DemoStoryRow() {
+  const [said, setSaid] = useState<string | null>(null);
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-3">
+      <Button variant="outline" size="sm" onClick={() => setSaid(addDemoStory() ? "Added what was missing from the demo story." : "The demo story is already all here.")}>
+        Add the demo story
+      </Button>
+      <span className="text-xs text-[var(--muted-fg)]">{said ?? "Port Ellery: June, Elias, a group chat, a lorebook and more. Adds only what is missing."}</span>
+    </div>
+  );
+}
+
 export function SettingsView() {
   const { providerSettings, setProviderSetting } = useFableStore();
   const { settingsTab: tab, setSettingsTab } = useUiStore();
@@ -641,6 +655,7 @@ export function SettingsView() {
               characters, chats, lorebooks, personas, scenarios and presets, <strong>but not what the characters
               remember</strong>. For a complete copy, use Backup &amp; restore above.
             </p>
+            <DemoStoryRow />
           </CardBody>
         </Card>
 
@@ -650,7 +665,7 @@ export function SettingsView() {
             <div className="text-xs text-[var(--muted-fg)] space-y-1">
               <div className="font-semibold text-[var(--foreground)]">FableChat v0.1.0</div>
               <div>Local-first AI roleplay studio.</div>
-              <div>Provider settings are stored in your browser&apos;s localStorage.</div>
+              <div>Chat model settings are kept in this browser; API keys are encrypted and kept by the server (<code>data/.fable-secret</code>).</div>
             </div>
           </CardBody>
         </Card>
