@@ -13,6 +13,7 @@ import {
   BookOpen, Check, CheckSquare, Clapperboard, Download, MessageSquare, MessageSquareQuote, Plus, Search, Square, Trash2, Upload,
   UserCircle2, Users, X,
   Sparkles,
+  IdCard,
 } from "lucide-react";
 import { useFableStore } from "@/lib/store";
 import { useUiStore } from "@/lib/store/ui";
@@ -23,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ExportButtons } from "@/components/cards/ExportButtons";
+import { TradingCardDialog } from "@/components/cards/TradingCardDialog";
 import { PersonaEditorDialog } from "@/components/characters/PersonaEditorDialog";
 import { useStartChat } from "@/components/characters/StartChat";
 import { importCardFiles } from "@/lib/import/applyCards";
@@ -71,6 +73,7 @@ export function LibraryView() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [platform, setPlatform] = useState<PlatformId>("sillytavern");
+  const [cardFor, setCardFor] = useState<Character | null>(null);
   const [notice, setNotice] = useState<{ kind: "info" | "error"; text: string } | null>(null);
   const [personaEditor, setPersonaEditor] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const fileRef = useRef<HTMLInputElement>(null);
@@ -366,6 +369,9 @@ export function LibraryView() {
                           <Button variant="purple" size="sm" onClick={() => startChat(character.id)}><MessageSquare className="h-3 w-3 mr-1" />Chat</Button>
                           <Button variant="outline" size="sm" onClick={() => openCharacterEditor(character.id)}>Edit</Button>
                           <ExportButtons run={(f) => exportOneCharacter(character, f)} />
+                          <Button variant="outline" size="sm" onClick={() => setCardFor(character)} title="Export as a trading card: a drawn card face with everything inside">
+                            <IdCard className="h-3 w-3 mr-1" />Card
+                          </Button>
                         </>
                       )}
                       {persona && (
@@ -402,6 +408,7 @@ export function LibraryView() {
 
         <PersonaEditorDialog open={personaEditor.open} personaId={personaEditor.id} onClose={() => setPersonaEditor({ open: false, id: null })} />
         {startChatDialog}
+        <TradingCardDialog character={cardFor} onClose={() => setCardFor(null)} />
       </div>
     </div>
   );

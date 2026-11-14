@@ -4,7 +4,9 @@
 // image handling and the download, which need a DOM.
 
 import type { Character, Lorebook, Persona, Scenario } from "@/lib/types";
-import { BLANK_PNG, encodeCardPng, isPng } from "./png";
+import { BLANK_PNG, encodeCardPng, isPng, withTextChunk } from "./png";
+import { BUNDLE_KEY, MAX_BUNDLE_OPENERS, MAX_BUNDLE_REFERENCES, bundleImage, bundleJson, type BundleImage } from "./bundle";
+import { drawCardFace } from "./tradingCard";
 import { characterToCard, loreToCharacterBook, lorebookToCard, personaToCard, scenarioToCard } from "./tavern";
 import { PLATFORMS, type PlatformId } from "./platforms";
 import { convertCardTo, lossyFields } from "./convert";
@@ -183,4 +185,92 @@ export async function exportArchive(sel: LibrarySelection, allLorebooks: Loreboo
   const zip = buildArchive(items);
   download(new Blob([zip as BlobPart], { type: "application/zip" }), `FableChat_Library_${new Date().toISOString().slice(0, 10)}.zip`);
   return { count: items.length, skipped };
+}
+
+// ─── Trading card ─────────────────────────────────────────────────────────────
+// The same full SillyTavern V2 card, carried by a drawn card face instead of the
+// bare portrait, plus FableChat's bundle (lib/cards/bundle.ts): the plain
+// portrait, reference pictures and chosen first messages.
+
+async function fetchBytes(url: string): Promise<Uint8Array | null> {
+  try {
+    const res = await fetch(url.startsWith("/api/assets/") ? url.split("?")[0] : url);
+    return res.ok ? new Uint8Array(await res.arrayBuffer()) : null;
+  } catch { return null; }
+}
+
+function loadImage(bytes: Uint8Array): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(new Blob([bytes as BlobPart]));
+    const img = new Image();
+    img.onload = () => { resolve(img); URL.revokeObjectURL(url); };
+    img.onerror = () => { resolve(null); URL.revokeObjectURL(url); };
+    img.src = url;
+  });
+}
+
+async function avatarBytes(avatar: string | undefined): Promise<Uint8Array | null> {
+  if (!avatar) return null;
+  if (avatar.startsWith("data:image/")) return base64ToBytes(avatar.split(",")[1] ?? "");
+  return fetchBytes(avatar);
+}
+
+export interface TradingCardOptions {
+  book?: Lorebook;
+  /** Saved first messages to carry; openers are not tied to a character, so the exporter picks */
+  openers?: Array<{ name: string; text: string }>;
+  /** Carry the reference pictures (default true) */
+  references?: boolean;
+}
+
+export interface TradingCardFile {
+  bytes: Uint8Array;
+  usedAvatar: boolean;
+  references: number;
+  /** Reference pictures that could not be read or are not images we carry */
+  referencesSkipped: number;
+  openers: number;
+}
+
+/** The drawn face alone, for a preview. */
+export async function drawTradingCardFace(character: Character): Promise<Uint8Array> {
+  const bytes = await avatarBytes(character.avatar);
+  const img = bytes ? await loadImage(bytes) : null;
+  return drawCardFace(character, img);
+}
+
+export async function buildTradingCard(character: Character, opts: TradingCardOptions = {}): Promise<TradingCardFile> {
+  const card = characterToCard(
+    character,
+    opts.book ? loreToCharacterBook(opts.book.name, opts.book.description, opts.book.entries) : undefined,
+  );
+  const check = validateTavernCardV2(card);
+  if (!check.valid) throw new Error(check.errors.join("; "));
+
+  const portraitBytes = await avatarBytes(character.avatar);
+  const portraitImg = portraitBytes ? await loadImage(portraitBytes) : null;
+  const face = await drawCardFace(character, portraitImg);
+  let out = encodeCardPng(face, JSON.stringify(convertCardTo(card, "sillytavern")), PLATFORMS.sillytavern.metadataKey);
+
+  const portrait = portraitBytes && portraitImg ? bundleImage(portraitBytes) ?? undefined : undefined;
+  const references: BundleImage[] = [];
+  let referencesSkipped = 0;
+  if (opts.references !== false) {
+    for (const url of (character.referenceImages ?? []).slice(0, MAX_BUNDLE_REFERENCES)) {
+      const b = await fetchBytes(url);
+      const img = b ? bundleImage(b) : null;
+      if (img) references.push(img); else referencesSkipped++;
+    }
+    referencesSkipped += Math.max(0, (character.referenceImages?.length ?? 0) - MAX_BUNDLE_REFERENCES);
+  }
+  const openers = (opts.openers ?? []).filter((o) => o.text.trim()).slice(0, MAX_BUNDLE_OPENERS);
+  const json = bundleJson({ portrait, references: references.length ? references : undefined, openers: openers.length ? openers : undefined });
+  if (json) out = withTextChunk(out, BUNDLE_KEY, json);
+  return { bytes: out, usedAvatar: !!portrait, references: references.length, referencesSkipped, openers: openers.length };
+}
+
+export async function exportTradingCard(character: Character, opts: TradingCardOptions = {}): Promise<TradingCardFile> {
+  const file = await buildTradingCard(character, opts);
+  download(new Blob([file.bytes as BlobPart], { type: "image/png" }), `${safeName(character.name)}.card.png`);
+  return file;
 }

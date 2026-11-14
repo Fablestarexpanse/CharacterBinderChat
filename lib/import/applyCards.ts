@@ -16,6 +16,8 @@ import { useUiStore } from "@/lib/store/ui";
 import { importBook, linkOrImportBook } from "./storeWrites";
 import { importArchive } from "./archive";
 import { isZip } from "@/lib/cards/zip";
+import { readTextChunk } from "@/lib/cards/png";
+import { BUNDLE_KEY, base64ToBytes, cleanBundle, type BundleImage, type CardBundle } from "@/lib/cards/bundle";
 
 export interface ImportResult {
   file: string;
@@ -67,6 +69,18 @@ async function decodeFile(file: File): Promise<ImportedCard | null> {
   return convertPayload(payload.json, payload.key);
 }
 
+/** FableChat's bundle from a trading-card PNG, checked; null for any other file. */
+async function readBundle(file: File): Promise<CardBundle | null> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const text = readTextChunk(bytes, BUNDLE_KEY);
+  if (!text) return null;
+  try { return cleanBundle(JSON.parse(text)); } catch { return null; }
+}
+
+function blobOf(img: BundleImage): Blob {
+  return new Blob([(base64ToBytes(img.data) ?? new Uint8Array()) as BlobPart], { type: img.type });
+}
+
 async function applyCard(
   card: ImportedCard,
   file: File,
@@ -85,19 +99,43 @@ async function applyCard(
           message: "character skipped: review and save the first one, then drop this again.",
         };
       }
-      // The card art itself becomes the avatar (downscaled), overriding any
-      // avatar path recorded inside the card JSON.
+      // The card art itself becomes the avatar, overriding any avatar path
+      // recorded inside the card JSON; a FableChat trading card carries the
+      // plain portrait in its bundle, since its art is the framed card face.
       const draft = { ...card.draft };
-      if (file.size > 8 && isPng(new Uint8Array(await file.slice(0, 8).arrayBuffer()))) {
+      const bundle = await readBundle(file);
+      const portrait = bundle?.portrait ? await imageToAvatar(blobOf(bundle.portrait)) : null;
+      if (portrait) draft.avatar = portrait;
+      else if (file.size > 8 && isPng(new Uint8Array(await file.slice(0, 8).arrayBuffer()))) {
         const avatar = await imageToAvatar(file);
         if (avatar) draft.avatar = avatar;
       }
       let extra = "";
+      if (bundle?.references?.length) {
+        const refs: string[] = [];
+        for (const r of bundle.references) {
+          const url = await imageToAvatar(blobOf(r));
+          if (url) refs.push(url);
+        }
+        if (refs.length) {
+          draft.referenceImages = refs;
+          extra += ` ${refs.length} reference picture${refs.length === 1 ? "" : "s"} added.`;
+        }
+      }
+      if (bundle?.openers?.length) {
+        // Idempotent: a first message already saved (same name and text) is not added twice
+        let added = 0;
+        for (const o of bundle.openers) {
+          const have = useFableStore.getState().openers.some((x) => x.name === o.name && x.text === o.text);
+          if (!have) { store.addOpener({ name: o.name, text: o.text }); added++; }
+        }
+        if (added) extra += ` ${added} saved first message${added === 1 ? "" : "s"} added to the Library.`;
+      }
       if (card.embeddedBook) {
         const { id, count, reused } = linkOrImportBook(card.embeddedBook);
         // Linked, so the character's own world travels with it when exported again
         draft.lorebookId = id;
-        extra = reused
+        extra += reused
           ? ` Linked to the lorebook "${card.embeddedBook.name}" already in your library.`
           : ` Embedded lorebook "${card.embeddedBook.name}" imported and linked (${count} entries).`;
       }

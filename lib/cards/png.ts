@@ -233,3 +233,44 @@ export const BLANK_PNG = new Uint8Array([
   0, 0, 0, 11, 73, 68, 65, 84, 120, 218, 99, 96, 0, 2, 0, 0, 5, 0, 1, 233, 250, 220, 216,
   0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
 ]);
+
+// ─── Side chunks ──────────────────────────────────────────────────────────────
+// A second tEXt chunk next to the card, for data other tools should ignore
+// (FableChat's bundle: the plain portrait, reference pictures, first messages).
+// Readers that only know the card keywords skip it; encodeCardPng keeps it.
+
+/** The decoded text of the first tEXt chunk under `keyword` (base64 UTF-8, or plain), or null. */
+export function readTextChunk(bytes: Uint8Array, keyword: string): string | null {
+  if (!isPng(bytes)) return null;
+  for (const chunk of readChunks(bytes)) {
+    if (chunk.type !== "tEXt" && chunk.type !== "iTXt") continue;
+    const p = textPayload(chunk);
+    if (!p || p.keyword !== keyword) continue;
+    const raw = new TextDecoder().decode(p.text).trim();
+    try { return new TextDecoder().decode(Uint8Array.from(atob(raw), (c) => c.charCodeAt(0))); } catch { return raw; }
+  }
+  return null;
+}
+
+/** `png` with `text` (base64) under `keyword`, replacing any earlier chunk of that name. Card keywords are refused. */
+export function withTextChunk(png: Uint8Array, keyword: string, text: string): Uint8Array {
+  if (!isPng(png)) throw new Error("Invalid PNG data");
+  if (CARD_KEYS.includes(keyword) || keyword === "name") throw new Error(`"${keyword}" is a card keyword; use encodeCardPng`);
+  const parts: Uint8Array[] = [SIGNATURE];
+  let placed = false;
+  for (const chunk of readChunks(png)) {
+    if (chunk.type === "tEXt" || chunk.type === "iTXt") {
+      if (textPayload(chunk)?.keyword === keyword) continue;
+    }
+    if (chunk.type === "IDAT" && !placed) {
+      parts.push(textChunk(keyword, bytesToBase64(new TextEncoder().encode(text))));
+      placed = true;
+    }
+    parts.push(chunkBytes(chunk.type, chunk.data));
+  }
+  if (!placed) throw new Error("Invalid PNG data: no image data");
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) { out.set(p, at); at += p.length; }
+  return out;
+}
