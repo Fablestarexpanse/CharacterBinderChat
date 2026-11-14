@@ -79,6 +79,7 @@ npm run dev
 | **Chat** | Streaming from Ollama, LM Studio or OpenRouter. Stop mid-reply, regenerate, retry after a failure; rename, clear, delete. |
 | **Library** | One screen for every card: characters, personas, lorebooks and scenarios in tabs, with search, sort, tag filter and multi-select. Export a selection or the whole library as one .zip that imports back; bulk delete warns which chats are affected. Editors ask before discarding unsaved changes. |
 | **Card import & export** | Drop PNG or JSON cards (SillyTavern v1/v2, CharacterBinder, JanitorAI, Agnai, Backyard) or a CharacterBinder "Archive All" .zip anywhere in the window. Export any character as a Tavern PNG card (art embedded) or JSON for SillyTavern, JanitorAI, Chub, Agnai, Venus, Backyard, RisuAI or generic JSON, and see which fields that site will drop. Example dialogue, system prompt, post-history instructions, alternate greetings and creator notes round-trip; a character's lorebook travels inside its card. |
+| **Cards to share** | **Card** on any character makes a collectible card the size of a Magic card (63 × 88 mm at 300 DPI, so it prints true). ComfyUI draws it from options you pick: MOSS-Image letters the name (and a line about them) into the art, or your own picture settings draw it most like them and the name is laid over. Choose the art style, border, text, name position and background, or write your own. The PNG holds the whole character (any SillyTavern-style reader opens it), and FableChat also carries the plain portrait, reference pictures and chosen first messages. |
 | **Quick Import** | Paste any character text (headed sections, W++, JSON, plain paragraphs) and review how it is sorted into fields before applying. |
 | **Personas** | Who *you* are in the story. The active persona is in the prompt, labels your turns during extraction and names the `player` entity in the graph. |
 | **Groups + witness memory** | Multi-character scenes. Pick who replies or let it choose; toggle who is present, and each character only remembers what happened while they were there. |
@@ -93,11 +94,12 @@ npm run dev
 | **Agents (MCP)** | Claude Code, Claude Desktop or any MCP client can create and edit cards, portraits included. Changes appear in open tabs within seconds, with **Undo**. |
 | **Backup & restore** | One file holds everything, memory included. Restore shows what a file contains first and keeps the database it replaces. |
 | **Image generation** | `/image <prompt>` renders through your local ComfyUI, proxied by the server. Bundled workflows include **Krea2 photo** and **MOSS photo**, which keep their own tuned sampling; import your own ComfyUI "Export (API)" files on the Workflows screen. |
+| **Comic it** (opt-in) | Turns the story since the last page into a comic page: the local memory model writes up to six panels with speech balloons and narration, FableChat lays the page out, and MOSS-Image draws it with the lettering spelled exactly. Each page carries on where the last ended, even after a branch or a deleted message. A page can be redone (new script) or re-drawn (same script); deleting the latest page lets that stretch be made again. Optional style LoRA, and a comic LoRA per character. |
 | **Texts and calls** (opt-in) | Characters you allow can text you first, send photos, or **phone** you about what would not wait for a text. Texts read like a phone's (your bubbles green, theirs gray). An incoming call or text shows on its chat in Recent Chats (Answer / Decline right there, a red count for unread texts), with a ringtone and chime you can turn off. The call screen shows their lines as captions while you type back. |
 | **Pictures you send** | Attach, paste or drop a picture into a message. A **picture reader** (any model that can see images, on LM Studio, Ollama or OpenRouter) describes it once, so every chat model understands it and memory keeps it. |
 | **Photos and clips** | A character's photo can become a ~5 s clip with sound through **MiniMax H3**: everyone in the scene (the character, your persona, others present) is given as a reference so faces hold. Cancel stops the ComfyUI job. Chat photos and clips can also be copied to a folder you choose. |
 | **Model selector** | Every model each provider reports, plus any ID typed by hand (see [Choosing a model](#choosing-a-model)). Per-chat temperature, top-p and max tokens behind the gear icon. |
-| **Appearance** | Light, dark or match system; nine accent colours or any custom one. Settings is split into tabs (Appearance, Chat models, Memory, Media, Contact, Prompts, Data & backup). |
+| **Appearance** | The look of the [CharacterBinder website](https://github.com/Fablestarexpanse/characterbinderwebsite): slate greys, violet, Geist type. Light, dark or match system; nine accent colours or any custom one. Settings is split into tabs (Appearance, Chat models, Memory, Media, Contact, Prompts, Data & backup). |
 | **Phones and narrow windows** | Below 768 px the sidebar becomes a drawer and the inspector a sheet over the chat. |
 | **Local access control** | Listens on `127.0.0.1` only. Other devices are refused unless you set `FABLE_PASSWORD`; cross-site writes are refused. |
 
@@ -275,6 +277,8 @@ The current plan is [`docs/plan-2026-11.md`](docs/plan-2026-11.md), drawn from t
 - [ ] Agent activity view and memory tools over MCP
 - [ ] Context-budget breakdown per prompt section
 - [ ] GPU / VRAM monitoring
+- [x] Comic it: comic pages from the story, with style and character LoRAs
+- [x] Shareable character cards drawn by ComfyUI, at Magic card size, with the whole character inside
 - [x] Export a chat: web page, Markdown, text, SillyTavern or FableChat file, with or without pictures and clips
 - [x] Characters who text and call you, with photos and video clips that look like them (opt-in)
 - [x] Voices for characters and personas (local VibeVoice), Play and Read replies aloud, and a narrator
