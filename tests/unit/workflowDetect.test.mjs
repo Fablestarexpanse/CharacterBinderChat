@@ -17,7 +17,7 @@ test("every bundled template is read exactly as its hand-written mapping says", 
     const r = readWorkflow(wf);
     assert.ok(r.ok, f);
     for (const [k, v] of Object.entries(wf._meta.fablechat)) {
-      if (k === "loraSyntaxNode" || k === "purpose" || k === "ownSampling") continue; // chosen by hand, never guessed
+      if (k === "loraSyntaxNode" || k === "purpose" || k === "ownSampling" || k === "loraChain") continue; // chosen by hand, never guessed
       assert.deepEqual(r.mapping[k] ?? null, v ?? null, `${f}: ${k}`);
     }
     assert.equal(r.isVideo, wf._meta.fablechat.purpose === "video", `${f}: video is detected exactly when it is a video workflow`);

@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       .map((p) => ({
         name: typeof p.name === "string" ? p.name.trim().slice(0, 80) : "",
         look: typeof p.look === "string" ? p.look.trim().slice(0, 600) : "",
-        role: p.role === "you" ? "you" : "character",
+        role: p.role === "you" ? "you" : p.role === "extra" ? "someone already seen" : "character",
       }))
       .filter((p) => p.name)
       .slice(0, 8);
@@ -53,7 +53,8 @@ export async function POST(req: NextRequest) {
     });
     let raw: string;
     try {
-      raw = await callLLM(backend, prompt, { maxTokens: 1800 });
+      // Unloaded straight after: MOSS draws the page next and needs the GPU memory
+      raw = await callLLM(backend, prompt, { maxTokens: 1800, keepAlive: 0 });
     } catch (e) {
       return Response.json({ ok: false, error: `The model could not run: ${e instanceof Error ? e.message : String(e)}` }, { status: 502 });
     }

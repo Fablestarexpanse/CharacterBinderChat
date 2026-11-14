@@ -155,6 +155,8 @@ export interface Message {
   rating?: "up" | "down";
   /** This reply spoken in its writer's voice: an audio asset, and the words + voice it was made from (lib/chat/speech.ts) */
   speech?: { url: string; key: string };
+  /** A Comic-it page card: what stretch it covers, the script it was drawn from, and the page kept as an asset */
+  comic?: ComicPageInfo;
   /** Image cards only: collapsed to a one-line summary to declutter the chat */
   collapsed?: boolean;
   /** True when this is a provider-failure notice, not real dialogue — such
@@ -174,6 +176,33 @@ export interface MemoryTrace {
   storyTime?:     string | null;
   /** Traces written before the field was renamed from `bits`. Read-only. */
   bits?:          string[];
+}
+
+/** Comic-it on a page card (lib/chat/comic.ts) */
+export interface ComicPageInfo {
+  title: string;
+  panels: number;
+  /** First and last message the page covers */
+  fromId: string;
+  upToId: string;
+  /** What the pages before this one told (sent again when the page is redone) */
+  recapBefore: string;
+  /** What this page told, for the page after it */
+  recap: string;
+  /** The panel script (lib/media/comicPage.ts ComicScript), kept so the page can be re-drawn */
+  script: unknown;
+  /** The finished page, stored as an asset so it outlives ComfyUI's output folder */
+  page?: string;
+}
+
+/** Comic-it on a chat: where the last page ended, and what stays the same from page to page */
+export interface ChatComicState {
+  upTo: string;
+  recap: string;
+  /** Who "you" were on the first page (a chat does not otherwise record its persona) */
+  personaId?: string;
+  /** People the cast does not include who keep turning up, with the look they were given */
+  extras?: Array<{ name: string; look: string }>;
 }
 
 export interface Chat {
@@ -206,7 +235,7 @@ export interface Chat {
   /** Put away: hidden from Chats and Recent Chats until you show archived chats. Nothing is deleted */
   archived?: boolean;
   /** Comic-it: the last message the previous comic page covered, and what that page told (lib/chat/comic.ts) */
-  comic?: { upTo: string; recap: string };
+  comic?: ChatComicState;
   /** This chat's own picture settings (workflow, size, steps…), over Image Studio's. Unset = Image Studio's */
   imageSettings?: Partial<ImageGenerationSettings>;
   /** Which preset applies. Unset falls back to the store's defaultPresetId,

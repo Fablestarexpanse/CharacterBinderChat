@@ -18,7 +18,10 @@ and what has been fixed. Add to it after each test; move an issue to **Fixed** w
 5. **Prompt:** `compileLayout` turns the layout into MOSS-Image's Layout prompt (`abs_centralized`, `yxyx`), the same
    conversion as the official `moss-image-prompt-enhancer` compiler.
 6. **Drawing:** MOSS-Image through the bundled `moss-photo` workflow, with `COMIC_NEGATIVE` (that workflow's own
-   negative refuses "cartoon, illustration, text"). The page appears in the chat as an image card.
+   negative refuses "cartoon, illustration, text"), plus any LoRAs (see **LoRAs**). The page appears in the chat as a
+   page card (`ComicPageCard`): the message carries `comic` (title, panels, what it covered, the recap, the script and,
+   once drawn, the page kept as an asset). **Redo page** writes a new script for the same stretch; **Re-draw** draws the
+   same script again; deleting the latest page moves the chat's boundary back to the page before.
 
 Looks come from each person's image tags; without tags, from the appearance part of their description
 (`lookFromDescription`), and the button says who has no tags.
@@ -30,6 +33,7 @@ Looks come from each person's image tags; without tags, from the appearance part
 | 13 Nov | Night Shift demo (branch), 3 messages | 1 (5 panels) | Worked first time: lettering exact, June consistent. Narration put in a balloon; Nora drawn in the booth though only on the phone. |
 | 13 Nov | Storm on Quay Street (branch), group of 3, 3 rounds of turns | 3 (6, 4, 6 panels), ~30 s each to draw | Each page continued exactly after the last (checked by `comic.upTo` and by reading). Found the issues below. |
 | 13 Nov | "Brakka Stonehide & Sefa Vire": new fantasy cast (half-orc ranger in crimson, elf arcanist in midnight blue and gold, persona Tam, red-haired courier in moss green), 4 rounds of 3 turns in a wraith-haunted shrine | 4 (6 panels each) | Each page continued exactly. **No blending at all across 24 panels**: three people who differ in species, build, hair and one signature colour stay apart, which supports idea 1 under issue 1. Found issues 6–8 below; fixed what the prompt and layout can. |
+| 13 Nov | Same chat, epilogue page 5, after the round-two fixes, with the style LoRA `ApricotPaper_MOSS_Style_V1` at 1.0 | 1 (6 panels) | ComfyUI's history shows `fablechat_lora_1` (LoraLoaderModelOnly) feeding the KSampler. The page took the LoRA's look (watercolour on warm paper) and kept all three people apart; the page card covered messages 29–32 only, was kept as an asset, and carried the "Ash Wraith" extra with a look. Panels varied in shot. One balloon garbled ("Iler Is leler…", issue 8); the other five lettered cleanly. |
 
 ## Open issues
 
@@ -112,60 +116,29 @@ before it" to such a panel, and the script prompt asks for wide, medium and clos
 
 ## Foreseen (review of the code, 13 Nov; not yet seen in a run)
 
-Ranked by how likely they are to bite. **Confirmed** means the code was checked and does this today.
+Most of the review's list was fixed in the second round (see **Fixed**). Still open:
 
-**A. Long chats overflow the script model's context (confirmed).** `callOllama` sends no `num_ctx`, so Ollama uses
-its default window (2–4k tokens on most installs); the built-in model runs at 8192. Sixteen long role-play replies can
-exceed that, and Ollama cuts from the *front*, which is where the instructions are. Expect garbled or missing scripts
-on long, wordy chats. Fix: set `num_ctx` for these calls, and cap the excerpt by tokens (keep the newest lines, summarise
-the rest) rather than by 16 messages.
+**I. Adult content and young-looking art.** Ruled not a concern for this app (mature stories are fine). Kept here only
+as a note: stylised art can make an adult look young, so a look that says "adult" or an age helps.
 
-**B. Branching a chat breaks "where the last page ended" (confirmed).** A branch copies `chat.comic`, but gives every
-message a new id, so `upTo` no longer matches and the next page starts again from the very beginning. Fix: remap
-`comic.upTo` through the branch's id map (or drop it when the branch point is before it).
+**L (part). Wider text support.** Balloon wrapping assumes ~15 px per Latin character; CJK and long German words will
+wrap badly. `ACTION_ONLY` knows English words only. Manga reads right to left; the grid assumes left to right.
+(Names with accents are now removed from the picture.)
 
-**C. Deleting or re-rolling a covered message has the same effect.** If the message `upTo` points at is deleted or
-replaced, the page boundary is lost and the next page re-covers the whole chat. Fix: fall back to the comic card's own
-position in the chat (the page card sits after what it covered).
+**M. Smaller things.** The art style and style LoRA are global (a per-chat style would let one chat be manga and
+another noir); the on/off switch is cached for 10 s and only rechecked when you change chat; MOSS's settings
+(30 steps, 1024×1536) are fixed, so a speed LoRA (4 or 8 steps) can't be used as it should; there is no end-to-end
+test, only unit tests.
 
-**D. The page card shows the raw layout JSON (confirmed).** `ImageCard` prints `job.prompt` as the caption and puts it
-in Re-roll's edit box: a wall of coordinates. Fix: a comic card (or a `kind: "comic"` on the job) that shows the title
-and panel count, keeps the script, and offers **Redo page** (new script for the same stretch) separately from
-**Re-draw** (same script, new seed).
+## LoRAs
 
-**E. No way to redo or restart a page.** Deleting a page doesn't move `upTo` back, so you can't get a better version
-of the same stretch, and there is no "start the comic over". Fix: Redo page on the card; a reset in the chat menu.
-
-**F. Pages live only in ComfyUI's output folder.** Like scene pictures, the card points at ComfyUI's URL. If ComfyUI is
-off, moved or its output cleaned, the pages are gone ("Image no longer available"), and the chat export can't fetch them.
-Comic pages are worth keeping: store each finished page as an asset (`storePicture`), as photo messages do.
-
-**G. Texts and phone calls are drawn as if everyone is in the room (confirmed).** The excerpt is built from raw content,
-not `historyContent`, so "(by text)" / "(on the phone)" are lost. Fix: use `historyContent` so the script knows.
-
-**H. Who "you" are can change (confirmed).** A chat doesn't record which persona it was played with; the page uses
-whichever persona is active when you press the button. Switch persona between pages and "you" changes face.
-
-**I. Adult content and young-looking art.** Comic pages ignore the undressed tags (fine) but nothing stops an explicit
-scene from being drawn, and stylised art made Tam (19) look like a child. Before Comic-it is used with mature stories:
-add `nsfw` to `COMIC_NEGATIVE` unless the user opts in, put "adult" in every figure's look, and never combine
-undressed looks with comic pages.
-
-**J. People the cast doesn't include drift.** The wraith / Master Elowen had no look, so MOSS invented one each page.
-Fix: let the script name recurring extras with a one-line look, and carry those looks forward in the recap.
-
-**K. GPU memory.** The script call doesn't ask Ollama to unload the memory model afterwards (the scene director sends
-`keep_alive: 0`), so the 4B model can stay in VRAM while MOSS draws. On a smaller card this means slow pages or
-out-of-memory. Fix: unload after the script, as the director does.
-
-**L. Wider text support.** Balloon wrapping assumes ~15 px per Latin character; CJK and long German words will wrap
-badly. Name removal uses `\b`, which misses names with accents ("Zoë"), so those could still be lettered into the
-picture. `ACTION_ONLY` knows English words only. Manga reads right to left; the grid assumes left to right.
-
-**M. Smaller things.** The art style is global (a per-chat style would let one chat be manga and another noir); the
-on/off switch is cached for 10 s and only rechecked when you change chat; the button gives no progress while MOSS draws
-(the card does); MOSS's settings (30 steps, 1024×1536) are fixed; there is no end-to-end test, only unit tests of the
-layout and script cleaning.
+- **Style LoRA** (optional): Settings → Media → Comic-it. The LoRAs ComfyUI has are listed with MOSS-Image ones first;
+  others are marked "(not MOSS)" because they won't load on MOSS. Kept in `comic:settings` as `styleLora`.
+- **A character's comic LoRA** (optional): their look, "LoRA for comic pages" (`image.comicLora`: name, trigger,
+  weight), kept apart from their usual LoRA because that one is for another model. The trigger word leads their look.
+  Only the LoRAs of people on the page are applied.
+- **How:** `moss-photo` has `_meta.fablechat.loraChain: true`, so `applySettingsToWorkflow` calls `chainLoras`
+  (`lib/media/loraChain.ts`), which inserts `LoraLoaderModelOnly` nodes in front of every sampler (at most 8).
 
 ## Fixed
 
@@ -177,3 +150,14 @@ layout and script cleaning.
 | A persona without tags merged into another character | `lookFromDescription`; the button names who has no tags; demo personas ship with tags | Page 2 (Nora distinct) |
 | Group chat: "Elias, …" not recognised, so the wrong member answered | First or full name, whole word (`pickSpeaker`) | Live, unit test |
 | MOSS's photo negative refused illustration and text | `COMIC_NEGATIVE` | First page |
+| A. Long chats overflowing the script model | Ollama calls send `num_ctx: 8192`; the excerpt is cut at 14,000 characters, earliest first, never to nothing | Unit test |
+| B. A branch lost where the last page ended | `branchChat` remaps `chat.comic.upTo` and each card's `fromId`/`upToId`; a boundary after the branch point falls back to the last kept card | Unit test |
+| C. A deleted or re-rolled covered message lost the boundary | `nextPageStart` falls back to the last page card's position | Unit test |
+| D. The card showed the layout JSON | `ComicPageCard` (title, panel count, page); the script is kept on `message.comic` | Page 5 |
+| E. No way to redo or restart a page | **Redo page** (new script) and **Re-draw** (same script); deleting the latest page moves the boundary back to the page before | Unit test (delete); Redo/Re-draw not yet pressed in a run |
+| F. Pages lived only in ComfyUI's output | Each finished page is stored with `storePicture` (`comic.page`) | Page 5 |
+| G. Texts and calls drawn as if in the room | The excerpt is built with `historyContent` | Code |
+| H. "You" could change face between pages | The persona is kept on `chat.comic.personaId` | Page 5 |
+| J. Recurring extras drifted | The script names extras with a look; they are kept on `chat.comic.extras` (at most 4 a page) | Page 5 (Ash Wraith), unit test |
+| K. The script model stayed in VRAM while MOSS drew | The script call sends `keep_alive: 0` | Code |
+| L (part). Accented names lettered into the picture | Name removal uses Unicode letter boundaries | Unit test ("Zoë") |

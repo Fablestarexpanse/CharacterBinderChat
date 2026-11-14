@@ -26,6 +26,8 @@ export interface ImageLook {
   avoid?: string;
   /** A LoRA trained on this character */
   lora?: { name: string; trigger?: string; weight?: number };
+  /** A LoRA for comic pages (MOSS-Image): kept apart from `lora`, which is for the usual picture model */
+  comicLora?: { name: string; trigger?: string; weight?: number };
   /** A fixed seed: the same face and framing more often, at the cost of variety */
   seed?: number;
   /** "Make pictures look like them": draw them with a likeness workflow (one with an image input) */
@@ -43,13 +45,17 @@ export function cleanImageLook(raw: unknown): ImageLook | undefined {
   if (tags) out.tags = tags;
   if (undressedTags) out.undressedTags = undressedTags;
   if (avoid) out.avoid = avoid;
-  const l = r.lora as Record<string, unknown> | undefined;
-  const name = l && typeof l === "object" ? s(l.name, 200) : "";
-  if (name) {
+  const loraOf = (raw: unknown) => {
+    const l = raw as Record<string, unknown> | undefined;
+    const name = l && typeof l === "object" ? s(l.name, 200) : "";
+    if (!name) return undefined;
     const trigger = s(l!.trigger, 200);
     const w = Number(l!.weight);
-    out.lora = { name, ...(trigger ? { trigger } : {}), ...(Number.isFinite(w) && w !== 1 ? { weight: Math.min(2, Math.max(-2, Math.round(w * 100) / 100)) } : {}) };
-  }
+    return { name, ...(trigger ? { trigger } : {}), ...(l!.weight !== undefined && l!.weight !== "" && Number.isFinite(w) && w !== 1 ? { weight: Math.min(2, Math.max(-2, Math.round(w * 100) / 100)) } : {}) };
+  };
+  const lora = loraOf(r.lora), comicLora = loraOf(r.comicLora);
+  if (lora) out.lora = lora;
+  if (comicLora) out.comicLora = comicLora;
   const seed = Number(r.seed);
   if (r.seed !== undefined && r.seed !== null && r.seed !== "" && Number.isInteger(seed) && seed >= 0 && seed <= 0xffffffff) out.seed = seed;
   if (r.likeness === true) out.likeness = true;
@@ -119,11 +125,12 @@ const escapeRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export function withoutNames(prompt: string, names: string[]): string {
   let out = prompt;
   const full = names.map((n) => n.trim()).filter((n) => n.length > 1).sort((a, b) => b.length - a.length);
-  for (const n of full) out = out.replace(new RegExp(`\\b${escapeRe(n)}('s)?\\b`, "gi"), "");
+  // Letter boundaries that know accents (\b treats "ë" as a break, so "Zoë" never matched)
+  for (const n of full) out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(n)}('s)?(?![\\p{L}\\p{N}])`, "giu"), "");
   for (const first of new Set(full.map((n) => n.split(/\s+/)[0]).filter((f) => f.length > 1))) {
     const f = escapeRe(first);
     out = out
-      .replace(new RegExp(`\\b${f}'s\\s+`, "g"), "their ")
+      .replace(new RegExp(`(?<![\\p{L}\\p{N}])${f}'s\\s+`, "gu"), "their ")
       .replace(new RegExp(`(^|,)\\s*${f}\\s*(?=,|$)`, "g"), "$1");
   }
   // Tidy what the removals left: empty list items, doubled spaces, stray commas

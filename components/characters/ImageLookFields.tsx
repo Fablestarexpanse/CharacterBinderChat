@@ -16,13 +16,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 
-export interface LookDraft { tags: string; undressedTags: string; avoid: string; loraName: string; loraTrigger: string; loraWeight: string; seed: string; likeness: boolean }
+export interface LookDraft { tags: string; undressedTags: string; avoid: string; loraName: string; loraTrigger: string; loraWeight: string; comicLoraName: string; comicLoraTrigger: string; comicLoraWeight: string; seed: string; likeness: boolean }
 
 export function toLookDraft(look: ImageLook | undefined): LookDraft {
   return {
     tags: look?.tags ?? "", undressedTags: look?.undressedTags ?? "", avoid: look?.avoid ?? "",
     loraName: look?.lora?.name ?? "", loraTrigger: look?.lora?.trigger ?? "",
     loraWeight: look?.lora?.weight !== undefined ? String(look.lora.weight) : "",
+    comicLoraName: look?.comicLora?.name ?? "", comicLoraTrigger: look?.comicLora?.trigger ?? "",
+    comicLoraWeight: look?.comicLora?.weight !== undefined ? String(look.comicLora.weight) : "",
     seed: look?.seed !== undefined ? String(look.seed) : "",
     likeness: look?.likeness ?? false,
   };
@@ -32,6 +34,7 @@ export function fromLookDraft(d: LookDraft): ImageLook | undefined {
   return cleanImageLook({
     tags: d.tags, undressedTags: d.undressedTags, avoid: d.avoid,
     lora: d.loraName.trim() ? { name: d.loraName, trigger: d.loraTrigger, weight: d.loraWeight.trim() ? Number(d.loraWeight) : undefined } : undefined,
+    comicLora: d.comicLoraName.trim() ? { name: d.comicLoraName, trigger: d.comicLoraTrigger, weight: d.comicLoraWeight.trim() ? Number(d.comicLoraWeight) : undefined } : undefined,
     seed: d.seed.trim() ? Number(d.seed) : undefined,
     likeness: d.likeness,
   });
@@ -127,6 +130,17 @@ export function ImageLookFields({ value, onChange, who, open, children, describe
           </Field>
         </div>
         {weightBad && <div role="alert" className="text-[11px] text-red-600">The weight must be a number, like 0.8.</div>}
+        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_5rem]">
+          <Field label="LoRA for comic pages" hint="optional, a MOSS-Image LoRA (Comic-it)">
+            <Input value={value.comicLoraName} onChange={set("comicLoraName")} aria-label="Comic LoRA name" placeholder="MOSS/my_character_moss" />
+          </Field>
+          <Field label="Trigger word">
+            <Input value={value.comicLoraTrigger} onChange={set("comicLoraTrigger")} aria-label="Comic LoRA trigger word" disabled={!value.comicLoraName.trim()} />
+          </Field>
+          <Field label="Weight">
+            <Input value={value.comicLoraWeight} onChange={set("comicLoraWeight")} aria-label="Comic LoRA weight" placeholder="1" inputMode="decimal" disabled={!value.comicLoraName.trim()} />
+          </Field>
+        </div>
         <Field label="Fixed seed" hint="optional: the same face and framing more often, with less variety">
           <div className="flex gap-2">
             <Input value={value.seed} onChange={set("seed")} aria-label="Fixed seed" placeholder="random each time" inputMode="numeric" />

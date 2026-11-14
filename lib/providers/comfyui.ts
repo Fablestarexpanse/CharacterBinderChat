@@ -12,6 +12,7 @@
  * in lib/chat/imageGen.ts owns the queue-poll-update lifecycle.
  */
 
+import { chainLoras } from "@/lib/media/loraChain";
 import { injectReferences } from "@/lib/media/imageLook";
 import type { ImageGenerationSettings, AspectRatio } from "@/lib/types";
 
@@ -42,6 +43,8 @@ interface FableWorkflowMeta {
   loraSyntaxNode?: string | null;
   /** Keep the workflow's own steps, CFG and sampler (see WorkflowMapping.ownSampling) */
   ownSampling?: boolean;
+  /** No LoRA node of its own: LoRAs are chained in front of the sampler (lib/media/loraChain.ts) */
+  loraChain?: boolean;
   /** A video workflow's frame count */
   videoLengthNode?: string | null;
 }
@@ -318,6 +321,10 @@ function applySettingsToWorkflow(
       meta.loraSyntaxNode,
       settings.loras.map((l) => `<lora:${l.name}:${l.weight}>`).join(" ")
     );
+  }
+  // A workflow without a LoRA node that opts in gets model-only LoRA loaders in front of its sampler
+  if (!meta.loraSyntaxNode && meta.loraChain && settings.loras?.length) {
+    chainLoras(result as Record<string, unknown>, settings.loras.map((l) => ({ name: l.name, weight: l.weight })));
   }
   const ownSampling = meta.ownSampling === true;
   if (!ownSampling) {

@@ -33,6 +33,18 @@ export async function branchChat(chatId: string, messageId: string): Promise<Bra
     messageIdMap[m.id] = id;
     return { ...m, id, chatId: newId };
   });
+  // Comic-it boundaries point at message ids, which a branch renames
+  const remap = (id: string) => messageIdMap[id];
+  for (const m of messages) {
+    if (m.comic) m.comic = { ...m.comic, fromId: remap(m.comic.fromId) ?? m.comic.fromId, upToId: remap(m.comic.upToId) ?? m.comic.upToId };
+  }
+  const lastCard = [...messages].reverse().find((m) => m.comic);
+  const branchComic = source.comic
+    ? remap(source.comic.upTo)
+      ? { ...source.comic, upTo: remap(source.comic.upTo) }
+      // The last page ended after the branch point: continue from the last page the branch kept
+      : lastCard?.comic ? { ...source.comic, upTo: lastCard.comic.upToId, recap: lastCard.comic.recap } : undefined
+    : undefined;
 
   const nowIso = new Date().toISOString();
   const chat: Chat = {
@@ -41,6 +53,7 @@ export async function branchChat(chatId: string, messageId: string): Promise<Bra
     name: `${source.name} (branch)`,
     messages,
     branchOf: { chatId: source.id, chatName: source.name, messageId },
+    comic: branchComic,
     createdAt: nowIso,
     updatedAt: nowIso,
   };

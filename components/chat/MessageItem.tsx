@@ -11,6 +11,7 @@ import { branchChat } from "@/lib/chat/branch";
 import { regenerateLastReply } from "@/lib/chat/generation";
 import { generateSceneImage } from "@/lib/chat/imageGen";
 import { ImageCard } from "@/components/chat/ImageCard";
+import { ComicPageCard } from "@/components/chat/ComicPageCard";
 import { Attachments } from "@/components/chat/Attachments";
 import { formatTime } from "@/lib/utils";
 import type { Message, MemoryTrace } from "@/lib/types";
@@ -95,6 +96,11 @@ export function MessageItem({ message }: MessageItemProps) {
       setImagining(false);
     }
   };
+
+  // A Comic-it page has its own card (no layout JSON on show, Redo page / Re-draw)
+  if (message.comic) {
+    return <ComicPageCard message={message} />;
+  }
 
   // Image card message
   if (message.imageJobId) {

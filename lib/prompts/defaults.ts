@@ -183,12 +183,15 @@ what happened, in order. {{recap}}
 
 PEOPLE (use these names exactly):
 {{people}}
+If someone else appears and matters (a creature, a stranger, a ghost) and is not in this list, add them to "extras"
+with a short visual look, and use that same name in the panels.
 
 STORY SO FAR ON THIS PAGE:
 {{excerpt}}
 
 Answer with JSON only:
 {"title": "a short page title", "setting": "where and when, in a few words",
+ "extras": [{"name": "name", "look": "how they look, a few words"}],
  "panels": [{"shot": "what the camera sees: framing, who is where, action, expression",
              "characters": ["names in the panel"],
              "balloons": [{"speaker": "name", "text": "what they say"}],

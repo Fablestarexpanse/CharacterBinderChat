@@ -4,7 +4,7 @@ import type { StateCreator } from "zustand";
 import type { FableStore } from "../index";
 import { expandMacros } from "@/lib/cards/tavern";
 import type {
-  Character, Chat, GenerationParams, MemoryTrace, Message, PersistedAppState, Persona, ProviderId, Attachment, ImageGenerationSettings,
+  Character, Chat, GenerationParams, MemoryTrace, Message, PersistedAppState, Persona, ProviderId, Attachment, ImageGenerationSettings, ChatComicState, ComicPageInfo,
 } from "@/lib/types";
 
 export interface ChatsSlice {
@@ -39,6 +39,8 @@ export interface ChatsSlice {
   removeAttachment: (chatId: string, messageId: string, attachmentId: string) => void;
   /** Repoint an image-card message at a new job (retry / re-roll) */
   setMessageImageJob: (chatId: string, messageId: string, jobId: string) => void;
+  /** Comic-it: replace a page card's comic info (and, when given, its text and image job) */
+  setMessageComic: (chatId: string, messageId: string, patch: { comic: ComicPageInfo; content?: string; imageJobId?: string }) => void;
   /** Collapse / expand an image card in the transcript */
   toggleMessageCollapsed: (chatId: string, messageId: string) => void;
   /** Update which model / provider a chat uses */
@@ -72,7 +74,7 @@ export interface ChatsSlice {
   /** Archive (hide) or bring back a chat; its messages and memory are kept */
   setChatArchived: (chatId: string, archived: boolean) => void;
   /** Comic-it: record where the last comic page ended (so the next one starts after it) */
-  setChatComic: (chatId: string, comic: { upTo: string; recap: string }) => void;
+  setChatComic: (chatId: string, comic: ChatComicState | undefined) => void;
   /** Change this chat's own picture settings; null goes back to Image Studio's */
   setChatImageSettings: (chatId: string, patch: Partial<ImageGenerationSettings> | null) => void;
   renameChat: (chatId: string, name: string) => void;
@@ -270,6 +272,13 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
   setMessageImageJob: (chatId, messageId, jobId) =>
     set((s) => patchMessage(s, chatId, messageId, (m) => ({ ...m, imageJobId: jobId }))),
 
+  setMessageComic: (chatId, messageId, patch) =>
+    set((s) => patchMessage(s, chatId, messageId, (m) => ({
+      ...m, comic: patch.comic,
+      ...(patch.content !== undefined ? { content: patch.content } : {}),
+      ...(patch.imageJobId !== undefined ? { imageJobId: patch.imageJobId } : {}),
+    }))),
+
   toggleMessageCollapsed: (chatId, messageId) =>
     set((s) => patchMessage(s, chatId, messageId, (m) => ({ ...m, collapsed: !m.collapsed }))),
 
@@ -465,9 +474,20 @@ export const createChatsSlice: StateCreator<FableStore, [], [], ChatsSlice> = (s
   },
 
   removeMessage: (chatId, messageId) => {
-    set((state) => patchChat(state, chatId, (c) => ({
-      ...c, messages: c.messages.filter((m) => m.id !== messageId),
-    })));
+    set((state) => patchChat(state, chatId, (c) => {
+      const gone = c.messages.find((m) => m.id === messageId);
+      const messages = c.messages.filter((m) => m.id !== messageId);
+      // Deleting the latest comic page moves "where the last page ended" back to the
+      // page before it (or the start), so that stretch can be made again
+      if (gone?.comic && c.comic && c.comic.upTo === gone.comic.upToId) {
+        const prev = [...messages].reverse().find((m) => m.comic);
+        return {
+          ...c, messages,
+          comic: prev?.comic ? { ...c.comic, upTo: prev.comic.upToId, recap: prev.comic.recap } : (c.comic.extras?.length ? { upTo: "", recap: "", extras: c.comic.extras } : undefined),
+        };
+      }
+      return { ...c, messages };
+    }));
   },
 
   isGenerating: false,

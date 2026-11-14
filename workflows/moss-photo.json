@@ -46,10 +46,11 @@
   },
   "_meta": {
     "title": "MOSS photo",
-    "description": "MOSS-Image (SFT DeBand) text to image: slower than Krea2, stronger on text in the picture and busy scenes. Keeps its own tuned sampling (30 steps, CFG 3, dpmpp_2m_sde/beta).",
+    "description": "MOSS-Image (SFT DeBand) text to image: slower than Krea2, stronger on text in the picture and busy scenes. Keeps its own tuned sampling (30 steps, CFG 3, dpmpp_2m_sde/beta). Takes MOSS LoRAs (model only), chained in front of the sampler.",
     "fablechat": {
       "purpose": "photo",
       "ownSampling": true,
+    "loraChain": true,
       "promptNode": "4.inputs.text",
       "negativePromptNode": "5.inputs.text",
       "seedNode": "7.inputs.seed",

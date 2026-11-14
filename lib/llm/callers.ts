@@ -42,9 +42,9 @@ export interface LlmBackend {
  * can get prose with the JSON embedded in it, which is why every caller goes
  * through parseLLMJson rather than JSON.parse.
  */
-export function callLLM(backend: LlmBackend, prompt: string, opts: { maxTokens?: number } = {}): Promise<string> {
+export function callLLM(backend: LlmBackend, prompt: string, opts: { maxTokens?: number; keepAlive?: number } = {}): Promise<string> {
   const { providerType, providerBaseUrl, modelId, apiKey } = backend;
-  if (providerType === "ollama") return callOllama(providerBaseUrl, modelId, prompt);
+  if (providerType === "ollama") return callOllama(providerBaseUrl, modelId, prompt, undefined, { keepAlive: opts.keepAlive });
   if (providerType === "openrouter") {
     // Without a key OpenRouter answers 401; say what is missing instead
     if (!apiKey) return Promise.reject(new Error("no OpenRouter key: add it in Settings → Chat models"));
@@ -81,16 +81,29 @@ export function parseProviderBase(raw: string): string | null {
   return url.toString().replace(/\/$/, "");
 }
 
+/**
+ * The context window asked of Ollama. Without it Ollama uses its own default
+ * (2-4k tokens on most installs) and cuts long prompts from the FRONT, which is
+ * where the instructions are: long memory and comic prompts lost them silently.
+ */
+export const OLLAMA_NUM_CTX = 8192;
+
 export async function callOllama(
   baseUrl:    string,
   modelId:    string,
   prompt:     string,
-  timeoutMs = 45_000
+  timeoutMs = 45_000,
+  opts: { keepAlive?: number } = {},
 ): Promise<string> {
   const res = await fetch(`${baseUrl}/api/generate`, {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify({ model: modelId, prompt, stream: false, format: "json" }),
+    body:    JSON.stringify({
+      model: modelId, prompt, stream: false, format: "json",
+      options: { num_ctx: OLLAMA_NUM_CTX },
+      // 0 unloads the model as soon as it answers (the GPU is needed next, e.g. by ComfyUI)
+      ...(opts.keepAlive !== undefined ? { keep_alive: opts.keepAlive } : {}),
+    }),
     signal:  AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) throw new Error(`Ollama HTTP ${res.status}`);

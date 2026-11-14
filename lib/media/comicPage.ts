@@ -21,7 +21,9 @@ const ACTION_ONLY = /^(a\s+)?(quiet\s+|soft\s+|small\s+)?(sigh|sighs|laugh|laugh
 
 export interface ComicBalloon { speaker: string; text: string }
 export interface ComicPanel { shot: string; characters: string[]; balloons: ComicBalloon[]; caption?: string }
-export interface ComicScript { title?: string; setting?: string; panels: ComicPanel[] }
+/** extras: people outside the cast the script introduced (a creature, a stranger), each with a short look */
+export interface ComicScript { title?: string; setting?: string; panels: ComicPanel[]; extras?: ComicPerson[] }
+export const MAX_EXTRAS = 4;
 
 /** Someone who can appear on the page, and how image models should draw them */
 export interface ComicPerson { name: string; look: string }
@@ -41,10 +43,19 @@ const line = (v: unknown) => {
  */
 export function cleanComicScript(raw: unknown, people: ComicPerson[]): ComicScript | null {
   const r = (raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;
+  const known = (n: string) => people.some((p) => p.name.toLowerCase() === n.toLowerCase() || p.name.split(/\s+/)[0].toLowerCase() === n.split(/\s+/)[0].toLowerCase());
+  // People outside the cast the script names (with a look), so they can appear and keep that look
+  const extras: ComicPerson[] = [];
+  for (const re of Array.isArray(r.extras) ? r.extras : []) {
+    const e = (re && typeof re === "object" ? re : {}) as Record<string, unknown>;
+    const name = str(e.name, 60), look = str(e.look, 300);
+    if (name && look && !known(name) && !extras.some((x) => x.name.toLowerCase() === name.toLowerCase()) && extras.length < MAX_EXTRAS) extras.push({ name, look });
+  }
+  const everyone = [...people, ...extras];
   const match = (name: unknown) => {
     const n = str(name, 100).toLowerCase();
     if (!n) return null;
-    return people.find((p) => p.name.toLowerCase() === n || p.name.split(/\s+/)[0].toLowerCase() === n.split(/\s+/)[0])?.name ?? null;
+    return everyone.find((p) => p.name.toLowerCase() === n || p.name.split(/\s+/)[0].toLowerCase() === n.split(/\s+/)[0])?.name ?? null;
   };
   const panels: ComicPanel[] = [];
   for (const rp of Array.isArray(r.panels) ? r.panels : []) {
@@ -67,7 +78,9 @@ export function cleanComicScript(raw: unknown, people: ComicPerson[]): ComicScri
   }
   if (panels.length === 0) return null;
   const title = str(r.title, 80), setting = str(r.setting, 300);
-  return { ...(title ? { title } : {}), ...(setting ? { setting } : {}), panels };
+  const used = new Set(panels.flatMap((p) => p.characters));
+  const onPage = extras.filter((e) => used.has(e.name));
+  return { ...(title ? { title } : {}), ...(setting ? { setting } : {}), panels, ...(onPage.length ? { extras: onPage } : {}) };
 }
 
 export type Box = [number, number, number, number];
@@ -151,8 +164,9 @@ export function layoutComicPage(script: ComicScript, people: ComicPerson[], styl
   const short = (name: string) => `the person with ${look(name).split(",").map((t) => t.trim()).filter(Boolean).slice(1, 4).join(", ") || look(name)}`;
   const unnamed = (text: string) => people.reduce((t, p) => {
     const first = p.name.split(/\s+/)[0];
-    return t.replace(new RegExp(`\\b${escapeRe(p.name)}('s)?\\b`, "gi"), short(p.name))
-      .replace(new RegExp(`\\b${escapeRe(first)}('s)?\\b`, "g"), short(p.name));
+    // Letter boundaries that know accents (\b treats "ë" as a break, so "Zoë" never matched)
+    return t.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(p.name)}('s)?(?![\\p{L}\\p{N}])`, "giu"), short(p.name))
+      .replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(first)}('s)?(?![\\p{L}\\p{N}])`, "gu"), short(p.name));
   }, text);
   const caption = [
     style.trim() || "Full-colour graphic-novel page, clean confident ink lines and soft painted colour",
