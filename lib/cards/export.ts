@@ -6,7 +6,8 @@
 import type { Character, Lorebook, Persona, Scenario } from "@/lib/types";
 import { BLANK_PNG, encodeCardPng, isPng, withTextChunk } from "./png";
 import { BUNDLE_KEY, MAX_BUNDLE_OPENERS, MAX_BUNDLE_REFERENCES, bundleImage, bundleJson, type BundleImage } from "./bundle";
-import { drawCardFace } from "./tradingCard";
+import { cardTagline, composeCardFace, type CardFaceText } from "./tradingCard";
+import { DEFAULT_CARD_OPTIONS, shortTagline, type CardArtOptions } from "./cardArt";
 import { characterToCard, loreToCharacterBook, lorebookToCard, personaToCard, scenarioToCard } from "./tavern";
 import { PLATFORMS, type PlatformId } from "./platforms";
 import { convertCardTo, lossyFields } from "./convert";
@@ -188,9 +189,11 @@ export async function exportArchive(sel: LibrarySelection, allLorebooks: Loreboo
 }
 
 // ─── Trading card ─────────────────────────────────────────────────────────────
-// The same full SillyTavern V2 card, carried by a drawn card face instead of the
-// bare portrait, plus FableChat's bundle (lib/cards/bundle.ts): the plain
-// portrait, reference pictures and chosen first messages.
+// The same full SillyTavern V2 card, carried by the character's card face (the
+// art ComfyUI drew from the options they picked, lib/chat/cardArt.ts, or their
+// portrait until there is some) instead of the bare portrait, plus FableChat's
+// bundle (lib/cards/bundle.ts): the plain portrait, reference pictures and the
+// first messages chosen at export.
 
 async function fetchBytes(url: string): Promise<Uint8Array | null> {
   try {
@@ -221,6 +224,8 @@ export interface TradingCardOptions {
   openers?: Array<{ name: string; text: string }>;
   /** Carry the reference pictures (default true) */
   references?: boolean;
+  /** Text choices for the face (default: what the card art was made with) */
+  face?: CardArtOptions;
 }
 
 export interface TradingCardFile {
@@ -232,11 +237,29 @@ export interface TradingCardFile {
   openers: number;
 }
 
-/** The drawn face alone, for a preview. */
-export async function drawTradingCardFace(character: Character): Promise<Uint8Array> {
-  const bytes = await avatarBytes(character.avatar);
-  const img = bytes ? await loadImage(bytes) : null;
-  return drawCardFace(character, img);
+/**
+ * The card face: their card art (else their portrait), fitted to the card, with
+ * the name laid over unless the art was lettered by MOSS or no text was asked for.
+ * `options` are the current choices (text, name position); the engine that
+ * matters is the one the art was drawn with.
+ */
+async function cardFace(character: Character, options: CardArtOptions, artUrl: string | undefined, artEngine: CardArtOptions["engine"] | undefined) {
+  const artBytes = artUrl ? await fetchBytes(artUrl) : null;
+  const art = artBytes ? await loadImage(artBytes) : null;
+  const portraitBytes = await avatarBytes(character.avatar);
+  const portraitImg = portraitBytes ? await loadImage(portraitBytes) : null;
+  const lettered = !!art && artEngine === "moss";
+  const overlay: CardFaceText | null = lettered || options.text === "none" ? null : {
+    name: character.name, nameAt: options.nameAt,
+    ...(options.text === "name-tagline" ? { tagline: shortTagline(cardTagline(character)) } : {}),
+  };
+  const face = await composeCardFace(art ?? portraitImg, character.name, overlay);
+  return { face, portraitBytes, portraitImg };
+}
+
+/** The face alone, for a preview. */
+export async function drawTradingCardFace(character: Character, options: CardArtOptions = character.cardFace?.options ?? DEFAULT_CARD_OPTIONS): Promise<Uint8Array> {
+  return (await cardFace(character, options, character.cardFace?.art, character.cardFace?.options.engine)).face;
 }
 
 export async function buildTradingCard(character: Character, opts: TradingCardOptions = {}): Promise<TradingCardFile> {
@@ -247,9 +270,8 @@ export async function buildTradingCard(character: Character, opts: TradingCardOp
   const check = validateTavernCardV2(card);
   if (!check.valid) throw new Error(check.errors.join("; "));
 
-  const portraitBytes = await avatarBytes(character.avatar);
-  const portraitImg = portraitBytes ? await loadImage(portraitBytes) : null;
-  const face = await drawCardFace(character, portraitImg);
+  const options = opts.face ?? character.cardFace?.options ?? DEFAULT_CARD_OPTIONS;
+  const { face, portraitBytes, portraitImg } = await cardFace(character, options, character.cardFace?.art, character.cardFace?.options.engine);
   let out = encodeCardPng(face, JSON.stringify(convertCardTo(card, "sillytavern")), PLATFORMS.sillytavern.metadataKey);
 
   const portrait = portraitBytes && portraitImg ? bundleImage(portraitBytes) ?? undefined : undefined;

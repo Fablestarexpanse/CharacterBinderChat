@@ -29,6 +29,8 @@ export type PromptId =
   | "image.describe"
   | "image.look-from-text"
   | "image.portrait"
+  | "image.card-art"
+  | "image.card-moss"
   | "image.comic-script"
   | "video.clip"
   | "video.reference-clip";
@@ -170,6 +172,35 @@ a personality trait or anything that is not visible on the person.`,
     usedFor: "The Generate button next to a portrait: the picture prompt. Their image tags are added in front of it.",
     template: `head and shoulders portrait, looking at the camera, soft natural light, plain softly blurred background, realistic photo, sharp focus`,
     variables: [],
+  },
+  {
+    id: "image.card-art",
+    title: "Card art (looks like them)",
+    group: "Images",
+    usedFor: "Export as a card, drawn with your picture settings: the picture prompt. Their image tags (and LoRA) are added in front of it; the name is laid over the picture afterwards.",
+    template: `collectible character card art in portrait orientation, the character as the clear focus, three-quarter view, {{style}}, {{frame}}, background: {{background}}, {{extra}}, no text, no letters, no logo`,
+    variables: [
+      { name: "style", description: "The art style picked for the card", sample: "richly painted digital fantasy illustration, dramatic lighting" },
+      { name: "frame", description: "The border picked for the card", sample: "an ornate carved filigree border" },
+      { name: "background", description: "What is behind them (may be empty)", sample: "a misty mountain pass at dawn" },
+      { name: "extra", description: "Anything else asked for (may be empty)", sample: "holding a glowing staff" },
+    ],
+  },
+  {
+    id: "image.card-moss",
+    title: "Card art (MOSS, lettered)",
+    group: "Images",
+    usedFor: "Export as a card, drawn by MOSS-Image: the description of the whole card. FableChat places the figure and the name boxes; MOSS letters the name exactly.",
+    warning: "Keep {{lettering}}: it is what stops MOSS writing other words on the card.",
+    template: `A collectible character card in portrait orientation, original design. Art style: {{style}}. Border: {{frame}}. It shows one person: {{look}}. Behind them: {{background}}. {{extra}} {{lettering}}`,
+    variables: [
+      { name: "style", description: "The art style picked for the card", sample: "anime cel-shaded illustration, clean line art, vivid colours" },
+      { name: "frame", description: "The border picked for the card", sample: "a holographic foil border with a rainbow sheen" },
+      { name: "look", description: "How they look: image tags, else from their description", required: true, sample: "tall elf woman, long silver hair, violet eyes, midnight-blue robes" },
+      { name: "background", description: "What is behind them", sample: "a tower of glass under the stars" },
+      { name: "extra", description: "Anything else asked for (may be empty)", sample: "" },
+      { name: "lettering", description: "What text goes on the card, and that there is no other", required: true, sample: 'The only text on the card is the name "Sefa Vire", lettered exactly in its own box; no other text, letters or numbers anywhere.' },
+    ],
   },
   {
     id: "image.comic-script",

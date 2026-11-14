@@ -86,7 +86,7 @@ export interface ComicResult { ok: boolean; error?: string; panels?: number; lef
 type Who = { id: string; name: string; description?: string; image?: ImageLook };
 
 /** How someone is drawn on a page: their comic LoRA's trigger word, then their tags (or their description's look) */
-const lookOf = (who: Who) => {
+export const lookOf = (who: Who) => {
   const base = who.image?.tags?.trim() || lookFromDescription(who.description ?? "") || "a person";
   const trigger = who.image?.comicLora?.trigger?.trim();
   return trigger ? `${trigger}, ${base}` : base;

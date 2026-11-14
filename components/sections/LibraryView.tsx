@@ -73,7 +73,7 @@ export function LibraryView() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [platform, setPlatform] = useState<PlatformId>("sillytavern");
-  const [cardFor, setCardFor] = useState<Character | null>(null);
+  const [cardFor, setCardFor] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: "info" | "error"; text: string } | null>(null);
   const [personaEditor, setPersonaEditor] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const fileRef = useRef<HTMLInputElement>(null);
@@ -369,7 +369,7 @@ export function LibraryView() {
                           <Button variant="purple" size="sm" onClick={() => startChat(character.id)}><MessageSquare className="h-3 w-3 mr-1" />Chat</Button>
                           <Button variant="outline" size="sm" onClick={() => openCharacterEditor(character.id)}>Edit</Button>
                           <ExportButtons run={(f) => exportOneCharacter(character, f)} />
-                          <Button variant="outline" size="sm" onClick={() => setCardFor(character)} title="Export as a trading card: a drawn card face with everything inside">
+                          <Button variant="outline" size="sm" onClick={() => setCardFor(character.id)} title="Export as a card: ComfyUI draws the face from options you pick; the whole character goes inside">
                             <IdCard className="h-3 w-3 mr-1" />Card
                           </Button>
                         </>
@@ -408,7 +408,7 @@ export function LibraryView() {
 
         <PersonaEditorDialog open={personaEditor.open} personaId={personaEditor.id} onClose={() => setPersonaEditor({ open: false, id: null })} />
         {startChatDialog}
-        <TradingCardDialog character={cardFor} onClose={() => setCardFor(null)} />
+        <TradingCardDialog characterId={cardFor} onClose={() => setCardFor(null)} />
       </div>
     </div>
   );

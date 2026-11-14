@@ -1,5 +1,6 @@
 // ─── Core Data Models ────────────────────────────────────────────────────────
 
+import type { CardArtOptions } from "@/lib/cards/cardArt";
 import type { CharacterVoice } from "@/lib/media/voice";
 import type { ProviderType } from "@/lib/llm/callers";
 
@@ -43,6 +44,9 @@ export interface Character {
   voice?: CharacterVoice;
   /** What they may do on their own (lib/media/contact.ts); all off unless set */
   contact?: CharacterContact;
+  /** Their card face for Export as a card: the art ComfyUI drew (an asset URL) and the
+   *  options it was drawn with (lib/cards/cardArt.ts). A row field, not a card field */
+  cardFace?: { art?: string; options: CardArtOptions };
   lorebookId?: string;
   createdAt: string;
   updatedAt: string;
