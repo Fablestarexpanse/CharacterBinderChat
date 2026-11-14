@@ -5,9 +5,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { BLANK_PNG, decodeCardPng, encodeCardPng, readTextChunk, withTextChunk } = await import("../../lib/cards/png.ts");
+const { BLANK_PNG, decodeCardPng, encodeCardPng, pngDimensions, pngDpi, readTextChunk, withDpi, withTextChunk } = await import("../../lib/cards/png.ts");
 const { BUNDLE_KEY, MAX_BUNDLE_REFERENCES, bundleImage, bundleJson, bytesToBase64, cleanBundle, sniffImage } = await import("../../lib/cards/bundle.ts");
-const { cardTagline, cardTheme, wrapLines } = await import("../../lib/cards/tradingCard.ts");
+const { CARD_H, CARD_W, cardTagline, cardTheme, wrapLines } = await import("../../lib/cards/tradingCard.ts");
 const { CARD_ART_SIZE, cardArtVariables, cardMossLayout, cardMossVariables, cleanCardOptions, shortTagline, tidyPrompt } = await import("../../lib/cards/cardArt.ts");
 const { compileLayout } = await import("../../lib/media/comicPage.ts");
 const { renderTemplate } = await import("../../lib/prompts/render.ts");
@@ -100,4 +100,15 @@ test("empty prompt variables leave no stray commas", () => {
   const p = tidyPrompt(renderTemplate(def.template, cardArtVariables(cleanCardOptions({ engine: "look" }))));
   assert.doesNotMatch(p, /,\s*,/);
   assert.match(p, /no text/);
+});
+
+test("a card is a Magic card's size: 63 x 88 mm at 300 DPI, and the PNG says so through every re-encode", () => {
+  assert.deepEqual([CARD_W, CARD_H], [744, 1039]);
+  const stamped = withDpi(BLANK_PNG, 300);
+  assert.equal(pngDpi(stamped), 300);
+  assert.equal(pngDpi(BLANK_PNG), null);
+  assert.equal(pngDpi(withDpi(stamped, 300)), 300, "replaced, not doubled");
+  const card = withTextChunk(encodeCardPng(stamped, JSON.stringify({ spec: "chara_card_v2", data: { name: "A" } }), "chara"), BUNDLE_KEY, "{}");
+  assert.equal(pngDpi(card), 300, "the card and bundle chunks keep it");
+  assert.deepEqual(pngDimensions(card), pngDimensions(BLANK_PNG));
 });

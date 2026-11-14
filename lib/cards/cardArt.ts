@@ -11,7 +11,7 @@
 //    LoRA, reference pictures and likeness), so it looks most like them; image
 //    models letter badly, so the name is laid over the picture afterwards.
 //
-// Every card is 5:7, the size of a playing card. Pure and client-safe; the
+// Every card is a Magic card's size, 63 x 88 mm (lib/cards/tradingCard.ts). Pure and client-safe; the
 // prompt text is the editable `image.card-art` / `image.card-moss` templates.
 
 import type { LayoutDraft } from "@/lib/media/comicPage";
@@ -61,8 +61,8 @@ export const DEFAULT_CARD_OPTIONS: CardArtOptions = {
   engine: "moss", style: "painted", frame: "none", text: "name", nameAt: "bottom",
 };
 
-/** The picture sizes asked of ComfyUI: both close to 5:7, both multiples of 16 */
-export const CARD_ART_SIZE = { moss: { width: 1024, height: 1440 }, look: { width: 832, height: 1168 } } as const;
+/** The picture sizes asked of ComfyUI: as close to 63:88 as multiples of 16 allow (the card crops the rest) */
+export const CARD_ART_SIZE = { moss: { width: 1024, height: 1424 }, look: { width: 832, height: 1168 } } as const;
 
 const clip = (s: string | undefined, max: number) => (s ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 
@@ -118,7 +118,7 @@ export function cardMossLayout(
   const top = o.nameAt === "top";
   const withText = o.text !== "none";
   const withTagline = o.text === "name-tagline" && !!person.tagline?.trim();
-  const nameBox: [number, number, number, number] = top ? [96, 56, W - 96, 176] : [96, withTagline ? 1150 : 1250, W - 96, withTagline ? 1260 : 1370];
+  const nameBox: [number, number, number, number] = top ? [96, 56, W - 96, 176] : [96, H - (withTagline ? 290 : 190), W - 96, H - (withTagline ? 180 : 70)];
   const figure: [number, number, number, number] = [72, top ? 200 : 72, W - 72, withText ? (top ? H - (withTagline ? 190 : 72) : nameBox[1] - 24) : H - 72];
   items.push({ label: "character", caption: `The person on the card, the only figure: ${clip(person.look, 500)}`, bbox: figure });
   if (withText) {

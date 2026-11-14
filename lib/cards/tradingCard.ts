@@ -1,5 +1,6 @@
 // ─── Card face ────────────────────────────────────────────────────────────────
-// The finished card is 750 x 1050 (the size of a playing card). Its look is the
+// The finished card is a Magic card's size exactly: 63 x 88 mm, drawn at 300 DPI
+// (744 x 1039) and stamped 300 DPI, so it prints at true size. Its look is the
 // art ComfyUI drew from the options you picked (lib/cards/cardArt.ts); this
 // file only fits that art to the card and, when the art carries no lettering
 // (your picture settings, or no art yet, so the portrait), lays the name and
@@ -10,9 +11,13 @@
 
 import type { Character } from "@/lib/types";
 import { expandMacros } from "./tavern";
+import { withDpi } from "./png";
 
-export const CARD_W = 750;
-export const CARD_H = 1050;
+/** 63 x 88 mm at 300 DPI */
+export const CARD_MM = { width: 63, height: 88 } as const;
+export const CARD_DPI = 300;
+export const CARD_W = Math.round((CARD_MM.width / 25.4) * CARD_DPI);    // 744
+export const CARD_H = Math.round((CARD_MM.height / 25.4) * CARD_DPI);   // 1039
 
 /** Colours for a card with no picture at all, picked from the name so a character keeps theirs. */
 export const CARD_THEMES = [
@@ -96,7 +101,7 @@ export interface CardFaceText {
 type Drawable = CanvasImageSource & { width: number; height: number };
 
 /**
- * The card: `art` fitted to 750 x 1050 (cover, biased to the top so faces stay
+ * The card: `art` fitted to CARD_W x CARD_H (cover, biased to the top so faces stay
  * in), or a plain colour with their initial when there is none; `overlay` lays
  * the name (and tagline) over it. Returns PNG bytes.
  */
@@ -154,5 +159,5 @@ export async function composeCardFace(art: Drawable | null, name: string, overla
 
   const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/png"));
   if (!blob) throw new Error("Could not draw the card");
-  return new Uint8Array(await blob.arrayBuffer());
+  return withDpi(new Uint8Array(await blob.arrayBuffer()), CARD_DPI);
 }

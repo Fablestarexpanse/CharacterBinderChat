@@ -116,7 +116,7 @@ function Body({ character, onClose }: { character: Character; onClose: () => voi
       </div>
       <div className="flex-1 overflow-y-auto px-5 pb-4 flex flex-col sm:flex-row gap-4">
         <div className="sm:w-[250px] flex-shrink-0 space-y-2">
-          <div className="aspect-[5/7] w-full max-w-[250px] mx-auto rounded-xl bg-[var(--muted)] flex items-center justify-center overflow-hidden">
+          <div className="aspect-[63/88] w-full max-w-[250px] mx-auto rounded-xl bg-[var(--muted)] flex items-center justify-center overflow-hidden">
             {busy === "art" ? (
               <div className="flex flex-col items-center gap-2 text-xs text-[var(--muted-fg)]"><Loader2 className="h-6 w-6 animate-spin text-[var(--purple-fg)]" />Drawing the card…</div>
             ) : loading ? <Loader2 className="h-6 w-6 animate-spin text-[var(--purple-fg)]" />

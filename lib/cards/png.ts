@@ -274,3 +274,36 @@ export function withTextChunk(png: Uint8Array, keyword: string, text: string): U
   for (const p of parts) { out.set(p, at); at += p.length; }
   return out;
 }
+
+/**
+ * `png` stamped with its print resolution (a pHYs chunk, replacing any earlier
+ * one), so it prints at its true size: a card at 300 DPI comes out 63 x 88 mm.
+ */
+export function withDpi(png: Uint8Array, dpi: number): Uint8Array {
+  if (!isPng(png)) throw new Error("Invalid PNG data");
+  const ppm = Math.round(dpi / 0.0254);
+  const data = new Uint8Array(9);
+  const view = new DataView(data.buffer);
+  view.setUint32(0, ppm, false);
+  view.setUint32(4, ppm, false);
+  data[8] = 1;                         // unit: metre
+  const parts: Uint8Array[] = [SIGNATURE];
+  for (const chunk of readChunks(png)) {
+    if (chunk.type === "pHYs") continue;
+    parts.push(chunkBytes(chunk.type, chunk.data));
+    if (chunk.type === "IHDR") parts.push(chunkBytes("pHYs", data));
+  }
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) { out.set(p, at); at += p.length; }
+  return out;
+}
+
+/** The print resolution a PNG declares (pixels per inch), or null */
+export function pngDpi(png: Uint8Array): number | null {
+  for (const chunk of readChunks(png)) {
+    if (chunk.type !== "pHYs" || chunk.data.length < 9 || chunk.data[8] !== 1) continue;
+    return Math.round(new DataView(chunk.data.buffer, chunk.data.byteOffset).getUint32(0, false) * 0.0254);
+  }
+  return null;
+}
