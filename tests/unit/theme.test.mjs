@@ -39,7 +39,7 @@ test("invalid colour falls back instead of emitting garbage CSS", () => {
 });
 
 test("the default theme reproduces the original palette's accent", () => {
-  assert.equal(accentVars(accentHex(DEFAULT_THEME), false)["--purple"], "#7c5cbf");
+  assert.equal(accentVars(accentHex(DEFAULT_THEME), false)["--purple"], "#7c3aed");
 });
 
 test("system mode follows the OS; explicit modes ignore it", () => {

@@ -333,7 +333,7 @@ export function LibraryView() {
               const character = tab === "characters" ? characters.find((c) => c.id === i.id) : undefined;
               const persona = tab === "personas" ? personas.find((p) => p.id === i.id) : undefined;
               return (
-                <Card key={i.id} role="listitem" aria-label={i.name} className={`p-3 transition-colors ${i.banner ? "overflow-hidden" : ""} ${isSel ? "border-[var(--purple)] bg-[var(--purple-light)]" : "hover:border-[var(--purple)]"}`}>
+                <Card key={i.id} role="listitem" aria-label={i.name} className={`p-3 transition-[transform,box-shadow,border-color] duration-300 ${i.banner ? "overflow-hidden" : ""} ${isSel ? "border-[var(--purple)] ring-2 ring-[var(--purple-light)] shadow-medium" : "hover:border-[var(--scrollbar)] hover:shadow-medium hover:-translate-y-0.5"}`}>
                   {/* The same banner as on its own screen, as a strip across the top with the name on the fade */}
                   {i.banner && (
                     <button className="relative -mx-3 -mt-3 mb-2.5 flex items-center px-3 text-left cursor-pointer" style={{ ...bannerStyle(i.banner, "3rem"), width: "calc(100% + 1.5rem)" }}

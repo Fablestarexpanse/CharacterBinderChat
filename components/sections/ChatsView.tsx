@@ -102,7 +102,7 @@ export function ChatsView({ archived: showArchived = false }: { archived?: boole
 
             return (
               <div key={chat.id}
-                className="group flex items-start gap-2 rounded-xl border border-[var(--border)] p-3 hover:border-[var(--purple)] hover:bg-[var(--purple-light)] transition-colors">
+                className="group flex items-start gap-2 rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-soft p-3 hover:border-[var(--scrollbar)] hover:shadow-medium hover:-translate-y-0.5 transition-[transform,box-shadow,border-color] duration-300">
               <button
                 onClick={() => setActiveChatId(chat.id)}
                 aria-label={`Open ${chat.name}`}

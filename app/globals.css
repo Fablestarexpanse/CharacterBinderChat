@@ -1,37 +1,50 @@
 @import "tailwindcss";
 
+/* The CharacterBinder website's look (github.com/Fablestarexpanse/characterbinderwebsite):
+   Tailwind's slate greys, violet-600 as the accent, a slate-50 page with white
+   cards, sidebar and bars, soft shadows. --nav-fg / --icon-fg are its slate-600 /
+   slate-400 for navigation text and resting icons. */
 :root {
-  --background: #ffffff;
-  --foreground: #1c1c28;
+  --background: #f8fafc;
+  --foreground: #1e293b;
   --card: #ffffff;
-  --border: #e8e8f0;
-  --muted: #f5f5fa;
-  --muted-fg: #7c7c9a;
-  --purple: #7c5cbf;
-  --purple-light: #f0ecfa;
-  --purple-fg: #5a3fa3;
-  --sidebar-bg: #f8f8fc;
-  --sidebar-border: #ebebf2;
+  --border: #e2e8f0;
+  --muted: #f1f5f9;
+  --muted-fg: #64748b;
+  --nav-fg: #475569;
+  --icon-fg: #94a3b8;
+  --purple: #7c3aed;
+  --purple-light: #f3f0ff;
+  --purple-fg: #6d28d9;
+  --sidebar-bg: #ffffff;
+  --sidebar-border: #e2e8f0;
   --radius: 8px;
-  --scrollbar: #b4b4ca;
-  --scrollbar-hover: #8e8eaa;
-  --prose-em: #5a5a7a;
+  --scrollbar: #cbd5e1;
+  --scrollbar-hover: #94a3b8;
+  --prose-em: #475569;
+  --elev-soft: 0 2px 12px rgba(15, 23, 42, 0.04), 0 1px 4px rgba(15, 23, 42, 0.02);
+  --elev-medium: 0 8px 30px rgba(15, 23, 42, 0.06), 0 2px 8px rgba(15, 23, 42, 0.04);
   color-scheme: light;
 }
 
-/* Dark surfaces. The accent trio (--purple*) is set at runtime by ThemeApplier. */
+/* Dark surfaces: the same slate scale, run the other way. The accent trio
+   (--purple*) is set at runtime by ThemeApplier. */
 :root.dark {
-  --background: #14141c;
-  --foreground: #e8e8f2;
-  --card: #1b1b26;
-  --border: #2e2e3e;
-  --muted: #22222f;
-  --muted-fg: #9a9ab5;
-  --sidebar-bg: #101018;
-  --sidebar-border: #262634;
-  --scrollbar: #555570;
-  --scrollbar-hover: #72728f;
-  --prose-em: #b4b4d0;
+  --background: #0b1120;
+  --foreground: #e2e8f0;
+  --card: #111a2e;
+  --border: #253247;
+  --muted: #1a2539;
+  --muted-fg: #94a3b8;
+  --nav-fg: #cbd5e1;
+  --icon-fg: #64748b;
+  --sidebar-bg: #0f172a;
+  --sidebar-border: #1e293b;
+  --scrollbar: #475569;
+  --scrollbar-hover: #64748b;
+  --prose-em: #cbd5e1;
+  --elev-soft: 0 2px 12px rgba(0, 0, 0, 0.25);
+  --elev-medium: 0 8px 30px rgba(0, 0, 0, 0.35);
   color-scheme: dark;
 }
 
@@ -60,6 +73,8 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --shadow-soft: var(--elev-soft);
+  --shadow-medium: var(--elev-medium);
 }
 
 * {
@@ -69,7 +84,7 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  font-family: var(--font-geist-sans), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;

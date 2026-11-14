@@ -49,12 +49,12 @@ export function Sidebar() {
       {/* Logo */}
       <div className="px-4 pt-5 pb-4 border-b border-[var(--sidebar-border)]">
         <div className="flex items-center gap-2">
-          <div className="h-7 w-7 rounded-lg bg-[var(--purple)] flex items-center justify-center">
-            <Sparkles className="h-4 w-4 text-white" />
+          <div className="rounded-lg bg-[var(--purple)] p-1.5 flex items-center justify-center">
+            <Sparkles className="h-5 w-5 text-white" />
           </div>
           <div>
-            <div className="font-bold text-[var(--foreground)] text-sm leading-none">FableChat</div>
-            <div className="text-[10px] text-[var(--muted-fg)] leading-none mt-0.5">Local AI Studio</div>
+            <div className="font-bold text-[var(--foreground)] text-lg tracking-tight leading-tight">FableChat</div>
+            <div className="text-[10px] font-medium text-[var(--icon-fg)] leading-none">Local AI Studio</div>
           </div>
         </div>
       </div>
@@ -92,7 +92,7 @@ export function Sidebar() {
 
       {/* Recent Chats */}
       <div className="flex-1 overflow-y-auto px-2 py-2 border-t border-[var(--sidebar-border)]">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-fg)] px-2 mb-1.5">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--icon-fg)] px-3 mb-1.5">
           Recent Chats
         </div>
         <div className="space-y-0.5">

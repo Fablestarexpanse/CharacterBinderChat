@@ -49,7 +49,7 @@ function readPalette() {
   const cs = getComputedStyle(document.documentElement);
   const v = (name: string, fallback: string) => cs.getPropertyValue(name).trim() || fallback;
   return {
-    accent:     v("--purple", "#7c5cbf"),
+    accent:     v("--purple", "#7c3aed"),
     text:       v("--foreground", "#1c1c28"),
     textMuted:  v("--muted-fg", "#7c7c9a"),
     card:       v("--card", "#ffffff"),

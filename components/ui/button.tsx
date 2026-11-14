@@ -16,8 +16,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           {
             "bg-[var(--foreground)] text-[var(--background)] hover:opacity-85": variant === "default",
             "hover:bg-[var(--muted)] text-[var(--foreground)]": variant === "ghost",
-            "border border-[var(--border)] hover:bg-[var(--muted)] text-[var(--foreground)]": variant === "outline",
-            "bg-[var(--purple)] text-white hover:bg-[var(--purple-fg)]": variant === "purple",
+            "border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)] text-[var(--foreground)]": variant === "outline",
+            "bg-[var(--purple)] text-white font-semibold shadow-sm hover:bg-[var(--purple-fg)] hover:shadow": variant === "purple",
             "bg-[var(--purple-light)] text-[var(--purple-fg)] hover:brightness-95": variant === "subtle",
           },
           {

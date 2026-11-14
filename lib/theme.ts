@@ -24,7 +24,7 @@ export interface AccentPreset {
 }
 
 export const ACCENT_PRESETS: readonly AccentPreset[] = [
-  { id: "violet",  label: "Violet",  hex: "#7c5cbf" },   // the original look
+  { id: "violet",  label: "Violet",  hex: "#7c3aed" },   // the CharacterBinder website's violet-600
   { id: "indigo",  label: "Indigo",  hex: "#4f5bd5" },
   { id: "ocean",   label: "Ocean",   hex: "#2b7fc2" },
   { id: "teal",    label: "Teal",    hex: "#13857f" },
@@ -38,7 +38,7 @@ export const ACCENT_PRESETS: readonly AccentPreset[] = [
 export const DEFAULT_THEME: ThemePrefs = {
   mode: "light",
   accentId: "violet",
-  customAccent: "#7c5cbf",
+  customAccent: "#7c3aed",
 };
 
 export const THEME_STORAGE_KEY = "fablechat-theme";
@@ -117,7 +117,7 @@ export function accentVars(baseHex: string, dark: boolean): AccentVars {
   return dark
     ? {
         "--purple": base,
-        "--purple-light": mix("#1b1b26", base, 0.22),
+        "--purple-light": mix("#111a2e", base, 0.22),
         "--purple-fg": mix(base, "#ffffff", 0.45),
       }
     : {
