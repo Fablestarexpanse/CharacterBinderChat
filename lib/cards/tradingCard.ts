@@ -37,7 +37,8 @@ export function cardTagline(c: Pick<Character, "name" | "description">, max = 22
     .replace(/\s+/g, " ")
     .trim();
   if (!text) return "";
-  const sentences = text.match(/[^.!?]+[.!?]+["')\]]?|[^.!?]+$/g) ?? [text];
+  // A sentence ends at . ! ? followed by a space or the end, so "88.7" or "St. Ives" stay whole
+  const sentences = text.split(/(?<=[.!?]["')\]]?)\s+/);
   let out = "";
   for (const s of sentences) {
     const next = (out + " " + s.trim()).trim();

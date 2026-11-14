@@ -53,6 +53,7 @@ test("the card face text: a short tagline, wrapping with an ellipsis, a stable c
   assert.equal(t, "June runs the night shift at the radio station. She knows every caller by voice.");
   assert.ok(cardTagline({ name: "A", description: "x".repeat(400) }, 100).length <= 100);
   assert.equal(cardTagline({ name: "A", description: "" }), "");
+  assert.equal(cardTagline({ name: "June", description: 'June hosts "The Night Shift" on WPEL 88.7, the last station. More here.' }, 90), 'June hosts "The Night Shift" on WPEL 88.7, the last station.', "a decimal point is not a sentence end");
   const lines = wrapLines("one two three four five six seven", 9, (s) => s.length, 2);
   assert.deepEqual(lines, ["one two", "three…"]);
   assert.deepEqual(wrapLines("supercalifragilistic", 5, (s) => s.length, 3), ["supercalifragilistic"], "a long word still gets a line");
